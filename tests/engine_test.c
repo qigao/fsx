@@ -23,6 +23,8 @@ static FsEngine *engine, *oracle_engine;
 static bool fixture_ready;
 static FsQuery *held_query;
 static FsResult *held_result, *retained_result;
+static FsWatch *watch, *second_watch;
+static sqlite3 *scan_blocker;
 #ifdef _WIN32
 static void wide(const char *s, wchar_t *out, size_t cap) {
   check(MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, out,
@@ -145,8 +147,19 @@ static void setup(void) {
   held_query = NULL;
   held_result = NULL;
   retained_result = NULL;
+  watch = second_watch = NULL;
+  scan_blocker = NULL;
 }
 static void teardown(void) {
+  if (scan_blocker) {
+    sqlite3_exec(scan_blocker, "ROLLBACK", NULL, NULL, NULL);
+    sqlite3_close(scan_blocker);
+    scan_blocker = NULL;
+  }
+  if (second_watch)
+    check_equal(fsx_watch_close(&second_watch), FS_OK);
+  if (watch)
+    check_equal(fsx_watch_close(&watch), FS_OK);
   fsx_result_release(retained_result);
   retained_result = NULL;
   fsx_result_release(held_result);
@@ -244,6 +257,57 @@ static FsResultInfo equivalent(const char *text, FsQueryOptions options) {
     check_equal(entry(i, NULL).entry_key, keys[i]);
   return accelerated;
 }
+#ifdef _WIN32
+static void open_watch(FsWatch **out, const char *path, uint32_t bytes) {
+  FsWatchConfig config = fsx_watch_config();
+  config.buffer_bytes = bytes;
+  check_equal(fsx_watch_open(engine, path, &config, out), FS_OK);
+}
+static FsWatchInfo settle_watch(FsWatch *w) {
+  FsWatchInfo info;
+  uint64_t end = fsx_engine_now_ns(engine) + 5000000000ull;
+  for (unsigned pass = 0; pass < 64; pass++) {
+    FsStatus status = fsx_watch_wait(w, 0, &info);
+    if (status == FS_WAIT)
+      return info;
+    check_equal(status, FS_OK);
+    check_true(fsx_engine_now_ns(engine) < end);
+    FsScanInfo scanned;
+    check_equal(fsx_watch_scan(w, &scanned), FS_OK);
+  }
+  check(false, "watch did not settle within 64 reconciliation passes");
+  return info;
+}
+static FsWatchInfo wait_change(FsWatch *w) {
+  FsWatchInfo info;
+  check_equal(
+      fsx_watch_wait(w, fsx_engine_now_ns(engine) + 5000000000ull, &info),
+      FS_OK);
+  check_true(info.needs_rescan);
+  return info;
+}
+typedef struct WatchWaiter {
+  FsWatch *watch;
+  FsStatus status;
+  DWORD native_error;
+} WatchWaiter;
+static void watch_waiter(void *arg) {
+  WatchWaiter *waiter = arg;
+  FsWatchInfo info;
+  waiter->status = fsx_watch_wait(waiter->watch, FSX_DEADLINE_INFINITE, &info);
+}
+static void watch_scanner(void *arg) {
+  WatchWaiter *waiter = arg;
+  FsScanInfo scanned;
+  waiter->status = fsx_watch_scan(waiter->watch, &scanned);
+  waiter->native_error = GetLastError();
+}
+static void watch_opener(void *arg) {
+  WatchWaiter *waiter = arg;
+  FsWatchConfig config = fsx_watch_config();
+  waiter->status = fsx_watch_open(engine, root, &config, &watch);
+}
+#endif
 typedef struct Sender {
   FsEngine *engine;
   atomic_uint failures;
@@ -731,6 +795,324 @@ suite("FileSearch engine") {
     check_equal(old.name, "removed.txt");
     check_equal(count(""), (uint64_t)0);
   }
+#ifdef _WIN32
+  it("watches create, metadata, rename and delete through retained snapshots") {
+    put("seed.txt", "x");
+    open_engine();
+    open_watch(&watch, root, 65536);
+    /* Changes after arming but before the first scan must be reconciled. */
+    put("armed.txt", "x");
+    FsWatchInfo info = settle_watch(watch);
+    check_equal(info.state, FS_WATCH_IDLE);
+    check_true(info.coverage_complete);
+    check_true(info.source_id != 0);
+    check_equal(
+        fsx_watch_wait(watch, fsx_engine_now_ns(engine) + 10000000, &info),
+        FS_TIMEOUT);
+    check_equal(count("seed"), (uint64_t)1);
+    FsEntryView old = entry(0, NULL);
+    retained_result = held_result;
+    held_result = NULL;
+    subdir("nested");
+    put("nested/created.txt", "two");
+    wait_change(watch);
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_true(progress.needs_rescan);
+    check_equal(progress.active_watches, 1u);
+    check_equal(progress.dirty_watches, 1u);
+    check_equal(count("created"), (uint64_t)0);
+    FsResultInfo before;
+    fsx_result_info(held_result, &before);
+    check_true(before.needs_rescan);
+    settle_watch(watch);
+    check_equal(count("created"), (uint64_t)1);
+    put("seed.txt", "updated");
+    wait_change(watch);
+    settle_watch(watch);
+    check_equal(count("seed"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)7);
+    check_equal(old.name, "seed.txt");
+    check_equal(old.size, (uint64_t)1);
+    char from[2048], to[2048];
+    snprintf(from, sizeof(from), "%s/nested/created.txt", root);
+    snprintf(to, sizeof(to), "%s/nested/renamed.txt", root);
+    wchar_t a[2048], b[2048];
+    wide(from, a, 2048);
+    wide(to, b, 2048);
+    check(MoveFileW(a, b) != 0, "rename watched fixture file");
+    wait_change(watch);
+    settle_watch(watch);
+    check_equal(count("created"), (uint64_t)0);
+    check_equal(count("renamed"), (uint64_t)1);
+    remove_utf8(to);
+    wait_change(watch);
+    settle_watch(watch);
+    check_equal(count("renamed"), (uint64_t)0);
+    check_equal(fsx_watch_close(&watch), FS_OK);
+    fsx_engine_progress(engine, &progress);
+    check_equal(progress.active_watches, 0u);
+    check_true(progress.needs_rescan);
+    put("offline.txt", "x");
+    open_watch(&watch, root, 65536);
+    info = wait_change(watch);
+    check_equal(info.rescans, (uint64_t)0);
+    settle_watch(watch);
+    check_equal(count("offline"), (uint64_t)1);
+    check_equal(old.name, "seed.txt");
+  }
+  it("turns notification overflow into a full reconciliation obligation") {
+    open_engine();
+    open_watch(&watch, root, 1024);
+    settle_watch(watch);
+    for (unsigned i = 0; i < 800; i++) {
+      char name[64];
+      snprintf(name, sizeof(name), "burst-%04u.txt", i);
+      put(name, "x");
+    }
+    FsWatchInfo info = wait_change(watch);
+    check_true(info.overflows > 0);
+    /* A generic scan must not acknowledge a watch's unread generation. */
+    scan();
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_true(progress.needs_rescan);
+    info = settle_watch(watch);
+    check_equal(info.state, FS_WATCH_IDLE);
+    check_true(info.overflows > 0);
+    check_equal(count("burst"), (uint64_t)800);
+    fsx_engine_progress(engine, &progress);
+    check_false(progress.needs_rescan);
+  }
+  it("keeps independent watch invalidations across successful source scans") {
+    subdir("child");
+    open_engine();
+    open_watch(&watch, root, 65536);
+    char child[2048];
+    snprintf(child, sizeof(child), "%s/child", root);
+    open_watch(&second_watch, child, 65536);
+    settle_watch(watch);
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_equal(progress.dirty_watches, 1u);
+    check_true(progress.needs_rescan);
+    settle_watch(second_watch);
+    put("child/new.txt", "x");
+    wait_change(watch);
+    wait_change(second_watch);
+    settle_watch(watch);
+    fsx_engine_progress(engine, &progress);
+    check_equal(progress.dirty_watches, 1u);
+    check_true(progress.needs_rescan);
+    settle_watch(second_watch);
+    fsx_engine_progress(engine, &progress);
+    check_equal(progress.dirty_watches, 0u);
+    check_false(progress.needs_rescan);
+  }
+  it("rejects invalid, duplicate, over-budget and self-indexing watches") {
+    open_engine();
+    FsWatchConfig config = fsx_watch_config();
+    config.buffer_bytes = 0;
+    check_equal(fsx_watch_open(engine, root, &config, &watch), FS_INVALID);
+    check_null(watch);
+    config = fsx_watch_config();
+    config.api_version++;
+    check_equal(fsx_watch_open(engine, root, &config, &watch), FS_INVALID);
+    open_watch(&watch, root, 65536);
+    FsProgress before, after;
+    fsx_engine_progress(engine, &before);
+    config = fsx_watch_config();
+    check_equal(fsx_watch_open(engine, root, &config, &second_watch), FS_BUSY);
+    check_null(second_watch);
+    fsx_engine_progress(engine, &after);
+    check_equal(after.owned_bytes, before.owned_bytes);
+    check_equal(fsx_watch_open(engine, fixture, &config, &second_watch),
+                FS_INVALID);
+    check_null(second_watch);
+    check_equal(fsx_watch_close(&watch), FS_OK);
+    check_equal(fsx_engine_close(&engine, FSX_DEADLINE_INFINITE), FS_OK);
+    FsEngineConfig limited = fsx_engine_config(database);
+    limited.owned_memory_budget = 32768;
+    check_equal(fsx_engine_open(&limited, &engine), FS_OK);
+    check_equal(fsx_watch_open(engine, root, &config, &watch), FS_NOMEM);
+    check_null(watch);
+    fsx_engine_progress(engine, &after);
+    check_equal(after.active_watches, 0u);
+    check_equal(fsx_engine_close(&engine, FSX_DEADLINE_INFINITE), FS_OK);
+    limited = fsx_engine_config(database);
+    limited.max_handles = 1;
+    check_equal(fsx_engine_open(&limited, &engine), FS_OK);
+    open_watch(&watch, root, 65536);
+    check_equal(execute("", fsx_query_options()), FS_BUSY);
+    check_equal(fsx_watch_close(&watch), FS_OK);
+    FsQueryRequest request = {sizeof(request), FSX_API_VERSION, "", 0,
+                              fsx_query_options()};
+    check_equal(fsx_query_submit(engine, &request, &held_query), FS_OK);
+    check_equal(fsx_query_wait(held_query, FSX_DEADLINE_INFINITE), FS_OK);
+  }
+  it("retains invalidation from a change arriving during a watch scan") {
+    open_engine();
+    open_watch(&watch, root, 65536);
+    settle_watch(watch);
+    check_equal(sqlite3_open(database, &scan_blocker), SQLITE_OK);
+    check_equal(sqlite3_exec(scan_blocker, "BEGIN IMMEDIATE", NULL, NULL, NULL),
+                SQLITE_OK);
+    char path[2048];
+    snprintf(path, sizeof(path), "%s/midscan.txt", root);
+    wchar_t target[2048];
+    wide(path, target, 2048);
+    WatchWaiter scanning = {watch, FS_WAIT};
+    cmeta_thread_t thread = {0};
+    check_equal(cmeta_thread_create(&thread, watch_scanner, &scanning), 0);
+    bool observed = false;
+    uint64_t end = fsx_engine_now_ns(engine) + 500000000;
+    while (fsx_engine_now_ns(engine) < end) {
+      FsProgress progress;
+      fsx_engine_progress(engine, &progress);
+      if (progress.scanning) {
+        observed = true;
+        break;
+      }
+      Sleep(1);
+    }
+    /* No fatal assertions until the worker has joined and its DB blocker is
+     * gone. */
+    HANDLE file =
+        CreateFileW(target, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    DWORD written = 0;
+    BOOL wrote =
+        file != INVALID_HANDLE_VALUE && WriteFile(file, "x", 1, &written, NULL);
+    if (file != INVALID_HANDLE_VALUE)
+      CloseHandle(file);
+    int committed = sqlite3_exec(scan_blocker, "COMMIT", NULL, NULL, NULL);
+    sqlite3_close(scan_blocker);
+    scan_blocker = NULL;
+    int joined = cmeta_thread_join(&thread);
+    cmeta_thread_destroy(&thread);
+    check_equal(joined, 0);
+    check_equal(committed, SQLITE_OK);
+    check_true(observed);
+    check_true(wrote != 0 && written == 1);
+    FsWatchInfo info;
+    FsStatus pumped = fsx_watch_wait(watch, 0, &info);
+    check(scanning.status == FS_OK,
+          "scan status=%s worker OS=%lu watch OS=%u state=%s rescans=%llu",
+          fsx_status_name(scanning.status),
+          (unsigned long)scanning.native_error, info.native_error,
+          FsWatchState_to_string(info.state), (unsigned long long)info.rescans);
+    check_equal(pumped, FS_OK);
+    check_true(info.needs_rescan);
+    check_equal(count("midscan"), (uint64_t)1);
+    settle_watch(watch);
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_false(progress.needs_rescan);
+  }
+  it("keeps a failed watch scan dirty and recovers without losing old "
+     "results") {
+    put("seed.txt", "x");
+    FsEngineConfig config = fsx_engine_config(database);
+    config.max_entries = 1;
+    check_equal(fsx_engine_open(&config, &engine), FS_OK);
+    open_watch(&watch, root, 65536);
+    settle_watch(watch);
+    check_equal(count("seed"), (uint64_t)1);
+    FsEntryView old = entry(0, NULL);
+    retained_result = held_result;
+    held_result = NULL;
+    FsProgress before, after;
+    fsx_engine_progress(engine, &before);
+    put("overflow.txt", "new");
+    wait_change(watch);
+    FsScanInfo scanned;
+    check_equal(fsx_watch_scan(watch, &scanned), FS_LIMIT);
+    FsWatchInfo info = wait_change(watch);
+    check_equal(info.state, FS_WATCH_DIRTY);
+    check_equal(info.status, FS_LIMIT);
+    fsx_engine_progress(engine, &after);
+    check_equal(after.snapshot_epoch, before.snapshot_epoch);
+    check_true(after.needs_rescan);
+    char path[2048];
+    snprintf(path, sizeof(path), "%s/overflow.txt", root);
+    remove_utf8(path);
+    settle_watch(watch);
+    fsx_engine_progress(engine, &after);
+    check_false(after.needs_rescan);
+    check_equal(after.snapshot_epoch, before.snapshot_epoch + 1);
+    check_equal(old.name, "seed.txt");
+    check_equal(count("overflow"), (uint64_t)0);
+  }
+  it("rearms an interrupted watch after its serialized issuing thread exits") {
+    open_engine();
+    WatchWaiter opened = {NULL, FS_WAIT};
+    cmeta_thread_t thread = {0};
+    check_equal(cmeta_thread_create(&thread, watch_opener, &opened), 0);
+    int joined = cmeta_thread_join(&thread);
+    cmeta_thread_destroy(&thread);
+    check_equal(joined, 0);
+    check_equal(opened.status, FS_OK);
+    FsWatchInfo info = wait_change(watch);
+    check_equal(info.interruptions, (uint64_t)1);
+    check_equal(info.native_error, (uint32_t)ERROR_OPERATION_ABORTED);
+    check_equal(info.state, FS_WATCH_DIRTY);
+    info = settle_watch(watch);
+    check_equal(info.state, FS_WATCH_IDLE);
+    check_equal(info.interruptions, (uint64_t)1);
+  }
+  it("fails a moved or replaced watch root without acknowledging its "
+     "snapshot") {
+    put("original.txt", "x");
+    open_engine();
+    open_watch(&watch, root, 65536);
+    settle_watch(watch);
+    check_equal(count("original"), (uint64_t)1);
+    FsProgress before, after;
+    fsx_engine_progress(engine, &before);
+    char moved[2048];
+    snprintf(moved, sizeof(moved), "%s/moved-tree", fixture);
+    check_true(fixture_ready);
+    check_true(!strncmp(root, fixture, strlen(fixture)) &&
+               !strncmp(moved, fixture, strlen(fixture)));
+    wchar_t a[2048], b[2048];
+    wide(root, a, 2048);
+    wide(moved, b, 2048);
+    check(MoveFileW(a, b) != 0, "move owned fixture directory");
+    mkdir_utf8(root);
+    put("replacement.txt", "y");
+    FsWatchInfo info;
+    check_equal(fsx_watch_wait(watch, 0, &info), FS_STALE);
+    check_equal(info.state, FS_WATCH_FAILED);
+    check_true(info.needs_rescan);
+    FsScanInfo scanned;
+    check_equal(fsx_watch_scan(watch, &scanned), FS_STALE);
+    fsx_engine_progress(engine, &after);
+    check_equal(after.snapshot_epoch, before.snapshot_epoch);
+    check_true(after.needs_rescan);
+    check_equal(count("original"), (uint64_t)1);
+    check_equal(count("replacement"), (uint64_t)0);
+  }
+  it("wakes a waiting watch during retryable engine STOPPING") {
+    open_engine();
+    open_watch(&watch, root, 65536);
+    settle_watch(watch);
+    WatchWaiter waiter = {watch, FS_WAIT};
+    cmeta_thread_t thread = {0};
+    check_equal(cmeta_thread_create(&thread, watch_waiter, &waiter), 0);
+    FsStatus closed = fsx_engine_close(&engine, 0);
+    int joined = cmeta_thread_join(&thread);
+    cmeta_thread_destroy(&thread);
+    check_equal(joined, 0);
+    check_equal(closed, FS_BUSY);
+    check_equal(waiter.status, FS_CANCELLED);
+    FsWatchInfo info;
+    check_equal(fsx_watch_wait(watch, 0, &info), FS_CANCELLED);
+    check_equal(info.state, FS_WATCH_STOPPED);
+    check_equal(fsx_watch_close(&watch), FS_OK);
+    check_null(watch);
+    check_equal(fsx_engine_close(&engine, FSX_DEADLINE_INFINITE), FS_OK);
+  }
+#endif
 #ifdef _WIN32
   it("reports an unrepresentable native name as partial coverage") {
     put("safe.txt", "x");

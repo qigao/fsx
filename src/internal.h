@@ -42,9 +42,11 @@ struct FsEngine {
   sqlite3 *db;
   FsSnapshot *current;
   FsQuery *jobs;
+  FsWatch *watches;
   uint64_t owned;
   uint32_t handles, active_jobs;
-  bool writer, needs_rescan;
+  uint32_t watch_count, dirty_watches;
+  bool writer, needs_rescan, scan_failed;
   atomic_bool stopping;
   char *database_path, *reader_path;
   unsigned char database_identity[16];
@@ -118,6 +120,9 @@ FsStatus fsx_walk(FsWalk *, const char *);
 FsStatus fsx_native_volume(FsEngine *, const char *, uint64_t *);
 FsStatus fsx_query_execute(FsQuery *, FsResult **);
 FsStatus fsx_query_stop(FsQuery *);
+/* Caller holds engine mutex; only signals cancellation, never destroys watches.
+ */
+void fsx_watch_cancel_all(FsEngine *);
 void fsx_result_unref(FsResult *);
 
 #ifdef _WIN32

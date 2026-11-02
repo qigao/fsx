@@ -1,4 +1,4 @@
-add_library(fsx STATIC engine.c model/memory.c storage/sqlite.c storage/candidates.c source/directory.c)
+add_library(fsx STATIC engine.c model/memory.c storage/sqlite.c storage/candidates.c source/directory.c source/watch.c)
 cmake_config_target(fsx ALIAS Fsx::Fsx FOLDER fsx)
 target_include_directories(fsx PUBLIC "${PROJECT_SOURCE_DIR}/include" PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_features(fsx PUBLIC c_std_11)

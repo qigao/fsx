@@ -40,6 +40,10 @@ cmeta_enum(FsCandidateStrategy,
   (FS_CANDIDATE_SCAN_MEMORY, 3, "scan_memory"),
   (FS_CANDIDATE_SCAN_LEGACY, 4, "scan_legacy"),
   (FS_CANDIDATE_SCAN_PROFILE, 5, "scan_profile"));
+cmeta_enum(FsWatchState,
+  (FS_WATCH_DIRTY, 0, "dirty"), (FS_WATCH_IDLE, 1, "idle"),
+  (FS_WATCH_SCANNING, 2, "scanning"), (FS_WATCH_FAILED, 3, "failed"),
+  (FS_WATCH_STOPPED, 4, "stopped"));
 // clang-format on
 
 enum { FS_SORT_NAME, FS_SORT_PATH, FS_SORT_SIZE, FS_SORT_MTIME };

@@ -55,10 +55,11 @@ raw-unit matching is not implemented. Strict regex requests reject unsupported
 text coverage; explicit partial-text requests retain the coverage counters.
 Totals are exact within the indexed coverage, not the whole changing filesystem.
 
-A failed scan marks the in-process engine as needing rescan. Results capture that
-control state at submission. There is no persistent change-stream checkpoint,
-live watcher, durable gap/retry ledger or claim that an old snapshot is caught up.
-Reopening recovers the last committed scan and its committed coverage.
+A failed scan or consumed watch notification marks the in-process engine as
+needing rescan. Results capture that control state at submission. Cooperative
+Windows watches are described below. There is no persistent change-stream
+checkpoint or durable gap/retry ledger. Reopening recovers the last committed
+scan and its committed coverage; a reopened watch always requires a fresh scan.
 
 ## Snapshot page ownership
 
@@ -110,6 +111,56 @@ or incremental database reader; loading still visits all committed rows.
 - Parse, UTF, regex resource, cancellation and timeout errors are distinct from
   a successful zero-match result. Regex compile offsets map to original query
   bytes. Failures do not expose partially constructed results.
+
+## Cooperative Windows directory watches
+
+`FsWatch` is an external engine handle. The host serializes all calls on a given
+watch, and closes it only after its wait/scan caller returns. Different watches
+can run concurrently; the existing single-writer admission still returns BUSY.
+There are no watch threads or filename queues. Each watch owns a canonical root,
+native directory handle, cancellation/completion events, one OVERLAPPED and a
+DWORD-aligned buffer (1–64 KiB, default 64 KiB), charged to the engine budget.
+Watch count shares the engine's external-handle limit; duplicate native roots
+are rejected. On non-Windows platforms opening a watch returns UNSUPPORTED.
+
+Open arms recursive ReadDirectoryChangesW before returning and starts DIRTY.
+Wait pumps bounded batches, coalescing every completion into a root-wide dirty
+generation. Zero-byte/overflow completions also increment the gap counter and
+require enumeration. Scan drains/rearms before calling the transactional scanner,
+then drains again. It clears DIRTY only if no further generation was observed
+and the reader remains armed. Changes during scanning therefore require another
+scan. IDLE means no observed pending changes, not a journal checkpoint or complete
+filesystem coverage. Partial scan coverage stays explicit and independent.
+Windows cancels event-based I/O when its issuing thread exits. A consumed
+ERROR_OPERATION_ABORTED while the engine remains running increments
+`interruptions`, rearms on the new serialized caller and retains DIRTY until
+reconciliation. This permits thread handoff without silently losing the gap.
+STOPPING cancellation remains terminal; other native monitor failures are FAILED.
+
+The host must pump watches; queries do not secretly perform I/O. Engine progress
+and submitted results aggregate consumed watch invalidations with scan failures.
+One source's successful scan cannot clear another active watch's dirty state.
+Root identity is checked by native handle before/after scan and during pumping;
+movement, replacement or monitor failure enters FAILED and requires reopening.
+Database files beneath a watched root are rejected to avoid self-invalidation.
+Watches have no durable cursor; every reopened watch starts with a fresh scan.
+
+Wait uses the engine monotonic deadline domain: 0 polls, UINT64_MAX waits;
+finite expiry returns TIMEOUT without discarding the watch. Engine STOPPING
+signals every watch cancellation event and wakes waiters. Watches keep close
+BUSY/TIMEOUT until released. Watch close cancels pending native I/O and awaits
+its completion before freeing the buffer/OVERLAPPED, then releases its engine
+handle. Native calls are not promised hard real-time interruption. Closing a
+watch marks the engine as needing validation; a later explicit scan can validate
+the remaining cached observation. Scan failures retain DIRTY; retained results
+remain valid. A monitor/root check may fail after a database commit; in that case
+the scan output identifies the committed pass and the session stays invalidated.
+Filesystem root identity checks do not turn enumeration into an OS transaction.
+
+See Microsoft's [directory notification contract](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-readdirectorychangesw)
+and [overlapped cancellation lifetime](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex).
+The [thread exit contract](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-exitthread)
+also applies to requests that use events rather than completion ports.
 
 ## Build/test boundary
 

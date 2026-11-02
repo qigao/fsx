@@ -194,6 +194,8 @@ FsStatus fsx_engine_progress(FsEngine *e, FsProgress *out) {
   out->entries = e->current->count;
   out->snapshot_pages = e->current->page_count;
   out->reused_snapshot_pages = e->current->reused_pages;
+  out->active_watches = e->watch_count;
+  out->dirty_watches = e->dirty_watches;
   out->source_count = e->current->sources;
   out->incomplete_sources = e->current->incomplete;
   out->scanning = e->writer;
@@ -226,7 +228,8 @@ FsStatus fsx_engine_scan(FsEngine *e, const char *root, FsScanInfo *out) {
   fsx_free(canonical);
   cmeta_mutex_lock(&e->mutex);
   e->writer = false;
-  e->needs_rescan = s != FS_OK;
+  e->scan_failed = s != FS_OK;
+  e->needs_rescan = e->scan_failed || e->dirty_watches != 0;
   cmeta_cond_broadcast(&e->changed);
   cmeta_mutex_unlock(&e->mutex);
   return s;
@@ -434,6 +437,7 @@ FsStatus fsx_engine_close(FsEngine **owner, uint64_t deadline) {
   FsEngine *e = *owner;
   cmeta_mutex_lock(&e->mutex);
   atomic_store(&e->stopping, true);
+  fsx_watch_cancel_all(e);
   for (FsQuery *q = e->jobs; q; q = q->next)
     atomic_store(&q->cancelled, true);
   cmeta_mutex_unlock(&e->mutex);

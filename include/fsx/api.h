@@ -8,6 +8,7 @@ extern "C" {
 typedef struct FsEngine FsEngine;
 typedef struct FsQuery FsQuery;
 typedef struct FsResult FsResult;
+typedef struct FsWatch FsWatch;
 typedef struct FsOpenError {
   FsStatus status;
   int native_code;
@@ -32,7 +33,20 @@ typedef struct FsProgress {
   uint32_t source_count, incomplete_sources;
   bool scanning, stopping, needs_rescan;
   uint32_t snapshot_pages, reused_snapshot_pages;
+  uint32_t active_watches, dirty_watches;
 } FsProgress;
+typedef struct FsWatchConfig {
+  uint32_t struct_size, api_version, buffer_bytes;
+} FsWatchConfig;
+typedef struct FsWatchInfo {
+  FsWatchState state;
+  /* Last scan/monitor status; the wait return value separately reports timeout. */
+  FsStatus status;
+  /* Last observed native error, including recovered notification interruptions. */
+  uint32_t native_error, source_id;
+  uint64_t snapshot_epoch, change_batches, overflows, interruptions, rescans;
+  bool needs_rescan, coverage_complete;
+} FsWatchInfo;
 typedef struct FsScanInfo {
   uint64_t snapshot_epoch, entries, skipped_entries, unsupported_names;
   uint32_t source_id;
@@ -74,6 +88,17 @@ FsStatus fsx_engine_progress(FsEngine *, FsProgress *out);
  * Partial coverage is explicit in out; fatal errors preserve the old revision.
  */
 FsStatus fsx_engine_scan(FsEngine *, const char *root_utf8, FsScanInfo *out);
+FsWatchConfig fsx_watch_config(void);
+/* Host serializes calls per watch. Open arms monitoring before the first scan.
+ * Wait pumps notifications; 0 polls, UINT64_MAX waits. Scan reconciles one
+ * pass. Repeat wait/scan while dirty. No background thread or durable journal
+ * cursor. */
+FsStatus fsx_watch_open(FsEngine *, const char *root_utf8,
+                        const FsWatchConfig *, FsWatch **out);
+FsStatus fsx_watch_wait(FsWatch *, uint64_t deadline_ns, FsWatchInfo *out);
+FsStatus fsx_watch_scan(FsWatch *, FsScanInfo *out);
+/* Join watch callers before close. Engine STOPPING wakes outstanding waits. */
+FsStatus fsx_watch_close(FsWatch **);
 FsStatus fsx_query_submit(FsEngine *, const FsQueryRequest *, FsQuery **out);
 FsStatus fsx_query_poll(FsQuery *, FsQueryInfo *out);
 FsStatus fsx_query_wait(FsQuery *, uint64_t deadline_ns);

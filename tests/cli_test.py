@@ -1,9 +1,12 @@
 """Formal end-to-end tests for the fsx command-line product."""
 from pathlib import Path
 import json
+import os
+import queue
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 EXECUTABLE = str(Path(sys.argv.pop(1)).resolve())
@@ -72,6 +75,47 @@ class FileSearchCli(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("query byte", result.stderr)
         self.assertIn("invalid", result.stderr)
+
+    @unittest.skipUnless(os.name == "nt", "native directory watcher is Windows-only")
+    def test_watch_refreshes_persistent_search_after_a_new_file(self):
+        (self.root / "seed.txt").write_text("x", encoding="utf-8")
+        process = subprocess.Popen(
+            [EXECUTABLE, "watch", str(self.database), str(self.root),
+             "--duration-ms", "10000", "--updates", "2"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
+        lines = queue.Queue()
+        def collect():
+            for line in process.stdout:
+                lines.put(line)
+        reader = threading.Thread(target=collect, daemon=True)
+        reader.start()
+        try:
+            first = lines.get(timeout=10)
+            self.assertIn("revision=1 entries=1", first)
+            (self.root / "created.txt").write_text("new content", encoding="utf-8")
+            second = lines.get(timeout=10)
+            self.assertIn("revision=2 entries=2", second)
+            process.wait(timeout=10)
+            self.assertEqual(process.returncode, 0, process.stderr.read())
+            result = self.run_cli("search", self.database, "--json", "--", "created")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            output = json.loads(result.stdout)
+            self.assertEqual(output["total"], 1)
+            self.assertEqual(output["entries"][0]["size"], 11)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)
+            reader.join(timeout=2)
+            process.stdout.close()
+            process.stderr.close()
+
+    def test_watch_rejects_invalid_limits_before_creating_a_database(self):
+        for args in [("--duration-ms", "0"), ("--updates", "-1"),
+                     ("--updates", "4294967296"), ("--duration-ms",)]:
+            result = self.run_cli("watch", self.database, self.root, *args)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertFalse(self.database.exists())
 
 if __name__ == "__main__":
     unittest.main()

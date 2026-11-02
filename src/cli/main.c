@@ -1,5 +1,6 @@
 #include <fsx/api.h>
 #include <inttypes.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,13 +21,90 @@ static void json_string(const char *s) {
   }
   putchar('"');
 }
+static bool positive_u32(const char *text, uint32_t *out) {
+  uint32_t value = 0;
+  if (!*text)
+    return false;
+  for (; *text; text++) {
+    if (*text < '0' || *text > '9' ||
+        value > (UINT32_MAX - (unsigned)(*text - '0')) / 10)
+      return false;
+    value = value * 10 + (unsigned)(*text - '0');
+  }
+  *out = value;
+  return value != 0;
+}
+static volatile sig_atomic_t interrupted;
+static void interrupt_watch(int sig) {
+  (void)sig;
+  interrupted = 1;
+}
+static FsStatus watch_directory(FsEngine *engine, const char *root,
+                                uint32_t duration_ms, uint32_t updates,
+                                int *exit_code) {
+  FsWatchConfig config = fsx_watch_config();
+  FsWatch *watch = NULL;
+  FsStatus status = fsx_watch_open(engine, root, &config, &watch);
+  if (status != FS_OK)
+    return status;
+  interrupted = 0;
+  void (*previous)(int) = signal(SIGINT, interrupt_watch);
+  if (previous == SIG_ERR) {
+    fsx_watch_close(&watch);
+    return FS_IO;
+  }
+  uint64_t now = fsx_engine_now_ns(engine);
+  uint64_t span = (uint64_t)duration_ms * 1000000;
+  uint64_t end = UINT64_MAX;
+  if (duration_ms) {
+    if (span > UINT64_MAX - now)
+      status = FS_LIMIT;
+    else
+      end = now + span;
+  }
+  uint32_t completed = 0;
+  while (status == FS_OK && !interrupted && (!updates || completed < updates)) {
+    now = fsx_engine_now_ns(engine);
+    if (now >= end)
+      break;
+    uint64_t deadline =
+        UINT64_MAX - now < 250000000 ? UINT64_MAX : now + 250000000;
+    if (end < deadline)
+      deadline = end;
+    FsWatchInfo changed;
+    status = fsx_watch_wait(watch, deadline, &changed);
+    if (status == FS_WAIT || status == FS_TIMEOUT) {
+      status = FS_OK;
+      continue;
+    }
+    if (status != FS_OK || interrupted)
+      break;
+    FsScanInfo scanned;
+    status = fsx_watch_scan(watch, &scanned);
+    if (status != FS_OK)
+      break;
+    completed++;
+    printf("revision=%" PRIu64 " entries=%" PRIu64
+           " complete=%s skipped=%" PRIu64 "\n",
+           scanned.snapshot_epoch, scanned.entries,
+           scanned.coverage_complete ? "true" : "false",
+           scanned.skipped_entries);
+    fflush(stdout);
+    if (!scanned.coverage_complete)
+      *exit_code = 3;
+  }
+  signal(SIGINT, previous);
+  FsStatus closed = fsx_watch_close(&watch);
+  return status == FS_OK ? closed : status;
+}
 static int run(int argc, char **argv) {
   if (argc < 3) {
     fputs("Usage: fsx index DATABASE ROOT\n       fsx search DATABASE [--limit "
           "N] [--offset N] [--sort name|path|size|mtime] [--desc] [--case] "
           "[--jit] [--scan-only] [--allow-partial-text] [--json] -- QUERY\n    "
           "   fsx info "
-          "DATABASE\n",
+          "DATABASE\n       fsx watch DATABASE ROOT [--duration-ms N] "
+          "[--updates N]\n",
           stderr);
     return 2;
   }
@@ -34,8 +112,26 @@ static int run(int argc, char **argv) {
   FsQueryOptions options = fsx_query_options();
   FsOpenError open_error = {0};
   config.open_error = &open_error;
-  if (strcmp(argv[1], "index"))
+  if (strcmp(argv[1], "index") && strcmp(argv[1], "watch"))
     config.flags &= ~FS_ENGINE_CREATE_DATABASE;
+  uint32_t watch_duration = 0, watch_updates = 0;
+  if (!strcmp(argv[1], "watch")) {
+    if (argc < 4)
+      return 2;
+    for (int i = 4; i < argc; i += 2) {
+      if (i + 1 >= argc)
+        return 2;
+      uint32_t *value;
+      if (!strcmp(argv[i], "--duration-ms"))
+        value = &watch_duration;
+      else if (!strcmp(argv[i], "--updates"))
+        value = &watch_updates;
+      else
+        return 2;
+      if (!positive_u32(argv[i + 1], value))
+        return 2;
+    }
+  }
   bool json = false;
   const char *text = "";
   for (int i = 3; strcmp(argv[1], "search") == 0 && i < argc; i++) {
@@ -100,7 +196,10 @@ static int run(int argc, char **argv) {
     return 1;
   }
   int exit_code = 0;
-  if (!strcmp(argv[1], "index") && argc == 4) {
+  if (!strcmp(argv[1], "watch")) {
+    status = watch_directory(engine, argv[3], watch_duration, watch_updates,
+                             &exit_code);
+  } else if (!strcmp(argv[1], "index") && argc == 4) {
     FsScanInfo info;
     status = fsx_engine_scan(engine, argv[3], &info);
     if (status == FS_OK) {

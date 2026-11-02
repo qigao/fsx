@@ -24,11 +24,14 @@ milestones remain on the roadmap.
   scanner fallback. Results report the selected strategy and entries evaluated.
 - Immutable 4096-entry pages shared across snapshots. Changed pages are copied
   before commit; retained results keep their original metadata and strings.
+- Cooperative Windows directory watches, armed before scanning, with bounded
+  notification buffers, root identity checks, overflow/interruption recovery and
+  retryable shutdown. The CLI runs the wait/rescan loop.
 
-Source queues, live RDC/USN/MFT,
+Incremental source queues, NTFS USN/MFT,
 raw-unit queries for invalid Unicode names and Everything import are later work.
 The current collector explicitly marks skipped/unrepresentable names as partial
-coverage. It does not claim a complete raw-name index or live synchronization.
+coverage. Watches reconcile whole roots; they have no durable change cursor.
 
 See the [runtime and ownership contract](docs/runtime-contract.md) for precise
 boundaries and limits. The C API is in [api.h](include/fsx/api.h); CMeta value and
@@ -105,6 +108,8 @@ From the configured runtime environment, use the build-tree executable:
 .\build\windows-debug\bin\fsx.exe search .\catalog.db --json -- 'regex:"^report[0-9]+"'
 .\build\windows-debug\bin\fsx.exe search .\catalog.db --sort size --desc --offset 10 --limit 20 -- 'file: size:>=1MiB'
 .\build\windows-debug\bin\fsx.exe info .\catalog.db
+.\build\windows-debug\bin\fsx.exe watch .\catalog.db C:/data
+.\build\windows-debug\bin\fsx.exe watch .\catalog.db C:/data --duration-ms 60000 --updates 10
 ```
 
 Pass the entire query as one argument after `--`. Query groups use `<...>`;
@@ -137,10 +142,26 @@ and insertions/deletions can shift later dense page boundaries.
 Reuse counts describe that engine's last snapshot build; a newly opened `info`
 process loads its initial snapshot and reports zero reused pages.
 
+`watch` arms recursive Windows directory notifications before its first scan,
+then rescans whenever notifications invalidate the root. It prints and flushes
+one revision summary per successful pass. Ctrl+C stops between waits/scans;
+`--duration-ms` and `--updates` bound the run, with the initial pass counting as
+one update. The database must be outside the watched tree. Unsupported platforms
+return an error. A moved/replaced root requires reopening its watch.
+
+Embedded hosts use `fsx_watch_open`, `fsx_watch_wait`, `fsx_watch_scan` and
+`fsx_watch_close`, serializing calls on each watch and pumping notifications
+themselves. Repeat scanning while dirty; retained query results stay valid.
+Progress/results report consumed invalidations through `needs_rescan`; watch
+info also reports overflows, native interruptions and reconciliation counts.
+Keep the event-loop thread alive to avoid Windows canceling its pending I/O on
+thread exit; serialized handoffs recover by marking a gap and rescanning.
+Every reopened watch requires validation, and partial coverage remains explicit.
+
 ## Validation
 
 Windows x64 LLVM-MinGW Debug builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 34 engine cases and 4 CLI end-to-end
+CLI and formal tests. The current suite has 43 engine cases and 6 CLI end-to-end
 cases, run through two CTest entries. Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.
@@ -153,4 +174,9 @@ Snapshot cases verify page sharing, metadata changes, 4096/4097 boundaries, empt
 indexes, retained-view validity and managed-budget failure with durable rollback
 and recovery. The unchanged 4101-entry fixture shares both pages with less than
 1 KiB of additional managed allocations while its earlier result remains live.
+Watch cases cover startup changes, create/rename/delete/metadata refresh, changes
+during a scan, real native-buffer overflow, independent dirty sources, limits and
+failed-scan recovery, root replacement, issuing-thread exit and STOPPING wakeup.
+The CLI test waits for an initial published revision, creates a file, then checks
+that a later revision persists it for an independent search invocation.
 Linux and sanitizer runs have not been performed in this environment.
