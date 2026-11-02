@@ -1,0 +1,31 @@
+{
+  "name": "fsx",
+  "version-semver": "0.1.0",
+  "description": "C11/CMeta indexed file search using SaltsCore, SQLite FTS5 and PCRE2.",
+  "builtin-baseline": "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01",
+  "dependencies": [
+    "pcre2",
+    {
+      "name": "sqlite3",
+      "default-features": false,
+      "features": [
+        "fts5"
+      ]
+    }
+  ],
+  "features": {
+    "search-tools": {
+      "description": "Optional native search CLIs; never linked into the C11 engine.",
+      "dependencies": [
+        {
+          "name": "ugrep",
+          "platform": "native & (linux | osx | (windows & !uwp & !mingw & (x86 | x64)))"
+        },
+        {
+          "name": "bfs",
+          "platform": "native & (linux | osx)"
+        }
+      ]
+    }
+  }
+}

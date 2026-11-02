@@ -1,0 +1,72 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "environment": {
+        "VCPKG_ROOT": "$penv{VCPKG_ROOT}",
+        "VCPKG_CACHE_REPOSITORY_ROOT": "$penv{VCPKG_CACHE_REPOSITORY_ROOT}",
+        "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+        "CMETA_ROOT": "$penv{CMETA_ROOT}"
+      },
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/cmake/QigaoVcpkgToolchain.cmake",
+        "VCPKG_OVERLAY_PORTS": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/ports",
+        "VCPKG_OVERLAY_TRIPLETS": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/triplets",
+        "VCPKG_TARGET_TRIPLET": "$env{FSX_VCPKG_TARGET_TRIPLET}",
+        "VCPKG_HOST_TRIPLET": "$env{FSX_VCPKG_HOST_TRIPLET}",
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/build/${presetName}/vcpkg_installed",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
+        "BUILD_TESTING": "OFF",
+        "FSX_ENABLE_ASAN": "OFF",
+        "FSX_ENABLE_UBSAN": "OFF",
+        "FSX_ENABLE_TSAN": "OFF"
+      }
+    },
+    {
+      "name": "windows-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "environment": {
+        "FSX_VCPKG_TARGET_TRIPLET": "qigao-x64-windows-llvm-mingw",
+        "FSX_VCPKG_HOST_TRIPLET": "qigao-x64-windows-llvm-mingw",
+        "PKG_CONFIG": "$penv{PKG_CONFIG}",
+        "QIGAO_PKGCONF_VERSION": "$penv{QIGAO_PKGCONF_VERSION}",
+        "VCPKG_KEEP_ENV_VARS": "$penv{VCPKG_KEEP_ENV_VARS};PKG_CONFIG;QIGAO_PKGCONF_VERSION",
+        "PATH": "${sourceDir}/build/${presetName}/bin;$env{SALTSCORE_ROOT}/bin;$env{CMETA_ROOT}/bin;${sourceDir}/build/${presetName}/vcpkg_installed/$env{FSX_VCPKG_TARGET_TRIPLET}/debug/bin;${sourceDir}/build/${presetName}/vcpkg_installed/$env{FSX_VCPKG_TARGET_TRIPLET}/bin;$penv{PATH}"
+      }
+    },
+    {
+      "name": "linux-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang"
+      },
+      "environment": {
+        "FSX_VCPKG_TARGET_TRIPLET": "x64-linux",
+        "FSX_VCPKG_HOST_TRIPLET": "x64-linux",
+        "LD_LIBRARY_PATH": "${sourceDir}/build/${presetName}/lib:$env{SALTSCORE_ROOT}/lib:$env{CMETA_ROOT}/lib:$penv{LD_LIBRARY_PATH}"
+      }
+    }
+  ]
+}

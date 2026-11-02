@@ -1,0 +1,6 @@
+build/
+install/
+.env
+.codegraph/
+__pycache__/
+*.py[cod]

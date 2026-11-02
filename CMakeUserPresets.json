@@ -1,0 +1,135 @@
+{
+  "version": 6,
+  "include": [
+    "CMakePresets.json"
+  ],
+  "configurePresets": [
+    {
+      "name": "windows-debug",
+      "displayName": "Windows x64 Debug",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows x64 Release",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux x64 Debug",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux x64 Release",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "linux-asan-ubsan",
+      "inherits": "linux-debug",
+      "cacheVariables": {
+        "FSX_ENABLE_ASAN": "ON",
+        "FSX_ENABLE_UBSAN": "ON"
+      }
+    },
+    {
+      "name": "linux-tsan",
+      "inherits": "linux-debug",
+      "cacheVariables": {
+        "FSX_ENABLE_TSAN": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug",
+      "jobs": 2
+    },
+    {
+      "name": "install-windows-debug",
+      "configurePreset": "windows-debug",
+      "targets": [
+        "install"
+      ],
+      "jobs": 2
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "jobs": 2
+    },
+    {
+      "name": "install-windows-release",
+      "configurePreset": "windows-release",
+      "targets": [
+        "install"
+      ],
+      "jobs": 2
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug",
+      "jobs": 2
+    },
+    {
+      "name": "install-linux-debug",
+      "configurePreset": "linux-debug",
+      "targets": [
+        "install"
+      ],
+      "jobs": 2
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
+      "jobs": 2
+    },
+    {
+      "name": "install-linux-release",
+      "configurePreset": "linux-release",
+      "targets": [
+        "install"
+      ],
+      "jobs": 2
+    },
+    {
+      "name": "linux-asan-ubsan",
+      "configurePreset": "linux-asan-ubsan",
+      "jobs": 2
+    },
+    {
+      "name": "install-linux-asan-ubsan",
+      "configurePreset": "linux-asan-ubsan",
+      "targets": [
+        "install"
+      ],
+      "jobs": 2
+    },
+    {
+      "name": "linux-tsan",
+      "configurePreset": "linux-tsan",
+      "jobs": 2
+    },
+    {
+      "name": "install-linux-tsan",
+      "configurePreset": "linux-tsan",
+      "targets": [
+        "install"
+      ],
+      "jobs": 2
+    }
+  ]
+}
