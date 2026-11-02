@@ -22,8 +22,10 @@ milestones remain on the roadmap.
   revisions and stable database entry keys.
 - FTS5 name-literal candidates with database identity/revision admission and
   scanner fallback. Results report the selected strategy and entries evaluated.
+- Immutable 4096-entry pages shared across snapshots. Changed pages are copied
+  before commit; retained results keep their original metadata and strings.
 
-Page-level COW, source queues, live RDC/USN/MFT,
+Source queues, live RDC/USN/MFT,
 raw-unit queries for invalid Unicode names and Everything import are later work.
 The current collector explicitly marks skipped/unrepresentable names as partial
 coverage. It does not claim a complete raw-name index or live synchronization.
@@ -129,10 +131,16 @@ Exit 0 indicates success, 1 an operation/query error, 2 a command-line error, an
 missing or initialize empty databases. Results are observations of the indexed
 revision, not authorization to open a file or a guarantee of current disk state.
 
+`info` includes `pages` and `reused_pages` for the current snapshot. Page reuse
+reduces retained memory for unchanged data; scans still read all database rows,
+and insertions/deletions can shift later dense page boundaries.
+Reuse counts describe that engine's last snapshot build; a newly opened `info`
+process loads its initial snapshot and reports zero reused pages.
+
 ## Validation
 
 Windows x64 LLVM-MinGW Debug builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 32 engine cases and 4 CLI end-to-end
+CLI and formal tests. The current suite has 34 engine cases and 4 CLI end-to-end
 cases, run through two CTest entries. Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.
@@ -141,4 +149,8 @@ Boolean recall, all sorts and pagination. Tests also cover revision fallback,
 identity mismatch, legacy migration, invalid posting keys and WAL release before
 result publication. A selective fixture evaluates 1 candidate versus 257 entries
 in the forced scanner; this establishes reduced predicate work, not a latency claim.
+Snapshot cases verify page sharing, metadata changes, 4096/4097 boundaries, empty
+indexes, retained-view validity and managed-budget failure with durable rollback
+and recovery. The unchanged 4101-entry fixture shares both pages with less than
+1 KiB of additional managed allocations while its earlier result remains live.
 Linux and sanitizer runs have not been performed in this environment.

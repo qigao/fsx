@@ -121,13 +121,13 @@ FsStatus fsx_candidates_next(FsCandidates *cursor, uint32_t *out) {
   uint32_t first = 0, last = snapshot->count;
   while (first < last) {
     uint32_t middle = first + (last - first) / 2;
-    if (snapshot->entries[middle].entry_key < (uint64_t)key)
+    if (fsx_snapshot_entry(snapshot, middle)->entry_key < (uint64_t)key)
       first = middle + 1;
     else
       last = middle;
   }
   if (first == snapshot->count ||
-      snapshot->entries[first].entry_key != (uint64_t)key)
+      fsx_snapshot_entry(snapshot, first)->entry_key != (uint64_t)key)
     return FS_CORRUPT;
   *out = first;
   return FS_OK;

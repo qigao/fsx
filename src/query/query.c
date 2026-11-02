@@ -624,7 +624,8 @@ static FsStatus evaluate(Plan *p, int id, const FsEntry *entry, bool *out) {
 /* All comparators use a stable entry-id tie break, including descending sorts.
  */
 static int compare(FsQuery *q, uint32_t a, uint32_t b) {
-  const FsEntry *x = &q->snapshot->entries[a], *y = &q->snapshot->entries[b];
+  const FsEntry *x = fsx_snapshot_entry(q->snapshot, a),
+                *y = fsx_snapshot_entry(q->snapshot, b);
   int c = 0;
   uint32_t valid = q->options.sort_key == FS_SORT_SIZE ? FS_ENTRY_SIZE_VALID
                                                        : FS_ENTRY_MTIME_VALID;
@@ -818,7 +819,7 @@ FsStatus fsx_query_execute(FsQuery *q, FsResult **out) {
       break;
     examined++;
     bool match = false;
-    status = evaluate(p, p->root, &q->snapshot->entries[i], &match);
+    status = evaluate(p, p->root, fsx_snapshot_entry(q->snapshot, i), &match);
     if (status != FS_OK)
       break;
     if (!match)

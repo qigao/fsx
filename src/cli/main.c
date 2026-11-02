@@ -116,9 +116,11 @@ static int run(int argc, char **argv) {
     status = fsx_engine_progress(engine, &info);
     if (status == FS_OK)
       printf("revision=%" PRIu64 " entries=%" PRIu64
-             " sources=%u incomplete=%u owned_bytes=%" PRIu64 "\n",
+             " sources=%u incomplete=%u owned_bytes=%" PRIu64
+             " pages=%u reused_pages=%u\n",
              info.snapshot_epoch, info.entries, info.source_count,
-             info.incomplete_sources, info.owned_bytes);
+             info.incomplete_sources, info.owned_bytes, info.snapshot_pages,
+             info.reused_snapshot_pages);
   } else if (!strcmp(argv[1], "search")) {
     FsQueryRequest request = {sizeof(request), FSX_API_VERSION, text,
                               strlen(text), options};

@@ -194,7 +194,9 @@ FsStatus fsx_db_open(FsEngine *e) {
   st = sql(e, "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
   return st == FS_OK ? database_identity(e) : st;
 }
-static FsStatus column_copy(FsEngine *e, sqlite3_stmt *s, int col, char **out) {
+/* SQLite owns these views until the next step/finalize. Copy only into private
+ * pages. */
+static FsStatus column_view(sqlite3_stmt *s, int col, char **out) {
   *out = NULL;
   if (sqlite3_column_type(s, col) != SQLITE_TEXT)
     return FS_CORRUPT;
@@ -203,8 +205,27 @@ static FsStatus column_copy(FsEngine *e, sqlite3_stmt *s, int col, char **out) {
   int maximum = col >= 5 ? 262144 : 65535;
   if (!p || n < 0 || n > maximum || !fsx_utf8(p, (size_t)n))
     return FS_CORRUPT;
-  *out = fsx_copy(e, p, (size_t)n);
-  return *out ? FS_OK : FS_NOMEM;
+  *out = (char *)p;
+  return FS_OK;
+}
+static bool entry_equal(const FsEntry *a, const FsEntry *b) {
+  return a->entry_key == b->entry_key && a->key.source_id == b->key.source_id &&
+         a->key.file_id_lo == b->key.file_id_lo &&
+         a->key.file_id_hi == b->key.file_id_hi && a->size == b->size &&
+         a->mtime == b->mtime && a->flags == b->flags &&
+         !strcmp(a->name, b->name) && !strcmp(a->path, b->path) &&
+         !strcmp(a->name_fold, b->name_fold) &&
+         !strcmp(a->path_fold, b->path_fold);
+}
+static FsStatus validate_fold(FsEngine *e, const char *text,
+                              const char *expected) {
+  char *fold = NULL;
+  FsStatus status = fsx_fold(e, text, &fold);
+  if (status != FS_OK)
+    return status;
+  bool equal = !strcmp(fold, expected);
+  fsx_free(fold);
+  return equal ? FS_OK : FS_CORRUPT;
 }
 FsStatus fsx_snapshot_load(FsEngine *e, FsSnapshot **out) {
   *out = NULL;
@@ -212,8 +233,7 @@ FsStatus fsx_snapshot_load(FsEngine *e, FsSnapshot **out) {
   int64_t count = scalar(e, "SELECT count(*) FROM entries", &rc);
   if (rc != SQLITE_ROW)
     return fsx_db_status(rc);
-  if (count < 0 || (uint64_t)count > e->config.max_entries ||
-      (uint64_t)count > SIZE_MAX / sizeof(FsEntry))
+  if (count < 0 || (uint64_t)count > e->config.max_entries)
     return FS_LIMIT;
   FsSnapshot *snap = fsx_alloc(e, sizeof(*snap));
   if (!snap)
@@ -246,13 +266,19 @@ FsStatus fsx_snapshot_load(FsEngine *e, FsSnapshot **out) {
   snap->unsupported = (uint64_t)sqlite3_column_int64(q, 2);
   sqlite3_finalize(q);
   q = NULL;
-  if (count) {
-    snap->entries = fsx_alloc(e, (size_t)count * sizeof(FsEntry));
-    if (!snap->entries) {
+  snap->page_count = count ? (uint32_t)((count - 1) / FSX_PAGE_ENTRIES + 1) : 0;
+  if (snap->page_count) {
+    if (sizeof(*snap->pages) > SIZE_MAX / snap->page_count) {
+      status = FS_LIMIT;
+      goto done;
+    }
+    size_t bytes = (size_t)snap->page_count * sizeof(*snap->pages);
+    snap->pages = fsx_alloc(e, bytes);
+    if (!snap->pages) {
       status = FS_NOMEM;
       goto done;
     }
-    memset(snap->entries, 0, (size_t)count * sizeof(FsEntry));
+    memset(snap->pages, 0, bytes);
   }
   rc = sqlite3_prepare_v2(
       e->db,
@@ -275,50 +301,74 @@ FsStatus fsx_snapshot_load(FsEngine *e, FsSnapshot **out) {
       status = FS_CORRUPT;
       goto done;
     }
-    FsEntry *item = &snap->entries[snap->count++];
-    item->entry_key = (uint64_t)sqlite3_column_int64(q, 0);
-    item->key.source_id = (uint32_t)sqlite3_column_int(q, 1);
+    FsEntry item = {0};
+    item.entry_key = (uint64_t)sqlite3_column_int64(q, 0);
+    item.key.source_id = (uint32_t)sqlite3_column_int(q, 1);
     const unsigned char *id = sqlite3_column_blob(q, 2);
-    item->key.file_id_lo = decode64(id);
-    item->key.file_id_hi = decode64(id + 8);
-    item->size = decode64(sqlite3_column_blob(q, 7));
-    item->mtime = decode64(sqlite3_column_blob(q, 8));
-    item->flags = (uint32_t)sqlite3_column_int(q, 9);
-    if (item->flags & ~15u) {
+    item.key.file_id_lo = decode64(id);
+    item.key.file_id_hi = decode64(id + 8);
+    item.size = decode64(sqlite3_column_blob(q, 7));
+    item.mtime = decode64(sqlite3_column_blob(q, 8));
+    item.flags = (uint32_t)sqlite3_column_int(q, 9);
+    if (item.flags & ~15u) {
       status = FS_CORRUPT;
       goto done;
     }
-    status = column_copy(e, q, 3, &item->name);
+    status = column_view(q, 3, &item.name);
+    if (status == FS_OK)
+      status = column_view(q, 4, &item.path);
+    if (status == FS_OK)
+      status = column_view(q, 5, &item.name_fold);
+    if (status == FS_OK)
+      status = column_view(q, 6, &item.path_fold);
     if (status != FS_OK)
       goto done;
-    status = column_copy(e, q, 4, &item->path);
-    if (status != FS_OK)
-      goto done;
-    status = column_copy(e, q, 5, &item->name_fold);
-    if (status != FS_OK)
-      goto done;
-    status = column_copy(e, q, 6, &item->path_fold);
-    if (status != FS_OK)
-      goto done;
-    char *fold = NULL;
-    status = fsx_fold(e, item->name, &fold);
-    if (status != FS_OK)
-      goto done;
-    bool equal = strcmp(fold, item->name_fold) == 0;
-    fsx_free(fold);
-    if (!equal) {
-      status = FS_CORRUPT;
-      goto done;
+    uint32_t page_id = snap->count / FSX_PAGE_ENTRIES;
+    uint32_t offset = snap->count % FSX_PAGE_ENTRIES;
+    uint32_t remaining = (uint32_t)count - page_id * FSX_PAGE_ENTRIES;
+    uint32_t capacity =
+        remaining < FSX_PAGE_ENTRIES ? remaining : FSX_PAGE_ENTRIES;
+    /* The single writer keeps current alive until publication; close waits for
+     * it. */
+    FsSnapshot *base = e->current;
+    FsPage *old =
+        base && page_id < base->page_count ? base->pages[page_id] : NULL;
+    if (old && old->count != capacity)
+      old = NULL;
+    bool same = old && entry_equal(&item, &old->entries[offset]);
+    if (!same) {
+      status = validate_fold(e, item.name, item.name_fold);
+      if (status == FS_OK)
+        status = validate_fold(e, item.path, item.path_fold);
+      if (status != FS_OK)
+        goto done;
     }
-    status = fsx_fold(e, item->path, &fold);
-    if (status != FS_OK)
-      goto done;
-    equal = strcmp(fold, item->path_fold) == 0;
-    fsx_free(fold);
-    if (!equal) {
-      status = FS_CORRUPT;
-      goto done;
+    FsPage *page = snap->pages[page_id];
+    if (!page && !same) {
+      page = fsx_page_create(e, capacity);
+      if (!page) {
+        status = FS_NOMEM;
+        goto done;
+      }
+      snap->pages[page_id] = page;
+      for (uint32_t i = 0; i < offset; i++) {
+        status = fsx_page_append(e, page, &old->entries[i]);
+        if (status != FS_OK)
+          goto done;
+      }
     }
+    if (page) {
+      status = fsx_page_append(e, page, &item);
+      if (status != FS_OK)
+        goto done;
+    } else if (offset + 1 == capacity) {
+      status = fsx_page_retain(old);
+      if (status != FS_OK)
+        goto done;
+      snap->pages[page_id] = old;
+      snap->reused_pages++;
+    }
+    snap->count++;
   }
   if (rc != SQLITE_DONE)
     status = fsx_db_status(rc);

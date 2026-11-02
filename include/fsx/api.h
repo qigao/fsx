@@ -31,6 +31,7 @@ typedef struct FsProgress {
   uint64_t snapshot_epoch, entries, owned_bytes;
   uint32_t source_count, incomplete_sources;
   bool scanning, stopping, needs_rescan;
+  uint32_t snapshot_pages, reused_snapshot_pages;
 } FsProgress;
 typedef struct FsScanInfo {
   uint64_t snapshot_epoch, entries, skipped_entries, unsupported_names;

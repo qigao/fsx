@@ -192,6 +192,8 @@ FsStatus fsx_engine_progress(FsEngine *e, FsProgress *out) {
   *out = (FsProgress){0};
   out->snapshot_epoch = e->current->epoch;
   out->entries = e->current->count;
+  out->snapshot_pages = e->current->page_count;
+  out->reused_snapshot_pages = e->current->reused_pages;
   out->source_count = e->current->sources;
   out->incomplete_sources = e->current->incomplete;
   out->scanning = e->writer;
@@ -410,7 +412,7 @@ FsStatus fsx_result_entry(const FsResult *r, FsHit hit, FsEntryView *out) {
   if (hit.snapshot_epoch != r->snapshot->epoch ||
       hit.entry_id >= r->snapshot->count)
     return FS_STALE;
-  const FsEntry *e = &r->snapshot->entries[hit.entry_id];
+  const FsEntry *e = fsx_snapshot_entry(r->snapshot, hit.entry_id);
   *out = (FsEntryView){e->key,   e->entry_key,    e->size,
                        e->mtime, e->flags,        e->name,
                        e->path,  strlen(e->name), strlen(e->path)};

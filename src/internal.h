@@ -16,13 +16,24 @@ typedef struct FsEntry {
   uint32_t flags;
   char *name, *path, *name_fold, *path_fold;
 } FsEntry;
+enum { FSX_PAGE_ENTRIES = 4096 };
+typedef struct FsPage {
+  atomic_uint refs;
+  uint32_t count, capacity;
+  FsEntry entries[];
+} FsPage;
 typedef struct FsSnapshot {
   atomic_uint refs;
   FsEngine *engine;
   uint64_t epoch, unsupported;
   uint32_t count, sources, incomplete;
-  FsEntry *entries;
+  uint32_t page_count, reused_pages;
+  FsPage **pages;
 } FsSnapshot;
+static inline const FsEntry *fsx_snapshot_entry(const FsSnapshot *s,
+                                                uint32_t id) {
+  return &s->pages[id / FSX_PAGE_ENTRIES]->entries[id % FSX_PAGE_ENTRIES];
+}
 struct FsEngine {
   FsEngineConfig config;
   cmeta_mutex_t mutex, budget_mutex;
@@ -84,6 +95,10 @@ char *fsx_copy(FsEngine *, const char *, size_t);
 FsStatus fsx_fold(FsEngine *, const char *, char **);
 bool fsx_utf8(const char *, size_t);
 void fsx_snapshot_release(FsSnapshot *);
+void fsx_page_release(FsPage *);
+FsStatus fsx_page_retain(FsPage *);
+FsPage *fsx_page_create(FsEngine *, uint32_t capacity);
+FsStatus fsx_page_append(FsEngine *, FsPage *, const FsEntry *);
 FsStatus fsx_snapshot_load(FsEngine *, FsSnapshot **);
 FsStatus fsx_db_open(FsEngine *);
 typedef struct FsCandidates {

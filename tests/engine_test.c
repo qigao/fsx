@@ -596,6 +596,140 @@ suite("FileSearch engine") {
     FsResultInfo result;
     fsx_result_info(held_result, &result);
     check_equal(result.total_count, (uint64_t)4101);
+    FsEntryView original = entry(0, NULL);
+    retained_result = held_result;
+    held_result = NULL;
+    FsProgress before, after;
+    fsx_engine_progress(engine, &before);
+    check_equal(before.snapshot_pages, 2u);
+    check_equal(before.reused_snapshot_pages, 0u);
+    scan();
+    fsx_engine_progress(engine, &after);
+    check_equal(after.reused_snapshot_pages, 2u);
+    check_true(after.owned_bytes >= before.owned_bytes);
+    check_true(after.owned_bytes - before.owned_bytes < 1024);
+    check_equal(count("item-4100.txt"), (uint64_t)1);
+    check_true(entry(0, NULL).name == original.name);
+    put("item-4100.txt", "updated");
+    scan();
+    fsx_engine_progress(engine, &after);
+    check_equal(after.reused_snapshot_pages, 1u);
+    check_equal(count("item-4100.txt"), (uint64_t)1);
+    FsEntryView changed = entry(0, NULL);
+    check_equal(changed.size, (uint64_t)7);
+    check_equal(changed.entry_key, original.entry_key);
+    check_true(changed.name != original.name);
+    check_equal(original.size, (uint64_t)1);
+    check_equal(original.name, "item-4100.txt");
+    fsx_engine_progress(engine, &before);
+    fsx_result_release(retained_result);
+    retained_result = NULL;
+    fsx_engine_progress(engine, &after);
+    check_true(after.owned_bytes < before.owned_bytes);
+
+    /* Shrink to exactly one page, retaining an entry removed by that scan. */
+    retained_result = held_result;
+    held_result = NULL;
+    for (unsigned i = 4096; i < 4101; i++) {
+      char path[2048];
+      snprintf(path, sizeof(path), "%s/item-%04u.txt", root, i);
+      remove_utf8(path);
+    }
+    scan();
+    fsx_engine_progress(engine, &after);
+    check_equal(after.entries, (uint64_t)4096);
+    check_equal(after.snapshot_pages, 1u);
+    check_equal(changed.name, "item-4100.txt");
+    put("appended.txt", "x");
+    scan();
+    fsx_engine_progress(engine, &after);
+    check_equal(after.entries, (uint64_t)4097);
+    check_equal(after.snapshot_pages, 2u);
+    check_equal(after.reused_snapshot_pages, 1u);
+    check_equal(count("appended"), (uint64_t)1);
+    options.offset = 4096;
+    check_equal(execute("", options), FS_OK);
+    fsx_result_info(held_result, &result);
+    check_equal(result.total_count, (uint64_t)4097);
+  }
+  it("rolls back a partial page copy when the managed budget is exhausted") {
+    char names[512][96];
+    for (unsigned i = 0; i < 512; i++) {
+      memset(names[i], 'a', 60);
+      snprintf(names[i] + 60, sizeof(names[i]) - 60, "-%03u.txt", i);
+      put(names[i], "x");
+    }
+    FsEngineConfig config = fsx_engine_config(database);
+    check_equal(fsx_engine_open(&config, &engine), FS_OK);
+    scan();
+    FsProgress loaded;
+    fsx_engine_progress(engine, &loaded);
+    check_equal(fsx_engine_close(&engine, FSX_DEADLINE_INFINITE), FS_OK);
+    /* Enough for the query plan and a directory, but not another entire page.
+     */
+    config.owned_memory_budget = loaded.owned_bytes + 128 * 1024;
+    check_equal(fsx_engine_open(&config, &engine), FS_OK);
+    check_equal(count("ext:txt"), (uint64_t)512);
+    FsEntryView old = entry(0, NULL);
+    FsProgress before, after;
+    fsx_engine_progress(engine, &before);
+    scan();
+    fsx_engine_progress(engine, &after);
+    check_equal(after.reused_snapshot_pages, 1u);
+    check_true(after.owned_bytes - before.owned_bytes < 1024);
+    fsx_engine_progress(engine, &before);
+    put(names[511], "changed");
+    FsScanInfo failed;
+    check_equal(fsx_engine_scan(engine, root, &failed), FS_NOMEM);
+    fsx_engine_progress(engine, &after);
+    check_equal(after.snapshot_epoch, before.snapshot_epoch);
+    check_equal(after.owned_bytes, before.owned_bytes);
+    check_true(after.needs_rescan);
+    check_equal(old.size, (uint64_t)1);
+    check_equal(old.name, names[0]);
+    retained_result = held_result;
+    held_result = NULL;
+    open_oracle();
+    FsProgress persisted;
+    fsx_engine_progress(oracle_engine, &persisted);
+    check_equal(persisted.snapshot_epoch, before.snapshot_epoch);
+    check_equal(execute_on(oracle_engine, names[511], fsx_query_options()),
+                FS_OK);
+    check_equal(entry(0, NULL).size, (uint64_t)1);
+    /* Smaller replacements can recover while the old result is still retained.
+     */
+    for (unsigned i = 1; i < 512; i++) {
+      char path[2048];
+      snprintf(path, sizeof(path), "%s/%s", root, names[i]);
+      remove_utf8(path);
+    }
+    scan();
+    fsx_engine_progress(engine, &after);
+    check_equal(after.snapshot_epoch, before.snapshot_epoch + 1);
+    check_equal(after.entries, (uint64_t)1);
+    check_false(after.needs_rescan);
+    check_equal(old.name, names[0]);
+    check_equal(count("ext:txt"), (uint64_t)1);
+  }
+  it("represents an empty snapshot without retaining removed pages") {
+    open_engine();
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_equal(progress.snapshot_pages, 0u);
+    put("removed.txt", "x");
+    scan();
+    check_equal(count("removed"), (uint64_t)1);
+    FsEntryView old = entry(0, NULL);
+    char path[2048];
+    snprintf(path, sizeof(path), "%s/removed.txt", root);
+    remove_utf8(path);
+    scan();
+    fsx_engine_progress(engine, &progress);
+    check_equal(progress.entries, (uint64_t)0);
+    check_equal(progress.snapshot_pages, 0u);
+    check_equal(progress.reused_snapshot_pages, 0u);
+    check_equal(old.name, "removed.txt");
+    check_equal(count(""), (uint64_t)0);
   }
 #ifdef _WIN32
   it("reports an unrepresentable native name as partial coverage") {

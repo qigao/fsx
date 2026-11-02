@@ -8,7 +8,7 @@ later journal, source-session and large-index architecture.
 | Data path | Ownership and lifetime |
 |---|---|
 | scan → SQLite | One synchronous writer per engine. A second scan returns BUSY. Names/metadata are bound into prepared statements; no shell or user SQL is evaluated. |
-| SQLite → snapshot | Load/validate a complete immutable array inside the write transaction. Allocation or validation failure rolls back; the old snapshot stays current. Commit precedes publication, which allocates nothing. |
+| SQLite → snapshot | Build/validate a complete immutable page directory inside the write transaction, retaining unchanged pages. Allocation or validation failure rolls back; the old snapshot stays current. Commit precedes publication, which allocates nothing. |
 | snapshot → query | Submission copies the request and retains the current snapshot under the publication mutex. Evaluation uses that snapshot; FTS candidates require a read transaction at the same revision. |
 | query → result | A result holds its own snapshot reference. Result acquisition adds an independent external handle. Releasing a query does not invalidate an acquired result. |
 | result → view | `fsx_result_entry` returns borrowed UTF-8 pointers valid until that result is released. Hit values are scoped to their producing result/database; cross-revision hits are rejected. |
@@ -42,10 +42,10 @@ Queries use eligible positive name literals to narrow candidates through FTS5;
 other plans scan their retained snapshot. The reader handshake and fallback rules
 are specified below.
 
-Snapshots currently use full immutable arrays and owned strings, rather than the
-design's eventual 4096-row COW pages. Old and new snapshots both count against the
-managed budget during rebuild. An allocation failure does not discard retained
-snapshots or publish an incomplete replacement.
+Snapshots use immutable pages of up to 4096 rows. Unchanged pages and their strings
+are shared across revisions; changed pages are copied before commit. Shared pages
+are charged once against the managed budget. An allocation failure does not
+discard retained snapshots or publish an incomplete replacement.
 
 Directory enumeration is a series of filesystem observations. It follows neither
 nested directory links nor Windows reparse points. Windows root spelling is
@@ -59,6 +59,32 @@ A failed scan marks the in-process engine as needing rescan. Results capture tha
 control state at submission. There is no persistent change-stream checkpoint,
 live watcher, durable gap/retry ledger or claim that an old snapshot is caught up.
 Reopening recovers the last committed scan and its committed coverage.
+
+## Snapshot page ownership
+
+SQLite remains authoritative. A snapshot owns a bounded directory of immutable
+pages, each containing up to 4096 entries in stable database-key order. Pages own
+their strings and have atomic reference counts; snapshots retain pages, while
+queries/results retain snapshots. Borrowed entry views expire with their result.
+The single scan writer borrows the engine's current snapshot while loading the
+replacement; publication and final destruction cannot race that writer.
+
+The loader compares each database row with the corresponding old page. A wholly
+unchanged page is retained. On its first changed row, a private page is allocated
+and its unchanged prefix is copied; subsequent entries are copied into that page.
+No published page is modified. Directories, new pages and copied strings count
+against the managed memory budget, and each shared allocation is charged once.
+Directory sizing and page sizing use checked arithmetic. Reference saturation
+returns `FS_LIMIT`; allocation failure returns `FS_NOMEM`, rolls back SQLite and
+releases every partially built page without changing the published revision.
+
+Only the scan writer creates page references; reader threads may concurrently
+release snapshots. Publication occurs after commit under the existing mutex,
+and requires no allocation. Close waits for the writer and external handles.
+Progress reports current page count and pages reused from the previous snapshot.
+The directory remains dense: insertions/deletions can shift later page boundaries
+and force those pages to be copied. This is page sharing, not a persistent tree
+or incremental database reader; loading still visits all committed rows.
 
 ## Limits and error behavior
 
