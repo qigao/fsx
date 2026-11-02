@@ -21,6 +21,10 @@ if(BUILD_TESTING)
   include(CTest)
 endif()
 
-# Source-owned library, CLI and test subdirectories are added with their real
-# implementations. Do not create empty libraries or synthetic consumer targets.
-message(STATUS "FileSearch development project configured; engine and CLI are not implemented")
+if(NOT FSX_BUILD_PARSER_TOOLS)
+  message(FATAL_ERROR "The query lexer requires FSX_BUILD_PARSER_TOOLS=ON")
+endif()
+add_subdirectory(src)
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+endif()

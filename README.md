@@ -1,135 +1,130 @@
 # FileSearch (fsx)
 
-C11/CMeta indexed file search based on [the design](docs/FileSearch-C11-设计.md).
-The project currently provides dependency configuration, reusable CMake helpers,
-re2c discovery and a real native Lemon build. The engine, CLI, database schema
-and formal search tests have not been implemented.
+A working C11/CMeta file-search library and CLI using SaltsCore, SQLite FTS5 and
+PCRE2. The [design](docs/FileSearch-C11-设计.md) remains the roadmap; the current
+implementation is the initial full-scan engine, not every planned milestone.
+
+## Implemented
+
+- Native directory scans with file identity, hardlink aliases, metadata and
+  explicit coverage. Directory links are recorded without traversing them.
+- SQLite transactions for sources, shared objects, entries and FTS5 trigram rows.
+  Immutable query snapshots are prepared before commit and published afterward.
+- Asynchronous queries on SaltsCore's bounded thread pool, retained results,
+  cancellation, deadlines, STOPPING/close and allocation/admission limits.
+- Unicode 17 full-fold substring search, scalar-aware glob matching, scoped
+  `case:`/`path:`, AND/OR/NOT/groups, `file:`/`folder:`, extension sets, checked
+  size filters and fixed-timezone modification-day filters.
+- PCRE2 Unicode/byte regex, bounded execution and optional JIT. Query diagnostics
+  identify source byte offsets. Results report actual semantic versions.
+- Stable sorting and pagination, exact totals within indexed coverage, persistent
+  revisions and stable database entry keys.
+
+FTS5 rows are maintained transactionally; this first query executor scans retained
+snapshots. FTS candidate planning, page-level COW, source queues, live RDC/USN/MFT,
+raw-unit queries for invalid Unicode names and Everything import are later work.
+The current collector explicitly marks skipped/unrepresentable names as partial
+coverage. It does not claim a complete raw-name index or live synchronization.
+
+See the [runtime and ownership contract](docs/runtime-contract.md) for precise
+boundaries and limits. The C API is in [api.h](include/fsx/api.h); CMeta value and
+status declarations are in [types.h](include/fsx/types.h).
 
 ## Build policy
 
-Use the versioned configure/build presets. Run formal native tests through CTest
-when their implementations are added. This project has no install rules, install
-presets, package exports, consumer projects or install/consumer validation paths.
-Do not add synthetic consumers, smoke scripts, configuration self-tests or dummy
-targets. Production dependency resolution remains part of normal configuration.
+Use versioned configure/build presets and formal CTest tests. There are no project
+install rules, install presets, exports, consumer projects or install/consumer
+verification paths. [AGENTS.md](AGENTS.md) records this user requirement.
 
-## Reused project files
+The root build/presets were adapted from salts-core commit
+`a2e3f2315f1de2194bd6f7fb257526c98074a2d8`. The supplied `CmakeUtils.cmake`,
+`FindTools.cmake`, native Lemon source and re2c discovery are reused. The real
+query lexer is generated from `src/query/lexer.re`; module-owned CMake files
+register the library, CLI and formal tests. Keep `CMakeUserPresets.json` versioned.
+Lemon source/template notices remain intact.
 
-The initial root CMake and presets were adapted from `qigao/salts-core` commit
-`a2e3f2315f1de2194bd6f7fb257526c98074a2d8`. The supplied common files are now wired
-into the project:
-
-| File | Responsibility |
-|---|---|
-| `cmake/CmakeUtils.cmake` | Generic target, grammar, test and benchmark helpers |
-| `cmake/FindTools.cmake` | Select host re2c from `RE2C_ROOT`, its Unicode data and the Lemon template |
-| `tools/lemon/` | Build the supplied Lemon source as `lemon` / `Fsx::Lemon` |
-| `cmake/Sanitizers.cmake` | Core's Linux/Clang sanitizer policy, using `FSX_` options |
-| `.env.example` | Private local environment settings, with no credentials |
-| `vcpkg-configuration.json` | Shared registry reference aligned with the selected cache contract |
-
-Generic helpers remain independent of fsx's dependencies and paths. Project
-options belong to `CMakeOptions.cmake`; source-owned subdirectories will declare
-real targets with explicit sources. `cmake_add_executable`, `cmake_add_test` and
-`cmake_add_benchmark` take the target name first. `cmake_add_grammar` receives
-explicit `RE2C_EXECUTABLE`, `LEMON_TARGET` and `LEMON_TEMPLATE` arguments.
-The supplied Lemon sources and template retain their original notices.
-
-`FSX_BUILD_PARSER_TOOLS=ON` is the default. `FindTools.cmake` requires native re2c
-4.6 or newer and its Unicode data. Cross builds require
-`FSX_HOST_LEMON_EXECUTABLE` from a completed host build; a target executable is
-never selected as a host code generator. Configure with
-`-DFSX_BUILD_PARSER_TOOLS=OFF` when building a graph without parser tools.
-
-## Dependencies and cache
-
-The hidden `vcpkg-cache` and `sdk-roots` user presets own environment roots and
-cache paths. Shared presets contain compiler/platform settings. Keep
-`CMakeUserPresets.json` in version control.
+## Dependencies and environment
 
 | Parent environment | Required content |
 |---|---|
-| `SALTSCORE_ROOT` | Compatible split Core SDK with Core, Platform, Concurrency, FS and Unicode |
-| `CMETA_ROOT` | Split CMeta SDK exporting `CMeta::CMeta` |
-| `RE2C_ROOT` | Native host re2c package with `bin/` and `share/re2c/stdlib/` |
-| `VCPKG_ROOT` | Canonical vcpkg checkout/tool selected by the shared setup |
+| `SALTSCORE_ROOT` | Compatible split Core SDK exporting Core, Platform, Concurrency, FS, Unicode and TinyTest |
+| `CMETA_ROOT` | Compatible split CMeta SDK exporting `CMeta::CMeta` |
+| `RE2C_ROOT` | Host re2c 4.6+ with `bin/` and `share/re2c/stdlib/` |
+| `VCPKG_ROOT` | Canonical vcpkg checkout/tool selected by shared setup |
 | `VCPKG_CACHE_REPOSITORY_ROOT` | Shared cache checkout containing `2913c530b8f12ae411e3c180e898fb6c7783462f` |
 
-Use absolute, forward-slash paths. Explicit Core/CMeta roots are resolved without
-searching other SDKs as fallbacks. Select roots matching the compiler ABI,
-architecture and build profile. The old monolithic Salts SDK is not selected.
+Use absolute, forward-slash paths. The hidden `vcpkg-cache` and `sdk-roots` user
+presets own these roots. `.env` is private and ignored; CMake does not load it
+automatically. Preserve the caller's credentials and shared read-only feed policy.
+Ordinary builds do not update shared checkouts or prewarm packages.
 
 The product manifest retains builtin baseline
-`b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01`, PCRE2 10.46 with its desktop JIT
-feature and SQLite 3.50.4 with FTS5. The added registry configuration retains its
-`zstd` routing at cache commit `2913c530b8f12ae411e3c180e898fb6c7783462f`; no unused
-zstd dependency is added. Optional search tools use that checkout's overlays.
-Runtime FTS5/trigram, Unicode and JIT admission belongs to the engine modules.
-TRE is not a dependency.
+`b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01`, PCRE2 10.46 and SQLite 3.50.4 with FTS5.
+The added registry's zstd route is aligned to the cache commit without adding an
+unused zstd dependency. `FSX_BUILD_SEARCH_TOOLS=ON` resolves optional ugrep/bfs
+through the shared overlays; neither tool is linked into fsx. Their platform
+restrictions remain in the manifest. TRE is not a dependency.
 
-`FSX_BUILD_SEARCH_TOOLS=ON` selects the `search-tools` manifest feature. ugrep and
-bfs remain standalone tools. ugrep currently supports Linux/macOS and MSVC
-Windows; bfs supports Linux/macOS. Neither is selected for Windows LLVM-MinGW.
-
-The `.env` file is private and ignored. CMake does not load it automatically;
-a caller must explicitly load local settings before invoking the presets.
-Preserve existing tokens and the caller's shared read-only cache feed policy.
-The example's local writable binary cache is separate from the shared checkout
-and every profile's own vcpkg dependency tree. Ordinary builds do not update a
-shared checkout or prewarm packages.
-
-## Windows x64
-
-Use the shared LLVM-MinGW setup with `target: x64`, `build-type: toolchain-only`
-and `obfuscator: false`. Preserve its `LLVM_MINGW_TOOLCHAIN_FILE`,
+On Windows, preserve the shared LLVM-MinGW setup's `LLVM_MINGW_TOOLCHAIN_FILE`,
 `LLVM_MINGW_DEPENDENCY_TOOLCHAIN_FILE` and
-`LLVM_MINGW_HOST_DEPENDENCY_TOOLCHAIN_FILE` outputs. Run configure/build from a
-VS developer shell and retain the parent PATH. Existing SDKs must match this ABI.
+`LLVM_MINGW_HOST_DEPENDENCY_TOOLCHAIN_FILE`. Run from a VS developer shell and
+retain the parent PATH. The shared native pkgconf helper supplies `PKG_CONFIG`
+and `QIGAO_PKGCONF_VERSION`; presets preserve them through vcpkg's environment
+filtering. SDKs must match the target architecture and compiler ABI. Runtime DLL
+paths come from the selected profile; no post-build copying/deployment is used.
 
-Both shared vcpkg setup actions provide checksum-pinned native pkgconf. For a
-local shell without those actions, use the same helper before configuring:
+## Build and test
 
 ```powershell
-# Set the dependency roots, RE2C_ROOT and compiler setup outputs first.
-$native = python -c "import json,os,sys; from pathlib import Path; sys.path.insert(0,sys.argv[1]); from windows_pkgconf import prepare_pkgconf; print(json.dumps(prepare_pkgconf(Path(os.environ['TEMP']))))" "$env:VCPKG_CACHE_REPOSITORY_ROOT/scripts" | ConvertFrom-Json
-if ($LASTEXITCODE -ne 0) { throw 'Native pkgconf setup failed' }
-$native.psobject.Properties | ForEach-Object {
-    [Environment]::SetEnvironmentVariable($_.Name, [string]$_.Value, 'Process')
-}
-cmake --preset windows-release
-cmake --build --preset windows-release
+cmake --preset windows-debug
+cmake --build --preset windows-debug
+ctest --preset windows-debug
 ```
 
-`windows-debug` provides the matching Debug graph. Windows presets preserve
-`PKG_CONFIG` through vcpkg's filtered environment. Runtime PATH includes the
-active SDK and dependency DLL directories and inherited PATH. No post-build DLL
-copy or deployment step is added.
+`windows-release` builds the library and CLI without tests. Linux exposes
+`linux-debug`, `linux-release`, `linux-asan-ubsan` and `linux-tsan`; Debug/sanitizer
+profiles have matching CTest presets. Keep `FSX_BUILD_PARSER_TOOLS=ON`: the engine
+requires the host-generated lexer. Unsupported sanitizer/platform combinations
+fail configuration.
 
-## Linux x64
+Formal fixtures and SQLite temporary files stay under the build tree. Fixture
+cleanup requires successful ownership establishment, checks the fixture prefix
+and does not follow directory links. Failed setup performs no recursive cleanup.
 
-Use native Clang, Ninja and pkg-config, set the same dependency roots, then run:
+## CLI
 
-```sh
-cmake --preset linux-release
-cmake --build --preset linux-release
+From the configured runtime environment, use the build-tree executable:
+
+```powershell
+.\build\windows-debug\bin\fsx.exe index .\catalog.db C:/data
+.\build\windows-debug\bin\fsx.exe search .\catalog.db -- 'report ext:txt;md'
+.\build\windows-debug\bin\fsx.exe search .\catalog.db --json -- 'regex:"^report[0-9]+"'
+.\build\windows-debug\bin\fsx.exe search .\catalog.db --sort size --desc --offset 10 --limit 20 -- 'file: size:>=1MiB'
+.\build\windows-debug\bin\fsx.exe info .\catalog.db
 ```
 
-`linux-debug`, `linux-asan-ubsan` and `linux-tsan` have matching build presets.
-Unsupported sanitizer/platform combinations fail configuration. No test presets
-claim an existing suite; formal TinyTest/CTest cases arrive with the engine.
+Pass the entire query as one argument after `--`. Query groups use `<...>`;
+precedence is NOT (`!`), implicit AND, then OR (`|`). Quote query operands containing
+spaces or operator characters, including regex alternation. Bare text is a name
+substring; `*`/`?` select whole-name glob matching. `path:` glob stars do not cross
+separators. `ext:txt;md`, `size:>=10MiB`, and `dm:2026-11-02` are supported; CLI dates
+use UTC. The C API can supply an explicit timezone offset in minutes.
 
-## Planned source ownership
+`--case` sets the default case-sensitive mode. `--jit` enables the optional PCRE2
+JIT profile. `regexb:` forbids pattern-controlled UTF/UCP. Unsupported `fuzzy:`
+functions return an error. `--allow-partial-text` permits regex over represented
+names when a source contains unsupported names; result coverage remains partial.
 
-The implementation boundaries remain `include/fsx`, `src/model`, `src/index`,
-`src/query`, `src/changes`, `src/storage`, `src/platform`, `src/source/win32`,
-`src/cli` and `tests`. Introduce each CMake subdirectory with its implementation.
-SQLite remains the sole persistent fact source. Collection, writer publication
-and consistent query snapshots remain fsx responsibilities.
+Exit 0 indicates success, 1 an operation/query error, 2 a command-line error, and
+3 successful output with incomplete source coverage. Search/info do not create
+missing or initialize empty databases. Results are observations of the indexed
+revision, not authorization to open a file or a guarantee of current disk state.
 
 ## Validation
 
-The Windows x64 LLVM-MinGW Release preset configured and compiled the supplied
-native Lemon sources successfully. Core/CMeta and re2c discovery succeeded;
-PCRE2 and SQLite FTS5 reused the existing dependency tree. No MSYS2 acquisition,
-project installation or consumer validation was performed for this update.
-Linux and sanitizer builds have not been run, and there are no engine tests yet.
+Windows x64 LLVM-MinGW Debug builds the library, generated lexer, native tools,
+CLI and formal tests. The current suite has 24 engine cases and 3 CLI end-to-end
+cases, run through two CTest entries. Coverage includes hardlinks, Unicode full
+folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
+rollback, persistence, FTS maintenance and concurrent senders/writer publication.
+Linux and sanitizer runs have not been performed in this environment.

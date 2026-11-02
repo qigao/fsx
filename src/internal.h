@@ -1,0 +1,101 @@
+#ifndef FSX_INTERNAL_H
+#define FSX_INTERNAL_H
+#include <fsx/api.h>
+#include <limits.h>
+#include <salts/clock.h>
+#include <salts/thread.h>
+#include <salts/thread_pool.h>
+#include <salts_unicode.h>
+#include <sqlite3.h>
+#include <stdatomic.h>
+#include <string.h>
+
+typedef struct FsEntry {
+  FsFileKey key;
+  uint64_t entry_key, size, mtime;
+  uint32_t flags;
+  char *name, *path, *name_fold, *path_fold;
+} FsEntry;
+typedef struct FsSnapshot {
+  atomic_uint refs;
+  FsEngine *engine;
+  uint64_t epoch, unsupported;
+  uint32_t count, sources, incomplete;
+  FsEntry *entries;
+} FsSnapshot;
+struct FsEngine {
+  FsEngineConfig config;
+  cmeta_mutex_t mutex, budget_mutex;
+  cmeta_cond_t changed;
+  cmeta_threadpool_t *pool;
+  sqlite3 *db;
+  FsSnapshot *current;
+  FsQuery *jobs;
+  uint64_t owned;
+  uint32_t handles, active_jobs;
+  bool writer, needs_rescan;
+  atomic_bool stopping;
+  char *database_path;
+};
+struct FsResult {
+  atomic_uint refs;
+  FsEngine *engine;
+  FsSnapshot *snapshot;
+  FsResultInfo info;
+  uint32_t *ids;
+};
+struct FsQuery {
+  atomic_uint refs;
+  atomic_bool cancelled;
+  FsEngine *engine;
+  FsSnapshot *snapshot;
+  FsQuery *next;
+  cmeta_mutex_t mutex;
+  cmeta_cond_t changed;
+  FsQueryInfo info;
+  FsQueryOptions options;
+  bool needs_rescan;
+  char *text;
+  size_t text_bytes;
+  FsResult *result;
+};
+typedef struct FsObserved {
+  const char *name, *path;
+  const void *raw_name;
+  size_t raw_bytes;
+  uint64_t file_lo, file_hi, size, mtime;
+  uint32_t flags;
+} FsObserved;
+typedef FsStatus (*FsObserve)(void *, const FsObserved *);
+typedef struct FsWalk {
+  FsEngine *engine;
+  FsObserve observe;
+  void *context;
+  uint64_t skipped, unsupported;
+} FsWalk;
+
+bool fsx_reserve(FsEngine *, size_t);
+void fsx_unreserve(FsEngine *, size_t);
+void *fsx_alloc(FsEngine *, size_t);
+void fsx_free(void *);
+char *fsx_copy(FsEngine *, const char *, size_t);
+FsStatus fsx_fold(FsEngine *, const char *, char **);
+bool fsx_utf8(const char *, size_t);
+void fsx_snapshot_release(FsSnapshot *);
+FsStatus fsx_snapshot_load(FsEngine *, FsSnapshot **);
+FsStatus fsx_db_open(FsEngine *);
+FsStatus fsx_db_scan(FsEngine *, const char *, FsScanInfo *);
+FsStatus fsx_db_status(int);
+FsStatus fsx_native_root(FsEngine *, const char *, char **);
+FsStatus fsx_walk(FsWalk *, const char *);
+FsStatus fsx_native_volume(FsEngine *, const char *, uint64_t *);
+FsStatus fsx_query_execute(FsQuery *, FsResult **);
+FsStatus fsx_query_stop(FsQuery *);
+void fsx_result_unref(FsResult *);
+
+#ifdef _WIN32
+#include <wchar.h>
+wchar_t *fsx_wide(FsEngine *, const char *);
+char *fsx_utf8_from_wide(FsEngine *, const wchar_t *);
+#endif
+#endif

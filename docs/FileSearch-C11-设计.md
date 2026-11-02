@@ -1,5 +1,7 @@
 # C11 与 CMeta 文件搜索引擎设计
 
+实现状态：[当前运行时契约](runtime-contract.md)；本设计中的后续里程碑不代表均已交付。
+
 版本：0.3，2026-11-02。采用 salts-core、SQLite FTS5 与 PCRE2；增加 ugrep/bfs 工具边界，保留 CMeta 声明层。目标实现名暂用 `fsx`，公开类型前缀 `Fs`，函数前缀 `fsx_`。
 
 采用 **单写入者、SQLite 事务持久化、FTS5 trigram 候选、PCRE2 正则和同版本内存快照**。CMeta 声明类型、只读反射与采集协议；salts-core 提供基础运行时；fsx 负责身份、增量协调、查询规划及各层一致性。
