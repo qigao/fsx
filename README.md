@@ -2,7 +2,8 @@
 
 A working C11/CMeta file-search library and CLI using SaltsCore, SQLite FTS5 and
 PCRE2. The [design](docs/FileSearch-C11-设计.md) remains the roadmap; the current
-implementation is the initial full-scan engine, not every planned milestone.
+implementation includes snapshot scanning and FTS5 candidate planning; later
+milestones remain on the roadmap.
 
 ## Implemented
 
@@ -19,9 +20,10 @@ implementation is the initial full-scan engine, not every planned milestone.
   identify source byte offsets. Results report actual semantic versions.
 - Stable sorting and pagination, exact totals within indexed coverage, persistent
   revisions and stable database entry keys.
+- FTS5 name-literal candidates with database identity/revision admission and
+  scanner fallback. Results report the selected strategy and entries evaluated.
 
-FTS5 rows are maintained transactionally; this first query executor scans retained
-snapshots. FTS candidate planning, page-level COW, source queues, live RDC/USN/MFT,
+Page-level COW, source queues, live RDC/USN/MFT,
 raw-unit queries for invalid Unicode names and Everything import are later work.
 The current collector explicitly marks skipped/unrepresentable names as partial
 coverage. It does not claim a complete raw-name index or live synchronization.
@@ -115,6 +117,13 @@ JIT profile. `regexb:` forbids pattern-controlled UTF/UCP. Unsupported `fuzzy:`
 functions return an error. `--allow-partial-text` permits regex over represented
 names when a source contains unsupported names; result coverage remains partial.
 
+Eligible name literals use FTS5 automatically. Short terms, path/glob/regex-only
+queries and unsafe Boolean plans scan the retained snapshot. A database revision
+ahead of that snapshot also selects scanning. `--scan-only` forces the baseline;
+JSON reports `candidate_strategy` and `candidates_examined`. Those counters measure
+entries passed to the predicates, rather than elapsed time or SQLite's internal
+work. All predicates still run on each candidate, with the same sorting and totals.
+
 Exit 0 indicates success, 1 an operation/query error, 2 a command-line error, and
 3 successful output with incomplete source coverage. Search/info do not create
 missing or initialize empty databases. Results are observations of the indexed
@@ -123,8 +132,13 @@ revision, not authorization to open a file or a guarantee of current disk state.
 ## Validation
 
 Windows x64 LLVM-MinGW Debug builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 24 engine cases and 3 CLI end-to-end
+CLI and formal tests. The current suite has 32 engine cases and 4 CLI end-to-end
 cases, run through two CTest entries. Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.
+FTS/scanner comparisons cover Unicode scalar lengths and folding, phrase escaping,
+Boolean recall, all sorts and pagination. Tests also cover revision fallback,
+identity mismatch, legacy migration, invalid posting keys and WAL release before
+result publication. A selective fixture evaluates 1 candidate versus 257 entries
+in the forced scanner; this establishes reduced predicate work, not a latency claim.
 Linux and sanitizer runs have not been performed in this environment.

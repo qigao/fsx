@@ -19,7 +19,7 @@
 #include <unistd.h>
 #endif
 static char fixture[1024], root[1200], database[1200];
-static FsEngine *engine;
+static FsEngine *engine, *oracle_engine;
 static bool fixture_ready;
 static FsQuery *held_query;
 static FsResult *held_result, *retained_result;
@@ -141,6 +141,7 @@ static void setup(void) {
   mkdir_utf8(root);
   snprintf(database, sizeof(database), "%s/index.db", fixture);
   engine = NULL;
+  oracle_engine = NULL;
   held_query = NULL;
   held_result = NULL;
   retained_result = NULL;
@@ -152,6 +153,8 @@ static void teardown(void) {
   held_result = NULL;
   fsx_query_release(held_query);
   held_query = NULL;
+  if (oracle_engine)
+    check_equal(fsx_engine_close(&oracle_engine, FSX_DEADLINE_INFINITE), FS_OK);
   if (engine)
     check_equal(fsx_engine_close(&engine, FSX_DEADLINE_INFINITE), FS_OK);
   if (fixture_ready)
@@ -171,18 +174,22 @@ static FsScanInfo scan(void) {
   check_equal(fsx_engine_scan(engine, root, &info), FS_OK);
   return info;
 }
-static FsStatus execute(const char *text, FsQueryOptions options) {
+static FsStatus execute_on(FsEngine *target, const char *text,
+                           FsQueryOptions options) {
   fsx_result_release(held_result);
   held_result = NULL;
   fsx_query_release(held_query);
   held_query = NULL;
   FsQueryRequest r = {sizeof(r), FSX_API_VERSION, text, strlen(text), options};
-  FsStatus status = fsx_query_submit(engine, &r, &held_query);
+  FsStatus status = fsx_query_submit(target, &r, &held_query);
   if (status == FS_OK)
     status = fsx_query_wait(held_query, FSX_DEADLINE_INFINITE);
   if (status == FS_OK)
     status = fsx_query_result_acquire(held_query, &held_result);
   return status;
+}
+static FsStatus execute(const char *text, FsQueryOptions options) {
+  return execute_on(engine, text, options);
 }
 static uint64_t count(const char *text) {
   check_equal(execute(text, fsx_query_options()), FS_OK);
@@ -201,6 +208,42 @@ static FsEntryView entry(uint32_t index, FsHit *saved) {
     *saved = hit;
   return view;
 }
+static void edit_database(const char *sql) {
+  sqlite3 *db = NULL;
+  int opened = sqlite3_open_v2(database, &db, SQLITE_OPEN_READWRITE, NULL);
+  int rc =
+      opened == SQLITE_OK ? sqlite3_exec(db, sql, NULL, NULL, NULL) : opened;
+  sqlite3_close(db);
+  check_equal(rc, SQLITE_OK);
+}
+static void open_oracle(void) {
+  FsEngineConfig config = fsx_engine_config(database);
+  config.flags = FS_ENGINE_SCAN_ONLY;
+  check_equal(fsx_engine_open(&config, &oracle_engine), FS_OK);
+}
+static FsResultInfo equivalent(const char *text, FsQueryOptions options) {
+  check_equal(execute(text, options), FS_OK);
+  FsResultInfo accelerated, scanned;
+  check_equal(fsx_result_info(held_result, &accelerated), FS_OK);
+  check_true(accelerated.window_count <= 100);
+  uint64_t keys[100];
+  for (uint32_t i = 0; i < accelerated.window_count; i++)
+    keys[i] = entry(i, NULL).entry_key;
+  check_equal(execute_on(oracle_engine, text, options), FS_OK);
+  check_equal(fsx_result_info(held_result, &scanned), FS_OK);
+  check_equal(scanned.candidate_strategy, FS_CANDIDATE_SCAN_PROFILE);
+  check_equal(scanned.total_count, accelerated.total_count);
+  check_equal(scanned.snapshot_epoch, accelerated.snapshot_epoch);
+  check_equal(scanned.window_count, accelerated.window_count);
+  check_equal(scanned.window_offset, accelerated.window_offset);
+  check_equal(scanned.total_known, accelerated.total_known);
+  check_equal(scanned.coverage_complete, accelerated.coverage_complete);
+  check_equal(scanned.text_coverage_complete,
+              accelerated.text_coverage_complete);
+  for (uint32_t i = 0; i < scanned.window_count; i++)
+    check_equal(entry(i, NULL).entry_key, keys[i]);
+  return accelerated;
+}
 typedef struct Sender {
   FsEngine *engine;
   atomic_uint failures;
@@ -208,7 +251,7 @@ typedef struct Sender {
 static void sender_run(void *arg) {
   Sender *sender = arg;
   for (unsigned i = 0; i < 50; i++) {
-    FsQueryRequest request = {sizeof(request), FSX_API_VERSION, "ext:txt", 7,
+    FsQueryRequest request = {sizeof(request), FSX_API_VERSION, "steady", 6,
                               fsx_query_options()};
     FsQuery *q = NULL;
     FsResult *r = NULL;
@@ -506,6 +549,7 @@ suite("FileSearch engine") {
     options.flags = 0x80000000u;
     check_equal(execute("", options), FS_INVALID);
     check_equal(execute("fuzzy:file", fsx_query_options()), FS_UNSUPPORTED);
+    check_equal(execute("absent regex:\"[\"", fsx_query_options()), FS_INVALID);
     check_equal(execute("<a |>", fsx_query_options()), FS_INVALID);
     check_equal(execute("\"unterminated", fsx_query_options()), FS_INVALID);
     check_equal(execute("", fsx_query_options()), FS_OK);
@@ -577,6 +621,8 @@ suite("FileSearch engine") {
     fsx_result_info(held_result, &ri);
     check_false(ri.coverage_complete);
     check_equal(execute("regex:safe", fsx_query_options()), FS_UNSUPPORTED);
+    check_equal(execute("absent regex:safe", fsx_query_options()),
+                FS_UNSUPPORTED);
     FsQueryOptions options = fsx_query_options();
     options.flags = FS_QUERY_ALLOW_PARTIAL_TEXT;
     check_equal(execute("regex:safe", options), FS_OK);
@@ -611,6 +657,222 @@ suite("FileSearch engine") {
     check_equal(sqlite3_column_int(q, 0), 1);
     sqlite3_finalize(q);
     sqlite3_close(db);
+  }
+  it("uses FTS candidates with exact totals and scanner-equivalent pages") {
+    for (unsigned i = 0; i < 256; i++) {
+      char name[64];
+      snprintf(name, sizeof(name), "ordinary-%03u.txt", i);
+      put(name, "same");
+    }
+    put("unique-needle.txt", "target");
+    open_engine();
+    scan();
+    open_oracle();
+    FsResultInfo info = equivalent("needle", fsx_query_options());
+    check_equal(info.total_count, (uint64_t)1);
+    check_equal(info.candidate_strategy, FS_CANDIDATE_FTS5);
+    check_equal(info.candidates_examined, (uint64_t)1);
+    FsResultInfo baseline;
+    fsx_result_info(held_result, &baseline);
+    check_equal(baseline.candidates_examined, (uint64_t)257);
+    FsQueryOptions options = fsx_query_options();
+    options.limit = 0;
+    info = equivalent("ordinary", options);
+    check_equal(info.total_count, (uint64_t)256);
+    check_equal(info.window_count, 0u);
+    options.limit = 3;
+    options.offset = 123;
+    options.sort_key = FS_SORT_SIZE;
+    options.flags = FS_QUERY_DESCENDING;
+    info = equivalent("ordinary", options);
+    check_equal(info.total_count, (uint64_t)256);
+    check_equal(info.window_count, 3u);
+  }
+  it("preserves Unicode, punctuation and Boolean recall across candidate "
+     "plans") {
+    const char *names[] = {
+        "alpha-beta.txt",
+        "alpha.beta.md",
+        "alphabet.txt",
+        "beta.txt",
+        "x",
+        "Stra\xc3\x9f"
+        "e.txt",
+        "\xe4\xb8\xad\xe6\x96\x87\xe6\x8a\xa5\xe5\x91\x8a.txt",
+        "\xf0\x9f\x98\x80\xf0\x9f\x98\x81\xf0\x9f\x98\x82.txt",
+        "\xef\xac\x83.txt",
+        "\xc4\xb0.txt",
+        "alpha OR beta.txt",
+        "Alpha.txt"};
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+      put(names[i], i & 1 ? "12" : "1234");
+    subdir("folder-alpha");
+    put("folder-alpha/inside.txt", "abc");
+    open_engine();
+    scan();
+    open_oracle();
+    struct {
+      const char *text;
+      FsCandidateStrategy strategy;
+    } cases[] = {
+        {"alpha", FS_CANDIDATE_FTS5},
+        {"case:Alpha", FS_CANDIDATE_FTS5},
+        {"STRASSE", FS_CANDIDATE_FTS5},
+        {"case:STRASSE", FS_CANDIDATE_FTS5},
+        {"\xe4\xb8\xad\xe6\x96\x87", FS_CANDIDATE_SCAN},
+        {"\xe4\xb8\xad\xe6\x96\x87\xe6\x8a\xa5", FS_CANDIDATE_FTS5},
+        {"\xf0\x9f\x98\x80\xf0\x9f\x98\x81", FS_CANDIDATE_SCAN},
+        {"\xf0\x9f\x98\x80\xf0\x9f\x98\x81\xf0\x9f\x98\x82", FS_CANDIDATE_FTS5},
+        {"\xef\xac\x83", FS_CANDIDATE_FTS5},
+        {"case:\xef\xac\x83", FS_CANDIDATE_SCAN},
+        {"\xc4\xb0", FS_CANDIDATE_SCAN},
+        {"alpha | beta", FS_CANDIDATE_FTS5},
+        {"alpha beta", FS_CANDIDATE_FTS5},
+        {"<alpha !txt> | <beta file:>", FS_CANDIDATE_FTS5},
+        {"<alpha | x> beta", FS_CANDIDATE_FTS5},
+        {"alpha | x", FS_CANDIDATE_SCAN},
+        {"alpha | !beta", FS_CANDIDATE_SCAN},
+        {"!alpha", FS_CANDIDATE_SCAN},
+        {"!<alpha | beta>", FS_CANDIDATE_SCAN},
+        {"alpha | path:inside", FS_CANDIDATE_SCAN},
+        {"alpha | regex:inside", FS_CANDIDATE_SCAN},
+        {"alpha !path:folder", FS_CANDIDATE_FTS5},
+        {"alpha regex:\"[.]txt$\"", FS_CANDIDATE_FTS5},
+        {"alpha size:>=3B ext:txt", FS_CANDIDATE_FTS5},
+        {"path:folder inside", FS_CANDIDATE_FTS5},
+        {"path:alpha", FS_CANDIDATE_SCAN},
+        {"*alpha*", FS_CANDIDATE_SCAN},
+        {"\"alpha-beta\"", FS_CANDIDATE_FTS5},
+        {"\"alpha OR beta\"", FS_CANDIDATE_FTS5},
+        {"\"alpha\\\"beta\"", FS_CANDIDATE_FTS5},
+        {"case:<Alpha | beta>", FS_CANDIDATE_FTS5},
+        {"", FS_CANDIDATE_SCAN},
+        {"absent", FS_CANDIDATE_FTS5}};
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+      for (uint32_t sort = FS_SORT_NAME; sort <= FS_SORT_MTIME; sort++) {
+        FsQueryOptions options = fsx_query_options();
+        options.sort_key = sort;
+        options.flags = sort & 1 ? FS_QUERY_DESCENDING : 0;
+        FsResultInfo info = equivalent(cases[i].text, options);
+        check_equal(info.candidate_strategy, cases[i].strategy);
+        options.offset = 1;
+        options.limit = 2;
+        options.flags ^= FS_QUERY_DESCENDING;
+        equivalent(cases[i].text, options);
+      }
+    }
+    FsQueryOptions options = fsx_query_options();
+    options.flags = FS_QUERY_CASE_SENSITIVE;
+    equivalent("Alpha | beta", options);
+  }
+  it("scans a retained revision when another writer advances the database") {
+    put("oldneedle.txt", "x");
+    open_engine();
+    scan();
+    open_oracle();
+    char path[2048];
+    snprintf(path, sizeof(path), "%s/oldneedle.txt", root);
+    remove_utf8(path);
+    put("newneedle.txt", "y");
+    FsScanInfo scanned;
+    check_equal(fsx_engine_scan(oracle_engine, root, &scanned), FS_OK);
+    check_equal(scanned.snapshot_epoch, (uint64_t)2);
+    check_equal(count("oldneedle"), (uint64_t)1);
+    FsResultInfo info;
+    fsx_result_info(held_result, &info);
+    check_equal(info.snapshot_epoch, (uint64_t)1);
+    check_equal(info.candidate_strategy, FS_CANDIDATE_SCAN_REVISION);
+    check_equal(entry(0, NULL).name, "oldneedle.txt");
+    check_equal(count("newneedle"), (uint64_t)0);
+    scan();
+    check_equal(count("newneedle"), (uint64_t)1);
+    fsx_result_info(held_result, &info);
+    check_equal(info.candidate_strategy, FS_CANDIDATE_FTS5);
+  }
+  it("fails a changed database identity instead of using unrelated postings") {
+    put("needle.txt", "x");
+    open_engine();
+    scan();
+    edit_database("UPDATE fsx_identity SET value=randomblob(16) WHERE id=1");
+    check_equal(execute("needle", fsx_query_options()), FS_STALE);
+    check_null(held_result);
+  }
+  it("reads legacy indexes without migration and upgrades them on write open") {
+    put("needle.txt", "x");
+    open_engine();
+    FsScanInfo scanned = scan();
+    check_equal(fsx_engine_close(&engine, FSX_DEADLINE_INFINITE), FS_OK);
+    edit_database("DROP TABLE fsx_identity");
+    FsEngineConfig config = fsx_engine_config(database);
+    config.flags = 0;
+    check_equal(fsx_engine_open(&config, &engine), FS_OK);
+    check_equal(count("needle"), (uint64_t)1);
+    uint64_t key = entry(0, NULL).entry_key;
+    FsResultInfo info;
+    fsx_result_info(held_result, &info);
+    check_equal(info.candidate_strategy, FS_CANDIDATE_SCAN_LEGACY);
+    fsx_result_release(held_result);
+    held_result = NULL;
+    fsx_query_release(held_query);
+    held_query = NULL;
+    check_equal(fsx_engine_close(&engine, FSX_DEADLINE_INFINITE), FS_OK);
+    /* CREATE proves read-existing left the optional table absent. */
+    edit_database("CREATE TABLE fsx_identity(id INTEGER PRIMARY KEY,value "
+                  "BLOB); DROP TABLE fsx_identity");
+    open_engine();
+    check_equal(count("needle"), (uint64_t)1);
+    check_equal(entry(0, NULL).entry_key, key);
+    fsx_result_info(held_result, &info);
+    check_equal(info.snapshot_epoch, scanned.snapshot_epoch);
+    check_equal(info.candidate_strategy, FS_CANDIDATE_FTS5);
+  }
+  it("uses its owned snapshot for an in-memory database") {
+    put("needle.txt", "x");
+    FsEngineConfig config = fsx_engine_config(":memory:");
+    check_equal(fsx_engine_open(&config, &engine), FS_OK);
+    scan();
+    check_equal(count("needle"), (uint64_t)1);
+    FsResultInfo info;
+    fsx_result_info(held_result, &info);
+    check_equal(info.candidate_strategy, FS_CANDIDATE_SCAN_MEMORY);
+  }
+  it("rejects an FTS row that has no stable key in the admitted snapshot") {
+    put("needle.txt", "x");
+    open_engine();
+    scan();
+    edit_database("INSERT INTO name_fts(rowid,name,name_fold) "
+                  "VALUES(999999,'needle','needle')");
+    check_equal(execute("needle", fsx_query_options()), FS_CORRUPT);
+    check_null(held_result);
+  }
+  it("releases the FTS read transaction before publishing retained results") {
+    put("needle.txt", "x");
+    open_engine();
+    scan();
+    check_equal(count("needle"), (uint64_t)1);
+    put("newneedle.txt", "y");
+    scan();
+    sqlite3 *db = NULL;
+    int opened = sqlite3_open_v2(database, &db, SQLITE_OPEN_READWRITE, NULL);
+    /* Opening alone need not load the persistent WAL journal mode. Complete a
+     * read first so checkpoint counters prove that WAL was actually checked. */
+    if (opened == SQLITE_OK)
+      opened =
+          sqlite3_exec(db, "SELECT revision FROM fsx_meta", NULL, NULL, NULL);
+    int frames = -1, checkpointed = -1;
+    int rc =
+        opened == SQLITE_OK
+            ? sqlite3_wal_checkpoint_v2(db, NULL, SQLITE_CHECKPOINT_TRUNCATE,
+                                        &frames, &checkpointed)
+            : opened;
+    sqlite3_close(db);
+    check_equal(rc, SQLITE_OK);
+    check_equal(frames, 0);
+    check_equal(checkpointed, 0);
+    check_equal(entry(0, NULL).name, "needle.txt");
+    FsResultInfo info;
+    fsx_result_info(held_result, &info);
+    check_equal(info.snapshot_epoch, (uint64_t)1);
   }
   it("fails a managed allocation budget without publishing a partial result") {
     put("file.txt", "x");

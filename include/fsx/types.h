@@ -33,6 +33,13 @@ cmeta_struct(FsQueryOptions,
   cmeta_field(uint32_t, limit)
   cmeta_field(uint64_t, deadline_ns)
   cmeta_field(int32_t, timezone_offset_minutes));
+cmeta_enum(FsCandidateStrategy,
+  (FS_CANDIDATE_SCAN, 0, "scan"),
+  (FS_CANDIDATE_FTS5, 1, "fts5"),
+  (FS_CANDIDATE_SCAN_REVISION, 2, "scan_revision"),
+  (FS_CANDIDATE_SCAN_MEMORY, 3, "scan_memory"),
+  (FS_CANDIDATE_SCAN_LEGACY, 4, "scan_legacy"),
+  (FS_CANDIDATE_SCAN_PROFILE, 5, "scan_profile"));
 // clang-format on
 
 enum { FS_SORT_NAME, FS_SORT_PATH, FS_SORT_SIZE, FS_SORT_MTIME };
@@ -43,7 +50,8 @@ enum {
 };
 enum {
   FS_ENGINE_REGEX_JIT = 1u,
-  FS_ENGINE_CREATE_DATABASE = 2u
+  FS_ENGINE_CREATE_DATABASE = 2u,
+  FS_ENGINE_SCAN_ONLY = 4u
 };
 enum {
   FS_ENTRY_DIRECTORY = 1u,

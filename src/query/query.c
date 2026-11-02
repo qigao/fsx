@@ -662,6 +662,89 @@ static void sift(FsQuery *q, uint32_t *ids, uint32_t count, uint32_t index) {
     index = worst;
   }
 }
+/* Selected nodes describe a superset of all matches. In particular, an OR
+ * cannot discard an unindexed branch, and NOT cannot use positive postings. */
+static int candidate_nodes(Plan *p, int selected[1024]) {
+  for (int i = 0; i < p->count; i++) {
+    Node *n = &p->nodes[i];
+    selected[i] = -1;
+    if (n->kind == N_TEXT && !(n->flags & F_PATH)) {
+      unsigned scalars = 0;
+      for (const unsigned char *s = (const unsigned char *)n->text; *s; s++)
+        scalars += (*s & 0xc0) != 0x80;
+      if (scalars >= 3)
+        selected[i] = i;
+    } else if (n->kind == N_AND || n->kind == N_OR) {
+      int left = selected[n->left], right = selected[n->right];
+      if (left >= 0 && right >= 0)
+        selected[i] = i;
+      else if (n->kind == N_AND)
+        selected[i] = left >= 0 ? left : right;
+    }
+  }
+  return selected[p->root];
+}
+/* The same bounded writer measures first, then emits. Phrase quotes are
+ * doubled; user text never becomes either SQL syntax or FTS operators. */
+typedef struct CandidateText {
+  char *bytes;
+  size_t length;
+  bool overflow;
+} CandidateText;
+static void candidate_put(CandidateText *out, char c) {
+  if (out->length == 512 * 1024) {
+    out->overflow = true;
+    return;
+  }
+  if (out->bytes)
+    out->bytes[out->length] = c;
+  out->length++;
+}
+static void candidate_string(CandidateText *out, const char *s) {
+  for (; *s; s++)
+    candidate_put(out, *s);
+}
+static void candidate_emit(Plan *p, const int selected[1024], int index,
+                           CandidateText *out) {
+  Node *n = &p->nodes[index];
+  if (n->kind == N_TEXT) {
+    candidate_string(out, n->flags & F_CASE ? "name : \"" : "name_fold : \"");
+    for (const char *s = n->text; *s; s++) {
+      candidate_put(out, *s);
+      if (*s == '"')
+        candidate_put(out, '"');
+    }
+    candidate_put(out, '"');
+  } else {
+    candidate_put(out, '(');
+    candidate_emit(p, selected, selected[n->left], out);
+    candidate_string(out, n->kind == N_AND ? " AND " : " OR ");
+    candidate_emit(p, selected, selected[n->right], out);
+    candidate_put(out, ')');
+  }
+}
+static FsStatus candidate_expression(Plan *p, char **expression) {
+  *expression = NULL;
+  if (p->q->engine->config.flags & FS_ENGINE_SCAN_ONLY)
+    return FS_OK;
+  int selected[1024];
+  int root = candidate_nodes(p, selected);
+  if (root < 0)
+    return FS_OK;
+  CandidateText out = {0};
+  candidate_emit(p, selected, root, &out);
+  if (out.overflow)
+    return FS_LIMIT;
+  char *bytes = fsx_alloc(p->q->engine, out.length + 1);
+  if (!bytes)
+    return FS_NOMEM;
+  out.bytes = bytes;
+  out.length = 0;
+  candidate_emit(p, selected, root, &out);
+  bytes[out.length] = 0;
+  *expression = bytes;
+  return FS_OK;
+}
 FsStatus fsx_query_execute(FsQuery *q, FsResult **out) {
   *out = NULL;
   FsEngine *e = q->engine;
@@ -722,12 +805,18 @@ FsStatus fsx_query_execute(FsQuery *q, FsResult **out) {
     destroy(p);
     return FS_NOMEM;
   }
-  uint64_t total = 0;
-  FsStatus status = FS_OK;
-  for (uint32_t i = 0; i < q->snapshot->count; i++) {
-    status = fsx_query_stop(q);
+  uint64_t total = 0, examined = 0;
+  char *expression = NULL;
+  FsStatus status = candidate_expression(p, &expression);
+  FsCandidates candidates = {0};
+  if (status == FS_OK)
+    status = fsx_candidates_open(q, expression, &candidates);
+  while (status == FS_OK) {
+    uint32_t i;
+    status = fsx_candidates_next(&candidates, &i);
     if (status != FS_OK)
       break;
+    examined++;
     bool match = false;
     status = evaluate(p, p->root, &q->snapshot->entries[i], &match);
     if (status != FS_OK)
@@ -749,6 +838,10 @@ FsStatus fsx_query_execute(FsQuery *q, FsResult **out) {
       sift(q, ids, used, 0);
     }
   }
+  fsx_candidates_close(&candidates);
+  fsx_free(expression);
+  if (status == FS_END)
+    status = FS_OK;
   if (status != FS_OK) {
     fsx_free(ids);
     destroy(p);
@@ -785,6 +878,8 @@ FsStatus fsx_query_execute(FsQuery *q, FsResult **out) {
                                 q->snapshot->unsupported == 0,
                                 p->has_regex && p->all_jit};
   result->info.needs_rescan = q->needs_rescan;
+  result->info.candidate_strategy = candidates.strategy;
+  result->info.candidates_examined = examined;
   snprintf(result->info.core_unicode_version,
            sizeof(result->info.core_unicode_version), "%s",
            salts_unicode_version());

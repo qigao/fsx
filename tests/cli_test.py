@@ -46,6 +46,25 @@ class FileSearchCli(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(self.database.stat().st_size, 0)
 
+    def test_fts_and_scan_profiles_return_identical_sorted_pages(self):
+        for i in range(40):
+            (self.root / f"record-{i:03}.txt").write_text("x" * (i + 1), encoding="utf-8")
+        (self.root / "unrelated.md").write_text("other", encoding="utf-8")
+        self.assertEqual(self.run_cli("index", self.database, self.root).returncode, 0)
+        args = ("--json", "--sort", "size", "--desc", "--offset", "9", "--limit", "3", "--", "record")
+        accelerated = self.run_cli("search", self.database, *args)
+        scanned = self.run_cli("search", self.database, "--scan-only", *args)
+        self.assertEqual(accelerated.returncode, 0, accelerated.stderr)
+        self.assertEqual(scanned.returncode, 0, scanned.stderr)
+        actual, baseline = json.loads(accelerated.stdout), json.loads(scanned.stdout)
+        self.assertEqual(actual.pop("candidate_strategy"), "fts5")
+        self.assertEqual(baseline.pop("candidate_strategy"), "scan_profile")
+        self.assertEqual(actual.pop("candidates_examined"), 40)
+        self.assertEqual(baseline.pop("candidates_examined"), 41)
+        self.assertEqual(actual, baseline)
+        self.assertEqual(actual["total"], 40)
+        self.assertEqual([e["size"] for e in actual["entries"]], [31, 30, 29])
+
     def test_invalid_query_returns_diagnostic_and_nonzero_exit(self):
         (self.root / "file.txt").write_text("x", encoding="utf-8")
         self.assertEqual(self.run_cli("index", self.database, self.root).returncode, 0)

@@ -16,8 +16,8 @@ typedef struct FsOpenError {
 typedef struct FsEngineConfig {
   uint32_t struct_size, api_version, flags, worker_threads;
   const char *database_path; /* UTF-8, copied by open; :memory: is supported. */
-  uint64_t
-      owned_memory_budget; /* fsx/PCRE2 heap allocations; see ownership.md. */
+  /* fsx/PCRE2 heap allocations; see docs/runtime-contract.md. */
+  uint64_t owned_memory_budget;
   uint32_t max_entries, max_handles, max_query_window, max_scan_depth;
   FsOpenError *open_error; /* Optional output, borrowed only during open. */
 } FsEngineConfig;
@@ -50,6 +50,9 @@ typedef struct FsResultInfo {
   bool total_known, coverage_complete, text_coverage_complete, regex_jit;
   bool needs_rescan;
   char core_unicode_version[16], regex_version[32], regex_unicode_version[32];
+  FsCandidateStrategy candidate_strategy;
+  /* Entries evaluated, including rejected ones. */
+  uint64_t candidates_examined;
 } FsResultInfo;
 typedef struct FsEntryView {
   FsFileKey key;

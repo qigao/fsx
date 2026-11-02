@@ -24,7 +24,8 @@ static int run(int argc, char **argv) {
   if (argc < 3) {
     fputs("Usage: fsx index DATABASE ROOT\n       fsx search DATABASE [--limit "
           "N] [--offset N] [--sort name|path|size|mtime] [--desc] [--case] "
-          "[--jit] [--allow-partial-text] [--json] -- QUERY\n       fsx info "
+          "[--jit] [--scan-only] [--allow-partial-text] [--json] -- QUERY\n    "
+          "   fsx info "
           "DATABASE\n",
           stderr);
     return 2;
@@ -54,6 +55,8 @@ static int run(int argc, char **argv) {
       options.flags |= FS_QUERY_CASE_SENSITIVE;
     else if (!strcmp(argv[i], "--jit"))
       config.flags |= FS_ENGINE_REGEX_JIT;
+    else if (!strcmp(argv[i], "--scan-only"))
+      config.flags |= FS_ENGINE_SCAN_ONLY;
     else if (!strcmp(argv[i], "--allow-partial-text"))
       options.flags |= FS_QUERY_ALLOW_PARTIAL_TEXT;
     else if ((!strcmp(argv[i], "--limit") || !strcmp(argv[i], "--offset")) &&
@@ -131,9 +134,12 @@ static int run(int argc, char **argv) {
       fsx_result_info(result, &info);
       if (json)
         printf("{\"revision\":%" PRIu64 ",\"total\":%" PRIu64
-               ",\"coverage_complete\":%s,\"entries\":[",
+               ",\"coverage_complete\":%s,\"candidate_strategy\":\"%s\","
+               "\"candidates_examined\":%" PRIu64 ",\"entries\":[",
                info.snapshot_epoch, info.total_count,
-               info.coverage_complete ? "true" : "false");
+               info.coverage_complete ? "true" : "false",
+               FsCandidateStrategy_to_string(info.candidate_strategy),
+               info.candidates_examined);
       for (uint32_t i = 0; i < info.window_count; i++) {
         FsHit hit;
         size_t written = 0;

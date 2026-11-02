@@ -35,7 +35,9 @@ struct FsEngine {
   uint32_t handles, active_jobs;
   bool writer, needs_rescan;
   atomic_bool stopping;
-  char *database_path;
+  char *database_path, *reader_path;
+  unsigned char database_identity[16];
+  bool has_database_identity;
 };
 struct FsResult {
   atomic_uint refs;
@@ -84,6 +86,16 @@ bool fsx_utf8(const char *, size_t);
 void fsx_snapshot_release(FsSnapshot *);
 FsStatus fsx_snapshot_load(FsEngine *, FsSnapshot **);
 FsStatus fsx_db_open(FsEngine *);
+typedef struct FsCandidates {
+  sqlite3 *connection;
+  sqlite3_stmt *rows;
+  FsQuery *query;
+  FsCandidateStrategy strategy;
+  uint32_t next_entry;
+} FsCandidates;
+FsStatus fsx_candidates_open(FsQuery *, const char *, FsCandidates *);
+FsStatus fsx_candidates_next(FsCandidates *, uint32_t *);
+void fsx_candidates_close(FsCandidates *);
 FsStatus fsx_db_scan(FsEngine *, const char *, FsScanInfo *);
 FsStatus fsx_db_status(int);
 FsStatus fsx_native_root(FsEngine *, const char *, char **);

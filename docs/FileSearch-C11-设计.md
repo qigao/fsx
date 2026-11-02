@@ -1,6 +1,6 @@
 # C11 与 CMeta 文件搜索引擎设计
 
-实现状态：[当前运行时契约](runtime-contract.md)；本设计中的后续里程碑不代表均已交付。
+实现状态：已实现保留快照扫描及 FTS5 名字候选规划，包括 identity/revision 握手、旧版本回退扫描、精确计数与排序分页对账；见[当前运行时契约](runtime-contract.md)。COW、RDC/USN/MFT、原始非法 Unicode 名字查询等后续里程碑仍未交付。
 
 版本：0.3，2026-11-02。采用 salts-core、SQLite FTS5 与 PCRE2；增加 ugrep/bfs 工具边界，保留 CMeta 声明层。目标实现名暂用 `fsx`，公开类型前缀 `Fs`，函数前缀 `fsx_`。
 

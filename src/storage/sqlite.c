@@ -53,6 +53,53 @@ static uint64_t decode64(const unsigned char *p) {
     v |= (uint64_t)p[i] << (8 * i);
   return v;
 }
+/* Optional schema-v1 capability. Existing readers ignore this additive table.
+ */
+static FsStatus database_identity(FsEngine *e) {
+  int rc = SQLITE_OK;
+  int64_t exists = scalar(
+      e, "SELECT count(*) FROM sqlite_schema WHERE name='fsx_identity'", &rc);
+  if (rc != SQLITE_ROW)
+    return fsx_db_status(rc);
+  if (!exists && (e->config.flags & FS_ENGINE_CREATE_DATABASE)) {
+    FsStatus status =
+        sql(e, "BEGIN IMMEDIATE;"
+               "CREATE TABLE IF NOT EXISTS fsx_identity(id INTEGER PRIMARY KEY "
+               "CHECK(id=1),value BLOB NOT NULL CHECK(length(value)=16));"
+               "INSERT OR IGNORE INTO fsx_identity VALUES(1,randomblob(16));"
+               "COMMIT;");
+    if (status != FS_OK) {
+      sql(e, "ROLLBACK");
+      return status;
+    }
+    exists = 1;
+  }
+  if (exists) {
+    sqlite3_stmt *row = NULL;
+    rc = sqlite3_prepare_v2(e->db, "SELECT value FROM fsx_identity WHERE id=1",
+                            -1, &row, NULL);
+    if (rc == SQLITE_OK)
+      rc = sqlite3_step(row);
+    FsStatus status = FS_CORRUPT;
+    if (rc == SQLITE_ROW && sqlite3_column_type(row, 0) == SQLITE_BLOB &&
+        sqlite3_column_bytes(row, 0) == 16) {
+      memcpy(e->database_identity, sqlite3_column_blob(row, 0), 16);
+      e->has_database_identity = true;
+      status = FS_OK;
+    } else if (rc != SQLITE_ROW && rc != SQLITE_DONE)
+      status = fsx_db_status(rc);
+    sqlite3_finalize(row);
+    if (status != FS_OK)
+      return status;
+  }
+  const char *filename = sqlite3_db_filename(e->db, "main");
+  if (filename && filename[0]) {
+    e->reader_path = fsx_copy(e, filename, strlen(filename));
+    if (!e->reader_path)
+      return FS_NOMEM;
+  }
+  return FS_OK;
+}
 FsStatus fsx_db_open(FsEngine *e) {
   int rc = sqlite3_open_v2(e->database_path, &e->db,
                            SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX |
@@ -144,7 +191,8 @@ FsStatus fsx_db_open(FsEngine *e) {
   sqlite3_finalize(s);
   if (!compatible)
     return rc == SQLITE_ROW ? FS_UNSUPPORTED : FS_CORRUPT;
-  return sql(e, "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
+  st = sql(e, "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
+  return st == FS_OK ? database_identity(e) : st;
 }
 static FsStatus column_copy(FsEngine *e, sqlite3_stmt *s, int col, char **out) {
   *out = NULL;

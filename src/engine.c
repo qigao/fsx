@@ -115,7 +115,8 @@ FsStatus fsx_engine_open(const FsEngineConfig *c, FsEngine **out) {
       !c->database_path || !c->database_path[0] ||
       !fsx_utf8(c->database_path, strlen(c->database_path)) ||
       strlen(c->database_path) > 65535 ||
-      c->flags & ~(FS_ENGINE_REGEX_JIT | FS_ENGINE_CREATE_DATABASE) ||
+      c->flags & ~(FS_ENGINE_REGEX_JIT | FS_ENGINE_CREATE_DATABASE |
+                   FS_ENGINE_SCAN_ONLY) ||
       !c->worker_threads || c->worker_threads > 4 || !c->max_entries ||
       c->max_entries >= UINT32_MAX || !c->max_handles ||
       c->max_handles > 1024 || !c->max_query_window ||
@@ -174,6 +175,7 @@ fail:
   if (e->db)
     sqlite3_close(e->db);
   fsx_free(e->database_path);
+  fsx_free(e->reader_path);
   if (e->changed)
     cmeta_cond_destroy(&e->changed);
   if (e->mutex)
@@ -458,6 +460,7 @@ FsStatus fsx_engine_close(FsEngine **owner, uint64_t deadline) {
   fsx_snapshot_release(e->current);
   sqlite3_close(e->db);
   fsx_free(e->database_path);
+  fsx_free(e->reader_path);
   cmeta_cond_destroy(&e->changed);
   cmeta_mutex_destroy(&e->mutex);
   cmeta_mutex_destroy(&e->budget_mutex);

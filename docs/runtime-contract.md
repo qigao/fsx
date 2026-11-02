@@ -9,7 +9,7 @@ later journal, source-session and large-index architecture.
 |---|---|
 | scan → SQLite | One synchronous writer per engine. A second scan returns BUSY. Names/metadata are bound into prepared statements; no shell or user SQL is evaluated. |
 | SQLite → snapshot | Load/validate a complete immutable array inside the write transaction. Allocation or validation failure rolls back; the old snapshot stays current. Commit precedes publication, which allocates nothing. |
-| snapshot → query | Submission copies the request and retains the current snapshot under the publication mutex. Queries only read that snapshot; they do not read a newer database revision. |
+| snapshot → query | Submission copies the request and retains the current snapshot under the publication mutex. Evaluation uses that snapshot; FTS candidates require a read transaction at the same revision. |
 | query → result | A result holds its own snapshot reference. Result acquisition adds an independent external handle. Releasing a query does not invalidate an acquired result. |
 | result → view | `fsx_result_entry` returns borrowed UTF-8 pointers valid until that result is released. Hit values are scoped to their producing result/database; cross-revision hits are rejected. |
 | queue → worker | SaltsCore copies a bounded task descriptor. Successful admission owns one internal query reference through run/cancel and finalize. Rejection invokes no callback and transfers nothing. |
@@ -38,8 +38,9 @@ No ReFS/128-bit journal identity support is claimed.
 Each successful scan updates one source, removes its unseen entries and advances
 the global revision. Stable paths retain their non-reused database entry keys.
 FTS5 external-content insert/update/delete triggers run in the same transaction.
-The current query executor performs a correct snapshot scan; no FTS candidate
-shortcut or read-transaction handshake is implemented yet.
+Queries use eligible positive name literals to narrow candidates through FTS5;
+other plans scan their retained snapshot. The reader handshake and fallback rules
+are specified below.
 
 Snapshots currently use full immutable arrays and owned strings, rather than the
 design's eventual 4096-row COW pages. Old and new snapshots both count against the
@@ -77,7 +78,7 @@ Reopening recovers the last committed scan and its committed coverage.
 - `owned_memory_budget` defaults to 256 MiB and bounds fsx-managed heap allocations,
   including retained snapshots and PCRE2 allocator requests. It is **not** a global
   process RSS limit. Engine/provider control objects, thread stacks and SQLite's
-  internal allocations are outside it. SQLite uses a 4 MiB page-cache target,
+  internal allocations are outside it. SQLite uses a 4 MiB writer page-cache target,
   row/SQL length limits and file-backed temporary storage, not a certified global
   hard heap bound. The design's total-memory admission remains future work.
 - Parse, UTF, regex resource, cancellation and timeout errors are distinct from
@@ -90,3 +91,44 @@ All verification uses the project configure/build presets and formal CTest cases
 There are no installation, consumer, smoke, or temporary verification projects.
 Test fixtures and SQLite spill files live under the build tree. Cleanup requires
 an owned fixture root and refuses paths outside it or traversal through links.
+
+## FTS candidate protocol
+
+The worker exclusively owns one optional read-only SQLite connection, transaction
+and cursor. It admits the database identity and revision in that transaction
+before consuming any row IDs. The identity must match the engine's database;
+a revision mismatch selects the retained snapshot scanner. Each candidate's
+stable database key maps to the same snapshot, and all original predicates,
+sorting, pagination and exact counting still execute. A result never owns a
+SQLite transaction or pins its WAL.
+
+Only positive name literals of at least three Unicode scalars are eligible.
+AND may narrow through either eligible side; OR requires safe candidates for
+both sides. NOT, path terms, glob/regex and short literals do not independently
+narrow the candidate universe. Literal text is FTS-phrase escaped and parameter
+bound. The expression is capped at 512 KiB, and candidates stream without a SQL
+page limit or a materialized candidate array. Cancellation/deadlines are checked
+at row boundaries and by the reader's SQLite progress handler.
+
+A private reader has a 1 MiB cache target and no shared-cache/dirty-read mode.
+There is at most one reader per executing worker. Database, budget and index
+errors propagate; they are not treated as zero matches. Memory databases,
+explicit scan-only profiles and legacy indexes without an identity use the
+snapshot scanner. A legacy index opened with `FS_ENGINE_CREATE_DATABASE` receives
+an additive identity table transactionally, preserving its revision and entries;
+read-existing profiles do not migrate it. Existing schema-v1 readers tolerate
+this optional table. Replacing or externally editing a live database is outside
+the writer ownership contract; detected identity changes fail as stale.
+
+`FsResultInfo.candidate_strategy` identifies FTS or the scanner reason;
+`candidates_examined` counts entries passed to the predicates, including rejected
+entries. `FS_ENGINE_SCAN_ONLY` (CLI `--scan-only`) provides an explicit baseline.
+Counters do not include SQLite's internal posting-list work or imply a latency
+improvement. Resource errors on evaluated candidates remain errors; skipped
+candidates do not consume regex/glob execution budgets.
+
+This follows SQLite's [trigram and phrase rules](https://sqlite.org/fts5.html)
+and [read-transaction isolation](https://sqlite.org/isolation.html). The current
+indexed universe contains only supported Unicode names; omitted native names
+remain partial coverage. Future raw-name storage must add a safe scan union
+before using these candidates over a larger universe.
