@@ -49,7 +49,7 @@ static void dirty(FsWatch *w, bool value) {
       e->dirty_watches--;
     w->dirty = value;
   }
-  e->needs_rescan = e->scan_failed || e->dirty_watches != 0;
+  fsx_health_refresh(e);
   cmeta_mutex_unlock(&e->mutex);
   w->info.needs_rescan = value;
   if (w->info.state != FS_WATCH_FAILED && w->info.state != FS_WATCH_STOPPED)
@@ -379,8 +379,7 @@ FsStatus fsx_watch_close(FsWatch **owner) {
   e->watch_count--;
   if (w->dirty)
     e->dirty_watches--;
-  e->scan_failed = true;
-  e->needs_rescan = true;
+  fsx_health_invalidate(e, w->root);
   cmeta_mutex_unlock(&e->mutex);
   dispose(
       w); /* Keep the external slot until allocator/native cleanup is done. */

@@ -8,7 +8,8 @@ milestones remain on the roadmap.
 ## Implemented
 
 - Native directory scans with file identity, hardlink aliases, metadata and
-  explicit coverage. Directory links are recorded without traversing them.
+  explicit coverage. Directory links are recorded without traversing them;
+  descent uses verified handles and relative child opens to resist replacement.
 - SQLite transactions for sources, shared objects, entries and FTS5 trigram rows.
   Immutable query snapshots are prepared before commit and published afterward.
 - Asynchronous queries on SaltsCore's bounded thread pool, retained results,
@@ -161,7 +162,7 @@ Every reopened watch requires validation, and partial coverage remains explicit.
 ## Validation
 
 Windows x64 LLVM-MinGW Debug builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 43 engine cases and 6 CLI end-to-end
+CLI and formal tests. The current suite has 48 engine cases and 6 CLI end-to-end
 cases, run through two CTest entries. Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.
@@ -179,4 +180,8 @@ during a scan, real native-buffer overflow, independent dirty sources, limits an
 failed-scan recovery, root replacement, issuing-thread exit and STOPPING wakeup.
 The CLI test waits for an initial published revision, creates a file, then checks
 that a later revision persists it for an independent search invocation.
+Regressions also cover a 65,001-byte nested modifier request, the accepted depth
+boundary, failures retained across independent root scans, conservative validation
+after an unidentified failure, and a deterministic directory-to-junction swap
+during observation. Stable junctions remain searchable without traversing targets.
 Linux and sanitizer runs have not been performed in this environment.

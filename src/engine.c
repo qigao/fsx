@@ -146,6 +146,8 @@ FsStatus fsx_engine_open(const FsEngineConfig *c, FsEngine **out) {
   if (s != FS_OK)
     goto fail;
   s = fsx_snapshot_load(e, &e->current);
+  if (s == FS_OK)
+    s = fsx_health_load(e);
   if (s != FS_OK) {
     sqlite3_exec(e->db, "ROLLBACK", NULL, NULL, NULL);
     goto fail;
@@ -172,6 +174,7 @@ fail:
              e->db ? sqlite3_system_errno(e->db) : 0);
   }
   fsx_snapshot_release(e->current);
+  fsx_health_destroy(e);
   if (e->db)
     sqlite3_close(e->db);
   fsx_free(e->database_path);
@@ -222,14 +225,19 @@ FsStatus fsx_engine_scan(FsEngine *e, const char *root, FsScanInfo *out) {
   e->writer = true;
   cmeta_mutex_unlock(&e->mutex);
   char *canonical = NULL;
+  FsRootHealth *health = NULL;
   FsStatus s = fsx_native_root(e, root, &canonical);
+  if (s == FS_OK)
+    s = fsx_health_prepare(e, canonical, &health);
   if (s == FS_OK)
     s = fsx_db_scan(e, canonical, out);
   fsx_free(canonical);
   cmeta_mutex_lock(&e->mutex);
   e->writer = false;
-  e->scan_failed = s != FS_OK;
-  e->needs_rescan = e->scan_failed || e->dirty_watches != 0;
+  if (s == FS_OK)
+    fsx_health_validate(e, health);
+  else
+    fsx_health_invalidate(e, health ? health->root : NULL);
   cmeta_cond_broadcast(&e->changed);
   cmeta_mutex_unlock(&e->mutex);
   return s;
@@ -464,6 +472,7 @@ FsStatus fsx_engine_close(FsEngine **owner, uint64_t deadline) {
   cmeta_threadpool_wait_status(e->pool);
   cmeta_threadpool_destroy(e->pool);
   fsx_snapshot_release(e->current);
+  fsx_health_destroy(e);
   sqlite3_close(e->db);
   fsx_free(e->database_path);
   fsx_free(e->reader_path);

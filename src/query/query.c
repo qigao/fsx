@@ -153,7 +153,14 @@ static bool date_value(const char *s, int tz, uint64_t *low, uint64_t *high) {
 static bool prefix(const char *s, const char *word) {
   return strncmp(s, word, strlen(word)) == 0;
 }
-static int atom(Plan *p, const char *text, int flags, size_t offset) {
+static int atom(Plan *p, const char *text, int flags, size_t offset,
+                unsigned depth) {
+  if (p->status != FS_OK)
+    return -1;
+  if (depth >= 32) {
+    error(p, FS_LIMIT, offset, "query modifier nesting limit exceeded");
+    return -1;
+  }
   while (prefix(text, "case:") || prefix(text, "path:")) {
     if (prefix(text, "case:")) {
       flags |= F_CASE;
@@ -169,9 +176,11 @@ static int atom(Plan *p, const char *text, int flags, size_t offset) {
     bool directory = prefix(text, "folder:");
     value = text + (directory ? 7 : 5);
     int a = node(p, directory ? N_FOLDER : N_FILE, -1, -1);
+    if (a < 0)
+      return -1;
     if (!*value)
       return a;
-    int b = atom(p, value, flags, offset + (size_t)(value - text));
+    int b = atom(p, value, flags, offset + (size_t)(value - text), depth + 1);
     return node(p, N_AND, a, b);
   }
   if (prefix(text, "regex:")) {
@@ -389,7 +398,7 @@ static int unary(Plan *p, int flags) {
         p->offset_map = NULL;
         id = unary(p, inherited);
       } else
-        id = atom(p, word, flags, at);
+        id = atom(p, word, flags, at, 0);
       fsx_free(p->offset_map);
       p->offset_map = NULL;
       fsx_free(word);

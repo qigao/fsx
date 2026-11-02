@@ -28,6 +28,29 @@ waits for writer/task finalization before freeing SQLite, snapshots and allocato
 
 ## Snapshot and storage semantics
 
+Failed scan obligations are retained per canonical root in bounded, engine-owned
+control records (at most 256). They survive unrelated successful scans and are
+cleared only by that root's successful reconciliation. A failure before a root
+can be identified conservatively invalidates all tracked roots; each must then
+be validated. With no tracked roots, a pending validation bit remains until a
+successful first scan. Admission/allocation failure never silently drops an
+existing obligation. These records and their root strings use the managed budget
+and are released after the writer and handles have quiesced, not persisted as a
+journal. Watch closure invalidates its own root through the same control state,
+or all tracked roots if it has not yet been registered by a scan.
+
+Directory descent stays bound to verified native directory handles. On Windows,
+directory batches are read from handles, children open relative to the parent
+with final-component reparse processing disabled, and a verified listing handle
+remains open through observation callbacks and recursion. On POSIX, descriptor
+relative stat/open operations and O_NOFOLLOW provide the corresponding boundary.
+Native listing buffers have bounded capacity and validate record offsets/names.
+Paths stored in entries are logical observation names, not names reopened for
+descent. Concurrent namespace changes can cause partial coverage; they cannot
+redirect descent through a newly substituted junction/symlink.
+Windows listing buffers are 4 KiB per active directory and use the managed budget.
+The traversal-depth limit bounds both buffers and open parent/child handles.
+
 SQLite is the only persistent fact source. Schema/application/Unicode/text-version
 admission rejects unrelated or incompatible databases. Sources have stable IDs,
 canonical roots and recorded volume identity. Objects separate native identity
@@ -98,6 +121,9 @@ or incremental database reader; loading still visits all committed rows.
 - Query input is at most 64 KiB, AST at most 1024 nodes/depth 32, regex source at
   most 4 KiB, capture count at most 256 and subjects at most 64 KiB. Glob execution
   has a finite step budget. Size arithmetic is checked; directory sizes are unknown.
+- Recursive `file:`/`folder:` modifiers have a separate 32-call admission guard,
+  checked before descending or continuing after an earlier parse failure. The AST
+  height limit also applies; 31 `file:` wrappers around a literal fit that limit.
 - PCRE2 uses the fsx allocator, match/depth/heap limits and explicit cancellation
   callouts. Interpreter execution is the default. Optional JIT code and stack
   reservations are charged, with actual execution reported; JIT allocation peak

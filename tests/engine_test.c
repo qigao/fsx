@@ -1,6 +1,8 @@
 #ifndef _WIN32
 #define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #endif
+#include "../src/internal.h"
 #include <fsx/api.h>
 #include <salts/thread.h>
 #include <sqlite3.h>
@@ -13,6 +15,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <wchar.h>
 #include <windows.h>
+#include <winioctl.h>
 #else
 #include <dirent.h>
 #include <sys/stat.h>
@@ -50,9 +53,11 @@ static void remove_utf8(const char *s) {
   check_equal(unlink(s), 0);
 #endif
 }
-static void put(const char *name, const char *content) {
-  char path[2048];
-  snprintf(path, sizeof(path), "%s/%s", root, name);
+static void put_path(const char *path, const char *content) {
+  size_t prefix = strlen(fixture);
+  check(fixture_ready && prefix && !strncmp(path, fixture, prefix) &&
+            (path[prefix] == '/' || path[prefix] == '\\'),
+        "owned fixture write");
 #ifdef _WIN32
   wchar_t w[2048];
   wide(path, w, 2048);
@@ -63,6 +68,11 @@ static void put(const char *name, const char *content) {
   check_not_null(file);
   check_equal(fwrite(content, 1, strlen(content), file), strlen(content));
   check_equal(fclose(file), 0);
+}
+static void put(const char *name, const char *content) {
+  char path[2048];
+  snprintf(path, sizeof(path), "%s/%s", root, name);
+  put_path(path, content);
 }
 static void subdir(const char *name) {
   char p[2048];
@@ -308,6 +318,123 @@ static void watch_opener(void *arg) {
   waiter->status = fsx_watch_open(engine, root, &config, &watch);
 }
 #endif
+typedef struct ReplacedDirectory {
+  char victim[2048], parked[2048], outside[2048];
+  bool replace, replaced;
+  unsigned secrets, safe, links;
+  unsigned long native_error;
+} ReplacedDirectory;
+/* Real mount-point reparse data needs no developer-mode symlink privilege.
+ * Every source and destination is checked as an owned fixture path beforehand.
+ */
+static bool junction(const char *path, const char *target) {
+#ifdef _WIN32
+  wchar_t name[2048], print[2048], substitute[2054];
+  if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, name,
+                           2048) ||
+      !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, target, -1, print,
+                           2048))
+    return false;
+  for (wchar_t *c = print; *c; c++)
+    if (*c == L'/')
+      *c = L'\\';
+  if (wcslen(print) < 3 || print[1] != L':')
+    return false;
+  swprintf(substitute, 2054, L"\\??\\%ls", print);
+  struct Junction {
+    DWORD tag;
+    USHORT length, reserved, substitute_offset, substitute_length, print_offset,
+        print_length;
+    wchar_t names[4096];
+  } data = {0};
+  size_t substitute_bytes = wcslen(substitute) * sizeof(wchar_t);
+  size_t print_bytes = wcslen(print) * sizeof(wchar_t);
+  size_t names_bytes = substitute_bytes + print_bytes + 2 * sizeof(wchar_t);
+  if (names_bytes > sizeof(data.names))
+    return false;
+  data.tag = IO_REPARSE_TAG_MOUNT_POINT;
+  data.length = (USHORT)(8 + names_bytes);
+  data.substitute_length = (USHORT)substitute_bytes;
+  data.print_offset = (USHORT)(substitute_bytes + sizeof(wchar_t));
+  data.print_length = (USHORT)print_bytes;
+  memcpy(data.names, substitute, substitute_bytes);
+  memcpy((unsigned char *)data.names + data.print_offset, print, print_bytes);
+  HANDLE directory = CreateFileW(
+      name, GENERIC_WRITE,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+      OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+      NULL);
+  if (directory == INVALID_HANDLE_VALUE)
+    return false;
+  DWORD returned;
+  BOOL ok = DeviceIoControl(directory, FSCTL_SET_REPARSE_POINT, &data,
+                            data.length + 8, NULL, 0, &returned, NULL);
+  DWORD error = GetLastError();
+  CloseHandle(directory);
+  SetLastError(error);
+  return ok != 0;
+#else
+  char *resolved = realpath(target, NULL);
+  if (!resolved)
+    return false;
+  /* Replace the empty directory with a link inside the same owned fixture. */
+  bool ok = !rmdir(path) && !symlink(resolved, path);
+  free(resolved);
+  return ok;
+#endif
+}
+static FsStatus replace_observed_directory(void *context,
+                                           const FsObserved *item) {
+  ReplacedDirectory *state = context;
+  if (!strcmp(item->name, "secret.txt"))
+    state->secrets++;
+  if (!strcmp(item->name, "safe.txt"))
+    state->safe++;
+  if (item->flags & FS_ENTRY_LINK)
+    state->links++;
+  if (!state->replace || state->replaced || strcmp(item->name, "victim") ||
+      !(item->flags & FS_ENTRY_DIRECTORY) || item->flags & FS_ENTRY_LINK)
+    return FS_OK;
+  state->replaced = true;
+#ifdef _WIN32
+  wchar_t from[2048], to[2048];
+  if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, state->victim, -1,
+                           from, 2048) ||
+      !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, state->parked, -1, to,
+                           2048))
+    return FS_IO;
+  if (!MoveFileW(from, to) || !CreateDirectoryW(from, NULL) ||
+      !junction(state->victim, state->outside)) {
+    state->native_error = GetLastError();
+    return FS_IO;
+  }
+#else
+  if (rename(state->victim, state->parked) || mkdir(state->victim, 0700) ||
+      !junction(state->victim, state->outside)) {
+    state->native_error = (unsigned long)errno;
+    return FS_IO;
+  }
+#endif
+  return FS_OK;
+}
+static ReplacedDirectory replacement_fixture(void) {
+  ReplacedDirectory state = {0};
+  snprintf(state.victim, sizeof(state.victim), "%s/victim", root);
+  snprintf(state.parked, sizeof(state.parked), "%s/parked", fixture);
+  snprintf(state.outside, sizeof(state.outside), "%s/outside", fixture);
+  size_t prefix = strlen(fixture);
+  check_true(fixture_ready && prefix > 0);
+  const char *paths[] = {state.victim, state.parked, state.outside};
+  for (unsigned i = 0; i < 3; i++)
+    check(!strncmp(paths[i], fixture, prefix) && paths[i][prefix] == '/',
+          "directory mutation stays inside the owned fixture");
+  subdir("victim");
+  mkdir_utf8(state.outside);
+  char secret[2048];
+  snprintf(secret, sizeof(secret), "%s/secret.txt", state.outside);
+  put_path(secret, "outside");
+  return state;
+}
 typedef struct Sender {
   FsEngine *engine;
   atomic_uint failures;
@@ -564,6 +691,106 @@ suite("FileSearch engine") {
     FsResultInfo info;
     fsx_result_info(held_result, &info);
     check_true(info.needs_rescan);
+  }
+  it("bounds recursive file and folder modifiers before consuming the C "
+     "stack") {
+    put("seed.txt", "x");
+    open_engine();
+    scan();
+    char text[65002];
+    for (unsigned i = 0; i < 13000; i++)
+      memcpy(text + 5 * i, "file:", 5);
+    memcpy(text + 65000, "x", 2);
+    check_equal(execute(text, fsx_query_options()), FS_LIMIT);
+    check_null(held_result);
+    for (unsigned i = 0; i < 31; i++)
+      memcpy(text + 5 * i, "file:", 5);
+    strcpy(text + 155, "seed");
+    check_equal(execute(text, fsx_query_options()), FS_OK);
+    for (unsigned i = 0; i < 32; i++)
+      memcpy(text + 5 * i, "file:", 5);
+    strcpy(text + 160, "seed");
+    check_equal(execute(text, fsx_query_options()), FS_LIMIT);
+    for (unsigned i = 0; i < 4000; i++)
+      memcpy(text + 7 * i, "folder:", 7);
+    memcpy(text + 28000, "x", 2);
+    check_equal(execute(text, fsx_query_options()), FS_LIMIT);
+    check_equal(count("seed"), (uint64_t)1);
+  }
+  it("keeps a root failure pending through unrelated successful scans") {
+    put("kept.txt", "x");
+    FsEngineConfig config = fsx_engine_config(database);
+    config.max_entries = 2;
+    check_equal(fsx_engine_open(&config, &engine), FS_OK);
+    scan();
+    char other[2048];
+    snprintf(other, sizeof(other), "%s/other", fixture);
+    mkdir_utf8(other);
+    put("new1.txt", "x");
+    put("new2.txt", "x");
+    FsScanInfo result;
+    check_equal(fsx_engine_scan(engine, root, &result), FS_LIMIT);
+    check_equal(fsx_engine_scan(engine, other, &result), FS_OK);
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_true(progress.needs_rescan);
+    check_equal(count("kept"), (uint64_t)1);
+    FsResultInfo info;
+    fsx_result_info(held_result, &info);
+    check_true(info.needs_rescan);
+    char path[2048];
+    snprintf(path, sizeof(path), "%s/new1.txt", root);
+    remove_utf8(path);
+    snprintf(path, sizeof(path), "%s/new2.txt", root);
+    remove_utf8(path);
+    scan();
+    fsx_engine_progress(engine, &progress);
+    check_false(progress.needs_rescan);
+  }
+  it("conservatively validates every tracked root after an unidentified scan "
+     "failure") {
+    put("kept.txt", "x");
+    open_engine();
+    scan();
+    char other[2048], missing[2048];
+    snprintf(other, sizeof(other), "%s/other", fixture);
+    mkdir_utf8(other);
+    snprintf(missing, sizeof(missing), "%s/missing", fixture);
+    FsScanInfo result;
+    check_equal(fsx_engine_scan(engine, other, &result), FS_OK);
+    check_not_equal(fsx_engine_scan(engine, missing, &result), FS_OK);
+    check_equal(fsx_engine_scan(engine, other, &result), FS_OK);
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_true(progress.needs_rescan);
+    scan();
+    fsx_engine_progress(engine, &progress);
+    check_false(progress.needs_rescan);
+  }
+  it("binds directory descent to the opened object through junction "
+     "replacement") {
+    ReplacedDirectory state = replacement_fixture();
+    put("victim/safe.txt", "inside");
+    open_engine();
+    state.replace = true;
+    FsWalk walk = {engine, replace_observed_directory, &state, 0, 0};
+    FsStatus status = fsx_walk(&walk, root);
+    check(status == FS_OK, "walk status=%s native=%lu", fsx_status_name(status),
+          state.native_error);
+    check_true(state.replaced);
+    check_equal(state.secrets, 0u);
+    check_equal(state.safe, 1u);
+  }
+  it("indexes a stable junction itself without enumerating its target") {
+    ReplacedDirectory state = replacement_fixture();
+    check_true(junction(state.victim, state.outside));
+    open_engine();
+    FsScanInfo info = scan();
+    check_true(info.coverage_complete);
+    check_equal(count("secret"), (uint64_t)0);
+    check_equal(count("victim"), (uint64_t)1);
+    check_true((entry(0, NULL).flags & (FS_ENTRY_LINK | FS_ENTRY_DIRECTORY)) ==
+               (FS_ENTRY_LINK | FS_ENTRY_DIRECTORY));
   }
   it("enters retryable STOPPING while an external result is retained") {
     put("file.txt", "x");

@@ -8,6 +8,7 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <winternl.h>
 
 wchar_t *fsx_wide(FsEngine *e, const char *text) {
   int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, NULL, 0);
@@ -111,6 +112,17 @@ FsStatus fsx_native_root(FsEngine *e, const char *input, char **out) {
   fsx_free(full);
   if (handle == INVALID_HANDLE_VALUE)
     return win_status(GetLastError());
+  BY_HANDLE_FILE_INFORMATION root_info;
+  if (!GetFileInformationByHandle(handle, &root_info)) {
+    FsStatus status = win_status(GetLastError());
+    CloseHandle(handle);
+    return status;
+  }
+  if (!(root_info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
+      root_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+    CloseHandle(handle);
+    return FS_UNSUPPORTED;
+  }
   DWORD required = GetFinalPathNameByHandleW(
       handle, NULL, 0, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
   if (!required || required > 32767) {
@@ -171,148 +183,267 @@ FsStatus fsx_native_volume(FsEngine *e, const char *root, uint64_t *out) {
   *out = info.dwVolumeSerialNumber;
   return FS_OK;
 }
-static FsStatus walk_dir(FsWalk *walk, const char *root, unsigned depth) {
+
+static bool skipped_error(DWORD error) {
+  return error == ERROR_ACCESS_DENIED || error == ERROR_SHARING_VIOLATION ||
+         error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ||
+         error == ERROR_DIRECTORY || error == ERROR_DELETE_PENDING;
+}
+/* ObjectName is one validated component, never an absolute or reconstructed
+ * path. Every parent is a live, verified directory handle. */
+static HANDLE open_child(HANDLE parent, wchar_t *name, USHORT bytes,
+                         bool listing, DWORD *error) {
+  UNICODE_STRING component = {bytes, bytes, name};
+  OBJECT_ATTRIBUTES attributes;
+  memset(&attributes, 0, sizeof(attributes));
+  attributes.Length = sizeof(attributes);
+  attributes.RootDirectory = parent;
+  attributes.ObjectName = &component;
+  IO_STATUS_BLOCK io;
+  HANDLE file = INVALID_HANDLE_VALUE;
+  NTSTATUS status = NtCreateFile(
+      &file,
+      FILE_READ_ATTRIBUTES | SYNCHRONIZE | (listing ? FILE_LIST_DIRECTORY : 0),
+      &attributes, &io, NULL, 0,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
+      FILE_OPEN_REPARSE_POINT | FILE_OPEN_FOR_BACKUP_INTENT |
+          FILE_SYNCHRONOUS_IO_NONALERT | (listing ? FILE_DIRECTORY_FILE : 0),
+      NULL, 0);
+  if (status < 0) {
+    *error = RtlNtStatusToDosError(status);
+    return INVALID_HANDLE_VALUE;
+  }
+  return file;
+}
+static bool same_file(const BY_HANDLE_FILE_INFORMATION *a,
+                      const BY_HANDLE_FILE_INFORMATION *b) {
+  return a->dwVolumeSerialNumber == b->dwVolumeSerialNumber &&
+         a->nFileIndexHigh == b->nFileIndexHigh &&
+         a->nFileIndexLow == b->nFileIndexLow;
+}
+static FsStatus walk_dir(FsWalk *, HANDLE, const char *, unsigned);
+static FsStatus visit(FsWalk *walk, HANDLE parent, const char *root,
+                      const FILE_ID_BOTH_DIR_INFO *record, unsigned depth) {
+  FsEngine *e = walk->engine;
+  wchar_t *raw = fsx_alloc(e, (size_t)record->FileNameLength + sizeof(wchar_t));
+  if (!raw)
+    return FS_NOMEM;
+  memcpy(raw, record->FileName, record->FileNameLength);
+  raw[record->FileNameLength / sizeof(wchar_t)] = 0;
+  char *name = fsx_utf8_from_wide(e, raw), *path = NULL;
+  HANDLE file = INVALID_HANDLE_VALUE, listing = INVALID_HANDLE_VALUE;
+  FsStatus status = FS_OK;
+  if (!name) {
+    DWORD error = GetLastError();
+    if (error == ERROR_NO_UNICODE_TRANSLATION) {
+      walk->skipped++;
+      walk->unsupported++;
+    } else
+      status = win_status(error);
+    goto done;
+  }
+  size_t length = strlen(root), bytes = strlen(name);
+  if (length > 65534 || bytes > 65534 - length) {
+    status = FS_LIMIT;
+    goto done;
+  }
+  bool separator = length && root[length - 1] != '/';
+  path = fsx_alloc(e, length + bytes + 2);
+  if (!path) {
+    status = FS_NOMEM;
+    goto done;
+  }
+  memcpy(path, root, length);
+  if (separator)
+    path[length] = '/';
+  memcpy(path + length + (separator ? 1 : 0), name, bytes + 1);
+  DWORD error = 0;
+  file = open_child(parent, raw, (USHORT)record->FileNameLength, false, &error);
+  if (file == INVALID_HANDLE_VALUE) {
+    if (skipped_error(error))
+      walk->skipped++;
+    else
+      status = win_status(error);
+    goto done;
+  }
+  BY_HANDLE_FILE_INFORMATION info;
+  if (!GetFileInformationByHandle(file, &info)) {
+    status = win_status(GetLastError());
+    goto done;
+  }
+  bool directory = (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+  bool reparse = (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+  if (directory && !reparse) {
+    listing =
+        open_child(parent, raw, (USHORT)record->FileNameLength, true, &error);
+    if (listing == INVALID_HANDLE_VALUE) {
+      if (skipped_error(error))
+        walk->skipped++;
+      else {
+        status = win_status(error);
+        goto done;
+      }
+    } else {
+      BY_HANDLE_FILE_INFORMATION checked;
+      if (!GetFileInformationByHandle(listing, &checked)) {
+        status = win_status(GetLastError());
+        goto done;
+      }
+      if (!same_file(&info, &checked) ||
+          !(checked.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
+          checked.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+        /* A changed namespace must not switch the object being descended. */
+        walk->skipped++;
+        CloseHandle(listing);
+        listing = INVALID_HANDLE_VALUE;
+      }
+    }
+  }
+  FsObserved observed = {0};
+  observed.name = name;
+  observed.path = path;
+  observed.raw_name = raw;
+  observed.raw_bytes = record->FileNameLength;
+  observed.file_lo = ((uint64_t)info.nFileIndexHigh << 32) | info.nFileIndexLow;
+  observed.size = ((uint64_t)info.nFileSizeHigh << 32) | info.nFileSizeLow;
+  observed.mtime = ((uint64_t)info.ftLastWriteTime.dwHighDateTime << 32) |
+                   info.ftLastWriteTime.dwLowDateTime;
+  observed.flags = FS_ENTRY_MTIME_VALID |
+                   (directory ? FS_ENTRY_DIRECTORY : FS_ENTRY_SIZE_VALID) |
+                   (reparse ? FS_ENTRY_LINK : 0);
+  status = walk->observe(walk->context, &observed);
+  /* Hold the verified listing handle through the callback and recursion.
+   * Namespace replacement after observation cannot redirect this descent. */
+  if (status == FS_OK && listing != INVALID_HANDLE_VALUE)
+    status = walk_dir(walk, listing, path, depth + 1);
+done:
+  if (listing != INVALID_HANDLE_VALUE)
+    CloseHandle(listing);
+  if (file != INVALID_HANDLE_VALUE)
+    CloseHandle(file);
+  fsx_free(path);
+  fsx_free(name);
+  fsx_free(raw);
+  return status;
+}
+static FsStatus walk_dir(FsWalk *walk, HANDLE directory, const char *root,
+                         unsigned depth) {
   if (atomic_load(&walk->engine->stopping))
     return FS_CANCELLED;
   if (depth >= walk->engine->config.max_scan_depth)
     return FS_LIMIT;
-  FsEngine *e = walk->engine;
-  size_t len = strlen(root);
-  if (len > 65530)
-    return FS_LIMIT;
-  char *pattern = fsx_alloc(e, len + 3);
-  if (!pattern)
+  enum { BUFFER_BYTES = 4096 };
+  unsigned char *buffer = fsx_alloc(walk->engine, BUFFER_BYTES);
+  if (!buffer)
     return FS_NOMEM;
-  memcpy(pattern, root, len);
-  bool separator = len && root[len - 1] != '/';
-  memcpy(pattern + len, separator ? "/*" : "*", separator ? 3 : 2);
-  wchar_t *wide_pattern = fsx_wide(e, pattern);
-  fsx_free(pattern);
-  if (!wide_pattern)
-    return win_status(GetLastError());
-  WIN32_FIND_DATAW data;
-  HANDLE find =
-      FindFirstFileExW(wide_pattern, FindExInfoBasic, &data,
-                       FindExSearchNameMatch, NULL, FIND_FIRST_EX_LARGE_FETCH);
-  DWORD err = GetLastError();
-  fsx_free(wide_pattern);
-  if (find == INVALID_HANDLE_VALUE) {
-    if (err == ERROR_FILE_NOT_FOUND)
-      return FS_OK;
-    if (err == ERROR_ACCESS_DENIED || err == ERROR_PATH_NOT_FOUND) {
-      walk->skipped++;
-      return FS_OK;
-    }
-    return win_status(err);
-  }
   FsStatus status = FS_OK;
+  bool first = true;
   for (;;) {
-    if (atomic_load(&e->stopping)) {
+    if (atomic_load(&walk->engine->stopping)) {
       status = FS_CANCELLED;
       break;
     }
-    if (wcscmp(data.cFileName, L".") && wcscmp(data.cFileName, L"..")) {
-      char *name = fsx_utf8_from_wide(e, data.cFileName);
-      if (!name) {
-        if (GetLastError() == ERROR_NO_UNICODE_TRANSLATION) {
-          walk->skipped++;
-          walk->unsupported++;
-        } else {
-          status = win_status(GetLastError());
-          break;
-        }
-      } else {
-        size_t n = strlen(name);
-        if (n > 65535 - len - 1) {
-          fsx_free(name);
-          status = FS_LIMIT;
-          break;
-        }
-        char *path = fsx_alloc(e, len + n + 2);
-        if (!path) {
-          fsx_free(name);
-          status = FS_NOMEM;
-          break;
-        }
-        memcpy(path, root, len);
-        if (separator)
-          path[len] = '/';
-        memcpy(path + len + (separator ? 1 : 0), name, n + 1);
-        wchar_t *wide_path = fsx_wide(e, path);
-        if (!wide_path) {
-          fsx_free(name);
-          fsx_free(path);
-          status = win_status(GetLastError());
-          break;
-        }
-        HANDLE file = CreateFileW(
-            wide_path, FILE_READ_ATTRIBUTES,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
-            OPEN_EXISTING,
-            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
-        fsx_free(wide_path);
-        if (file == INVALID_HANDLE_VALUE) {
-          err = GetLastError();
-          if (err == ERROR_ACCESS_DENIED || err == ERROR_SHARING_VIOLATION ||
-              err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND)
-            walk->skipped++;
-          else
-            status = win_status(err);
-        } else {
-          BY_HANDLE_FILE_INFORMATION info;
-          if (!GetFileInformationByHandle(file, &info))
-            status = win_status(GetLastError());
-          else {
-            FsObserved o = {0};
-            o.name = name;
-            o.path = path;
-            o.raw_name = data.cFileName;
-            o.raw_bytes = wcslen(data.cFileName) * sizeof(wchar_t);
-            o.file_lo =
-                ((uint64_t)info.nFileIndexHigh << 32) | info.nFileIndexLow;
-            o.file_hi = 0;
-            o.size = ((uint64_t)info.nFileSizeHigh << 32) | info.nFileSizeLow;
-            o.mtime = ((uint64_t)info.ftLastWriteTime.dwHighDateTime << 32) |
-                      info.ftLastWriteTime.dwLowDateTime;
-            o.flags = FS_ENTRY_MTIME_VALID;
-            if (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-              o.flags |= FS_ENTRY_DIRECTORY;
-            else
-              o.flags |= FS_ENTRY_SIZE_VALID;
-            if (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
-              o.flags |= FS_ENTRY_LINK;
-            status = walk->observe(walk->context, &o);
-            /* Do not recurse while retaining the metadata handle. */
-          }
-          CloseHandle(file);
-          if (status == FS_OK &&
-              data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY &&
-              !(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
-            status = walk_dir(walk, path, depth + 1);
-        }
-        fsx_free(path);
-        fsx_free(name);
-        if (status != FS_OK)
-          break;
-      }
-    }
-    if (!FindNextFileW(find, &data)) {
-      err = GetLastError();
-      if (err != ERROR_NO_MORE_FILES)
-        status = win_status(err);
+    memset(buffer, 0, BUFFER_BYTES);
+    BOOL read = GetFileInformationByHandleEx(
+        directory,
+        first ? FileIdBothDirectoryRestartInfo : FileIdBothDirectoryInfo,
+        buffer, BUFFER_BYTES);
+    first = false;
+    if (!read) {
+      DWORD error = GetLastError();
+      if (error == ERROR_NO_MORE_FILES)
+        break;
+      if (skipped_error(error))
+        walk->skipped++;
+      else
+        status = win_status(error);
       break;
     }
+    size_t offset = 0, fixed = offsetof(FILE_ID_BOTH_DIR_INFO, FileName);
+    for (;;) {
+      if (BUFFER_BYTES - offset < fixed) {
+        status = FS_CORRUPT;
+        break;
+      }
+      const FILE_ID_BOTH_DIR_INFO *record = (const void *)(buffer + offset);
+      size_t bytes = record->FileNameLength;
+      if (!bytes || bytes % sizeof(wchar_t) || bytes > USHRT_MAX ||
+          bytes > BUFFER_BYTES - offset - fixed ||
+          (record->NextEntryOffset &&
+           (record->NextEntryOffset % 8 ||
+            record->NextEntryOffset < fixed + bytes ||
+            record->NextEntryOffset > BUFFER_BYTES - offset - fixed))) {
+        status = FS_CORRUPT;
+        break;
+      }
+      size_t units = bytes / sizeof(wchar_t);
+      bool dot = units == 1 && record->FileName[0] == L'.';
+      bool dotdot = units == 2 && record->FileName[0] == L'.' &&
+                    record->FileName[1] == L'.';
+      bool component = true;
+      for (size_t i = 0; i < units; i++)
+        if (!record->FileName[i] || record->FileName[i] == L'/' ||
+            record->FileName[i] == L'\\' || record->FileName[i] == L':')
+          component = false;
+      if (!component) {
+        walk->skipped++;
+        walk->unsupported++;
+      } else if (!dot && !dotdot)
+        status = visit(walk, directory, root, record, depth);
+      if (status != FS_OK || !record->NextEntryOffset)
+        break;
+      offset += record->NextEntryOffset;
+    }
+    if (status != FS_OK)
+      break;
+    /* A zero NextEntryOffset ends this batch, not the directory. */
   }
-  FindClose(find);
+  fsx_free(buffer);
   return status;
 }
+static FsStatus walk_root(FsWalk *walk, const char *root) {
+  wchar_t *path = fsx_wide(walk->engine, root);
+  if (!path)
+    return win_status(GetLastError());
+  HANDLE directory = CreateFileW(
+      path, FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+      OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+      NULL);
+  DWORD error = GetLastError();
+  fsx_free(path);
+  if (directory == INVALID_HANDLE_VALUE) {
+    if (skipped_error(error)) {
+      walk->skipped++;
+      return FS_OK;
+    }
+    return win_status(error);
+  }
+  BY_HANDLE_FILE_INFORMATION info;
+  FsStatus status;
+  if (!GetFileInformationByHandle(directory, &info))
+    status = win_status(GetLastError());
+  else if (!(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
+           info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+    status = FS_UNSUPPORTED;
+  else
+    status = walk_dir(walk, directory, root, 0);
+  CloseHandle(directory);
+  return status;
+}
+
 #else
 #include <dirent.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 static FsStatus posix_status(int err) {
   return err == EACCES || err == EPERM ? FS_DENIED
                                        : (err == ENOMEM ? FS_NOMEM : FS_IO);
+}
+static bool posix_skipped(int error) {
+  return error == EACCES || error == EPERM || error == ENOENT ||
+         error == ENOTDIR || error == ELOOP;
 }
 FsStatus fsx_native_root(FsEngine *e, const char *input, char **out) {
   *out = NULL;
@@ -343,19 +474,23 @@ FsStatus fsx_native_volume(FsEngine *e, const char *root, uint64_t *out) {
   *out = (uint64_t)st.st_dev;
   return FS_OK;
 }
-static FsStatus walk_dir(FsWalk *walk, const char *root, unsigned depth) {
+
+static FsStatus walk_dir(FsWalk *walk, int descriptor, const char *root,
+                         unsigned depth) {
   FsEngine *e = walk->engine;
-  if (atomic_load(&e->stopping))
+  if (atomic_load(&e->stopping)) {
+    close(descriptor);
     return FS_CANCELLED;
-  if (depth >= e->config.max_scan_depth)
+  }
+  if (depth >= e->config.max_scan_depth) {
+    close(descriptor);
     return FS_LIMIT;
-  DIR *dir = opendir(root);
+  }
+  DIR *dir = fdopendir(descriptor);
   if (!dir) {
-    if (errno == EACCES || errno == ENOENT) {
-      walk->skipped++;
-      return FS_OK;
-    }
-    return posix_status(errno);
+    int error = errno;
+    close(descriptor);
+    return posix_status(error);
   }
   FsStatus status = FS_OK;
   for (;;) {
@@ -393,35 +528,69 @@ static FsStatus walk_dir(FsWalk *walk, const char *root, unsigned depth) {
       path[a] = '/';
     memcpy(path + a + (separator ? 1 : 0), d->d_name, b + 1);
     struct stat st;
-    if (lstat(path, &st)) {
-      walk->skipped++;
+    if (fstatat(descriptor, d->d_name, &st, AT_SYMLINK_NOFOLLOW)) {
+      if (posix_skipped(errno))
+        walk->skipped++;
+      else
+        status = posix_status(errno);
       fsx_free(path);
+      if (status != FS_OK)
+        break;
       continue;
     }
-    FsObserved o = {0};
-    o.name = d->d_name;
-    o.path = path;
-    o.raw_name = d->d_name;
-    o.raw_bytes = b;
-    o.file_lo = (uint64_t)st.st_ino;
-    o.file_hi = (uint64_t)st.st_dev;
-    o.size = st.st_size >= 0 ? (uint64_t)st.st_size : 0;
-    o.flags = FS_ENTRY_MTIME_VALID;
-    int64_t sec = (int64_t)st.st_mtim.tv_sec;
-    if (sec >= -11644473600LL && sec <= 1728223453709LL)
-      o.mtime = (uint64_t)(sec + 11644473600LL) * 10000000ULL +
-                (uint64_t)st.st_mtim.tv_nsec / 100;
-    else
-      o.flags = 0;
-    if (S_ISDIR(st.st_mode))
-      o.flags |= FS_ENTRY_DIRECTORY;
-    else if (st.st_size >= 0)
-      o.flags |= FS_ENTRY_SIZE_VALID;
-    if (S_ISLNK(st.st_mode))
-      o.flags |= FS_ENTRY_LINK;
-    status = walk->observe(walk->context, &o);
-    if (status == FS_OK && S_ISDIR(st.st_mode))
-      status = walk_dir(walk, path, depth + 1);
+    int child = -1;
+    if (S_ISDIR(st.st_mode)) {
+      child = openat(descriptor, d->d_name,
+                     O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+      if (child < 0) {
+        if (posix_skipped(errno))
+          walk->skipped++;
+        else
+          status = posix_status(errno);
+      } else {
+        struct stat checked;
+        if (fstat(child, &checked)) {
+          status = posix_status(errno);
+          close(child);
+          child = -1;
+        } else if (!S_ISDIR(checked.st_mode) || checked.st_dev != st.st_dev ||
+                   checked.st_ino != st.st_ino) {
+          walk->skipped++;
+          close(child);
+          child = -1;
+        }
+      }
+    }
+    if (status == FS_OK) {
+      FsObserved o = {0};
+      o.name = d->d_name;
+      o.path = path;
+      o.raw_name = d->d_name;
+      o.raw_bytes = b;
+      o.file_lo = (uint64_t)st.st_ino;
+      o.file_hi = (uint64_t)st.st_dev;
+      o.size = st.st_size >= 0 ? (uint64_t)st.st_size : 0;
+      o.flags = FS_ENTRY_MTIME_VALID;
+      int64_t sec = (int64_t)st.st_mtim.tv_sec;
+      if (sec >= -11644473600LL && sec <= 1728223453709LL)
+        o.mtime = (uint64_t)(sec + 11644473600LL) * 10000000ULL +
+                  (uint64_t)st.st_mtim.tv_nsec / 100;
+      else
+        o.flags = 0;
+      if (S_ISDIR(st.st_mode))
+        o.flags |= FS_ENTRY_DIRECTORY;
+      else if (st.st_size >= 0)
+        o.flags |= FS_ENTRY_SIZE_VALID;
+      if (S_ISLNK(st.st_mode))
+        o.flags |= FS_ENTRY_LINK;
+      status = walk->observe(walk->context, &o);
+      if (status == FS_OK && child >= 0) {
+        status = walk_dir(walk, child, path, depth + 1);
+        child = -1; /* walk_dir consumes the descriptor on every path. */
+      }
+    }
+    if (child >= 0)
+      close(child);
     fsx_free(path);
     if (status != FS_OK)
       break;
@@ -429,7 +598,19 @@ static FsStatus walk_dir(FsWalk *walk, const char *root, unsigned depth) {
   closedir(dir);
   return status;
 }
+static FsStatus walk_root(FsWalk *walk, const char *root) {
+  int descriptor = open(root, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+  if (descriptor < 0) {
+    if (errno == EACCES || errno == ENOENT) {
+      walk->skipped++;
+      return FS_OK;
+    }
+    return posix_status(errno);
+  }
+  return walk_dir(walk, descriptor, root, 0);
+}
+
 #endif
 FsStatus fsx_walk(FsWalk *walk, const char *root) {
-  return walk_dir(walk, root, 0);
+  return walk_root(walk, root);
 }

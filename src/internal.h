@@ -46,12 +46,19 @@ struct FsEngine {
   uint64_t owned;
   uint32_t handles, active_jobs;
   uint32_t watch_count, dirty_watches;
-  bool writer, needs_rescan, scan_failed;
+  bool writer, needs_rescan, unscoped_failure;
+  struct FsRootHealth *root_health;
+  uint32_t root_health_count;
   atomic_bool stopping;
   char *database_path, *reader_path;
   unsigned char database_identity[16];
   bool has_database_identity;
 };
+typedef struct FsRootHealth {
+  struct FsRootHealth *next;
+  char *root;
+  bool pending;
+} FsRootHealth;
 struct FsResult {
   atomic_uint refs;
   FsEngine *engine;
@@ -120,6 +127,13 @@ FsStatus fsx_walk(FsWalk *, const char *);
 FsStatus fsx_native_volume(FsEngine *, const char *, uint64_t *);
 FsStatus fsx_query_execute(FsQuery *, FsResult **);
 FsStatus fsx_query_stop(FsQuery *);
+FsStatus fsx_health_prepare(FsEngine *, const char *, FsRootHealth **);
+FsStatus fsx_health_load(FsEngine *);
+void fsx_health_destroy(FsEngine *);
+/* The following control-state updates require the engine mutex. */
+void fsx_health_refresh(FsEngine *);
+void fsx_health_invalidate(FsEngine *, const char *root);
+void fsx_health_validate(FsEngine *, FsRootHealth *);
 /* Caller holds engine mutex; only signals cancellation, never destroys watches.
  */
 void fsx_watch_cancel_all(FsEngine *);
