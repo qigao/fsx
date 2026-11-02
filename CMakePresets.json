@@ -11,21 +11,11 @@
       "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
-      "environment": {
-        "VCPKG_ROOT": "$penv{VCPKG_ROOT}",
-        "VCPKG_CACHE_REPOSITORY_ROOT": "$penv{VCPKG_CACHE_REPOSITORY_ROOT}",
-        "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
-        "CMETA_ROOT": "$penv{CMETA_ROOT}"
-      },
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/cmake/QigaoVcpkgToolchain.cmake",
-        "VCPKG_OVERLAY_PORTS": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/ports",
-        "VCPKG_OVERLAY_TRIPLETS": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/triplets",
         "VCPKG_TARGET_TRIPLET": "$env{FSX_VCPKG_TARGET_TRIPLET}",
         "VCPKG_HOST_TRIPLET": "$env{FSX_VCPKG_HOST_TRIPLET}",
         "VCPKG_INSTALLED_DIR": "${sourceDir}/build/${presetName}/vcpkg_installed",
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
         "BUILD_TESTING": "OFF",
         "FSX_ENABLE_ASAN": "OFF",
         "FSX_ENABLE_UBSAN": "OFF",

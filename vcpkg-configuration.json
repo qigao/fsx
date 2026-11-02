@@ -1,0 +1,13 @@
+{
+  "registries": [
+    {
+      "kind": "git",
+      "repository": "https://github.com/qigao/vcpkg-cache",
+      "reference": "2913c530b8f12ae411e3c180e898fb6c7783462f",
+      "baseline": "2913c530b8f12ae411e3c180e898fb6c7783462f",
+      "packages": [
+        "zstd"
+      ]
+    }
+  ]
+}

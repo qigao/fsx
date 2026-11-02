@@ -10,16 +10,17 @@ if(WIN32)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
 endif()
 
-include(GNUInstallDirs)
+include(cmake/CmakeUtils.cmake)
 include(cmake/Sanitizers.cmake)
 include(cmake/FsxDependencies.cmake)
+if(FSX_BUILD_PARSER_TOOLS)
+  add_subdirectory(tools)
+  include(cmake/FindTools.cmake)
+endif()
 if(BUILD_TESTING)
   include(CTest)
 endif()
 
 # Source-owned library, CLI and test subdirectories are added with their real
 # implementations. Do not create empty libraries or synthetic consumer targets.
-install(FILES README.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
-install(FILES docs/FileSearch-C11-设计.md
-  DESTINATION "${CMAKE_INSTALL_DOCDIR}/docs")
-message(STATUS "FileSearch build scaffold configured; engine and CLI are not implemented")
+message(STATUS "FileSearch development project configured; engine and CLI are not implemented")

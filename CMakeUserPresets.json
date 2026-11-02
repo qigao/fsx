@@ -5,9 +5,35 @@
   ],
   "configurePresets": [
     {
+      "name": "vcpkg-cache",
+      "hidden": true,
+      "environment": {
+        "VCPKG_ROOT": "$penv{VCPKG_ROOT}",
+        "VCPKG_CACHE_REPOSITORY_ROOT": "$penv{VCPKG_CACHE_REPOSITORY_ROOT}"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/cmake/QigaoVcpkgToolchain.cmake",
+        "VCPKG_OVERLAY_PORTS": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/ports",
+        "VCPKG_OVERLAY_TRIPLETS": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/triplets"
+      }
+    },
+    {
+      "name": "sdk-roots",
+      "hidden": true,
+      "environment": {
+        "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+        "CMETA_ROOT": "$penv{CMETA_ROOT}",
+        "RE2C_ROOT": "$penv{RE2C_ROOT}"
+      }
+    },
+    {
       "name": "windows-debug",
       "displayName": "Windows x64 Debug",
-      "inherits": "windows-base",
+      "inherits": [
+        "windows-base",
+        "vcpkg-cache",
+        "sdk-roots"
+      ],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -15,7 +41,11 @@
     {
       "name": "windows-release",
       "displayName": "Windows x64 Release",
-      "inherits": "windows-base",
+      "inherits": [
+        "windows-base",
+        "vcpkg-cache",
+        "sdk-roots"
+      ],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
@@ -23,7 +53,11 @@
     {
       "name": "linux-debug",
       "displayName": "Linux x64 Debug",
-      "inherits": "linux-base",
+      "inherits": [
+        "linux-base",
+        "vcpkg-cache",
+        "sdk-roots"
+      ],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -31,7 +65,11 @@
     {
       "name": "linux-release",
       "displayName": "Linux x64 Release",
-      "inherits": "linux-base",
+      "inherits": [
+        "linux-base",
+        "vcpkg-cache",
+        "sdk-roots"
+      ],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
@@ -59,24 +97,8 @@
       "jobs": 2
     },
     {
-      "name": "install-windows-debug",
-      "configurePreset": "windows-debug",
-      "targets": [
-        "install"
-      ],
-      "jobs": 2
-    },
-    {
       "name": "windows-release",
       "configurePreset": "windows-release",
-      "jobs": 2
-    },
-    {
-      "name": "install-windows-release",
-      "configurePreset": "windows-release",
-      "targets": [
-        "install"
-      ],
       "jobs": 2
     },
     {
@@ -85,24 +107,8 @@
       "jobs": 2
     },
     {
-      "name": "install-linux-debug",
-      "configurePreset": "linux-debug",
-      "targets": [
-        "install"
-      ],
-      "jobs": 2
-    },
-    {
       "name": "linux-release",
       "configurePreset": "linux-release",
-      "jobs": 2
-    },
-    {
-      "name": "install-linux-release",
-      "configurePreset": "linux-release",
-      "targets": [
-        "install"
-      ],
       "jobs": 2
     },
     {
@@ -111,24 +117,8 @@
       "jobs": 2
     },
     {
-      "name": "install-linux-asan-ubsan",
-      "configurePreset": "linux-asan-ubsan",
-      "targets": [
-        "install"
-      ],
-      "jobs": 2
-    },
-    {
       "name": "linux-tsan",
       "configurePreset": "linux-tsan",
-      "jobs": 2
-    },
-    {
-      "name": "install-linux-tsan",
-      "configurePreset": "linux-tsan",
-      "targets": [
-        "install"
-      ],
       "jobs": 2
     }
   ]
