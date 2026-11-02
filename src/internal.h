@@ -43,9 +43,10 @@ struct FsEngine {
   FsSnapshot *current;
   FsQuery *jobs;
   FsWatch *watches;
+  FsNtfs *ntfs;
   uint64_t owned;
   uint32_t handles, active_jobs;
-  uint32_t watch_count, dirty_watches;
+  uint32_t watch_count, dirty_watches, dirty_ntfs;
   bool writer, needs_rescan, unscoped_failure;
   struct FsRootHealth *root_health;
   uint32_t root_health_count;
@@ -137,6 +138,8 @@ void fsx_health_validate(FsEngine *, FsRootHealth *);
 /* Caller holds engine mutex; only signals cancellation, never destroys watches.
  */
 void fsx_watch_cancel_all(FsEngine *);
+FsStatus fsx_ntfs_invalidate_database(FsEngine *, uint32_t source);
+void fsx_ntfs_mark_invalid(FsEngine *, uint32_t source);
 void fsx_result_unref(FsResult *);
 
 #ifdef _WIN32

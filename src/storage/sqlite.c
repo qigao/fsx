@@ -549,6 +549,9 @@ FsStatus fsx_db_scan(FsEngine *e, const char *root, FsScanInfo *out) {
   st = fsx_walk(&walk, root);
   if (st != FS_OK)
     goto done;
+  st = fsx_ntfs_invalidate_database(e, s.source);
+  if (st != FS_OK)
+    goto done;
   char command[256];
   snprintf(command, sizeof(command),
            "DELETE FROM entries WHERE source_id=%u AND seen!=%llu; DELETE FROM "

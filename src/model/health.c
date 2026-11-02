@@ -1,7 +1,7 @@
 #include "internal.h"
 
 void fsx_health_refresh(FsEngine *e) {
-  bool pending = e->unscoped_failure || e->dirty_watches != 0;
+  bool pending = e->unscoped_failure || e->dirty_watches != 0 || e->dirty_ntfs != 0;
   for (FsRootHealth *root = e->root_health; root; root = root->next)
     pending |= root->pending;
   e->needs_rescan = pending;

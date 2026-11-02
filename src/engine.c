@@ -234,9 +234,10 @@ FsStatus fsx_engine_scan(FsEngine *e, const char *root, FsScanInfo *out) {
   fsx_free(canonical);
   cmeta_mutex_lock(&e->mutex);
   e->writer = false;
-  if (s == FS_OK)
+  if (s == FS_OK) {
     fsx_health_validate(e, health);
-  else
+    fsx_ntfs_mark_invalid(e, out->source_id);
+  } else
     fsx_health_invalidate(e, health ? health->root : NULL);
   cmeta_cond_broadcast(&e->changed);
   cmeta_mutex_unlock(&e->mutex);

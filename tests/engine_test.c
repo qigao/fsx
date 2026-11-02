@@ -3,6 +3,7 @@
 #define _XOPEN_SOURCE 700
 #endif
 #include "../src/internal.h"
+#include "../src/source/ntfs/ntfs.h"
 #include <fsx/api.h>
 #include <salts/thread.h>
 #include <sqlite3.h>
@@ -1707,6 +1708,643 @@ suite("FileSearch engine") {
     check_equal(info.core_unicode_version, "17.0.0");
     check_true(info.regex_version[0] != 0);
     check_true(info.regex_unicode_version[0] != 0);
+  }
+#endif
+}
+
+/* Deterministic source provider drives the production transaction coordinator.
+ * Native byte layouts, SQLite, FTS and retained result queries remain real. */
+typedef struct NtNode {
+  uint64_t frn, parent, size;
+  uint32_t attributes;
+  char name[48];
+  bool live;
+} NtNode;
+typedef struct NtEvent {
+  NtNode node;
+  int64_t usn;
+  uint32_t reason, length;
+} NtEvent;
+static struct {
+  FsNtfsIdentity identity;
+  NtNode nodes[32];
+  NtEvent events[64];
+  unsigned node_count, event_count, queries, lists, closed;
+  bool inject_create, inject_gap;
+  int read_fault;
+  FsStatus list_failure;
+} nt;
+static FsNtfs *native_source, *other_native_source;
+#define NT_FRN(index) (UINT64_C(0x8123000000000000) | (index))
+static void nt16(unsigned char *p, uint16_t n) {
+  p[0] = (unsigned char)n;
+  p[1] = (unsigned char)(n >> 8);
+}
+static void nt32(unsigned char *p, uint32_t n) {
+  for (unsigned i = 0; i < 4; i++)
+    p[i] = (unsigned char)(n >> (8 * i));
+}
+static uint32_t nt_record(void *buffer, const NtNode *node, int64_t usn,
+                          uint32_t reason) {
+  unsigned char *p = buffer;
+  size_t length = strlen(node->name);
+  uint32_t size = (uint32_t)((60 + length * 2 + 7) & ~7u);
+  memset(p, 0, size);
+  nt32(p, size);
+  nt16(p + 4, 2);
+  fsx_ntfs_put64(p + 8, node->frn);
+  fsx_ntfs_put64(p + 16, node->parent);
+  fsx_ntfs_put64(p + 24, (uint64_t)usn);
+  nt32(p + 40, reason);
+  nt32(p + 52, node->attributes);
+  nt16(p + 56, (uint16_t)(length * 2));
+  nt16(p + 58, 60);
+  for (size_t i = 0; i < length; i++)
+    nt16(p + 60 + 2 * i, (unsigned char)node->name[i]);
+  return size;
+}
+static NtNode *nt_add(unsigned id, unsigned parent, const char *name,
+                      bool dir) {
+  check_true(nt.node_count < 32);
+  NtNode *node = &nt.nodes[nt.node_count++];
+  memset(node, 0, sizeof(*node));
+  node->frn = NT_FRN(id);
+  node->parent = NT_FRN(parent);
+  node->live = true;
+  node->size = 7;
+  node->attributes = dir ? FSX_NTFS_DIR : 0;
+  snprintf(node->name, sizeof(node->name), "%s", name);
+  return node;
+}
+static void nt_event(NtNode *node, uint32_t reason) {
+  check_true(nt.event_count < 64);
+  NtEvent *e = &nt.events[nt.event_count++];
+  e->node = *node;
+  e->usn = nt.identity.next_usn;
+  e->reason = reason;
+  unsigned char record[256];
+  e->length = nt_record(record, node, e->usn, reason);
+  nt.identity.next_usn += e->length;
+}
+static FsStatus nt_query(void *context, FsNtfsIdentity *out) {
+  (void)context;
+  if (++nt.queries == 3 && nt.inject_create) {
+    NtNode *created = nt_add(40, 20, "catchup.txt", false);
+    nt_event(created, FSX_USN_CREATE);
+  }
+  if (nt.queries == 3 && nt.inject_gap) {
+    nt.identity.next_usn += 8;
+    nt.identity.first_usn = nt.identity.next_usn;
+  }
+  *out = nt.identity;
+  return FS_OK;
+}
+static FsStatus nt_mft(void *context, uint64_t from, void *data,
+                       size_t capacity, size_t *size) {
+  (void)context;
+  unsigned char *p = data;
+  *size = 8;
+  uint64_t last = from;
+  bool any = false;
+  for (unsigned i = 0; i < nt.node_count; i++) {
+    NtNode *node = &nt.nodes[i];
+    uint64_t index = node->frn & UINT64_C(0x0000ffffffffffff);
+    bool duplicate = false;
+    for (unsigned j = 0; j < i; j++)
+      if (nt.nodes[j].live && nt.nodes[j].frn == node->frn)
+        duplicate = true;
+    if (!node->live || index < from || duplicate)
+      continue;
+    unsigned char record[256];
+    uint32_t bytes = nt_record(record, node, 0, 0);
+    if (*size + bytes > capacity)
+      break;
+    memcpy(p + *size, record, bytes);
+    *size += bytes;
+    last = index + 1;
+    any = true;
+  }
+  if (!any)
+    return FS_END;
+  fsx_ntfs_put64(p, last);
+  return FS_OK;
+}
+static FsStatus nt_read(void *context, int64_t from, uint64_t journal,
+                        void *data, size_t capacity, size_t *size) {
+  (void)context;
+  if (journal != nt.identity.journal_id || from < nt.identity.first_usn)
+    return FS_STALE;
+  unsigned char *p = data;
+  *size = 8;
+  int64_t next = from;
+  for (unsigned i = 0; i < nt.event_count; i++) {
+    NtEvent *e = &nt.events[i];
+    if (e->usn < from)
+      continue;
+    if (*size + e->length > capacity)
+      break;
+    *size += nt_record(p + *size, &e->node, e->usn, e->reason);
+    next = e->usn + e->length;
+  }
+  if (*size == 8)
+    next = nt.identity.next_usn;
+  fsx_ntfs_put64(p, (uint64_t)next);
+  if (nt.read_fault == 1 && *size > 8)
+    --*size;
+  if (nt.read_fault == 2 && *size > 8)
+    nt16(p + 12, 3);
+  return FS_OK;
+}
+static void nt_observed(NtNode *node, FsObserved *o) {
+  memset(o, 0, sizeof(*o));
+  o->file_lo = node->frn;
+  o->size = node->size;
+  o->mtime = 100;
+  o->flags = FS_ENTRY_MTIME_VALID |
+             (node->attributes & FSX_NTFS_DIR ? FS_ENTRY_DIRECTORY
+                                              : FS_ENTRY_SIZE_VALID);
+  if (node->attributes & FSX_NTFS_REPARSE)
+    o->flags |= FS_ENTRY_LINK;
+}
+static FsStatus nt_list(void *context, uint64_t parent, FsObserve visit,
+                        void *target) {
+  (void)context;
+  nt.lists++;
+  if (nt.list_failure != FS_OK)
+    return nt.list_failure;
+  bool exists = false;
+  for (unsigned i = 0; i < nt.node_count; i++)
+    if (nt.nodes[i].live && nt.nodes[i].frn == parent)
+      exists = true;
+  if (!exists)
+    return FS_END;
+  for (unsigned i = 0; i < nt.node_count; i++) {
+    NtNode *node = &nt.nodes[i];
+    if (!node->live || node->parent != parent)
+      continue;
+    unsigned char raw[96];
+    size_t n = strlen(node->name);
+    for (size_t j = 0; j < n; j++)
+      nt16(raw + 2 * j, (unsigned char)node->name[j]);
+    FsObserved o;
+    nt_observed(node, &o);
+    o.name = node->name;
+    o.raw_name = raw;
+    o.raw_bytes = 2 * n;
+    FsStatus status = visit(target, &o);
+    if (status != FS_OK)
+      return status;
+  }
+  return FS_OK;
+}
+static FsStatus nt_stat(void *context, uint64_t frn, FsObserved *out) {
+  (void)context;
+  for (unsigned i = 0; i < nt.node_count; i++)
+    if (nt.nodes[i].live && nt.nodes[i].frn == frn) {
+      nt_observed(&nt.nodes[i], out);
+      return FS_OK;
+    }
+  return FS_END;
+}
+static uint32_t nt_error(void *context) {
+  (void)context;
+  return nt.list_failure == FS_DENIED ? 5 : 0;
+}
+static void nt_close(void *context) {
+  (void)context;
+  nt.closed++;
+}
+static const FsNtfsOps nt_ops = {nt_query, nt_mft,   nt_read, nt_list,
+                                 nt_stat,  nt_error, nt_close};
+static void nt_setup(void) {
+  setup();
+  memset(&nt, 0, sizeof(nt));
+  native_source = other_native_source = NULL;
+  nt.identity = (FsNtfsIdentity){0};
+  nt.identity.volume_serial = UINT64_C(0xfedcba9876543210);
+  nt.identity.common_volume = 123;
+  nt.identity.journal_id = UINT64_C(0xabcdef9876543210);
+  nt.identity.root_frn = NT_FRN(10);
+  nt.identity.volume_root_frn = NT_FRN(5);
+  nt.identity.next_usn = 1024;
+  strcpy(nt.identity.volume_guid, "test-volume");
+  nt_add(10, 5, "tree", true);
+  nt_add(20, 10, "sub", true);
+  nt_add(30, 20, "alpha.txt", false);
+  open_engine();
+  check_equal(fsx_native_volume(engine, root, &nt.identity.common_volume),
+              FS_OK);
+}
+static void nt_open(uint32_t batch) {
+  FsNtfsConfig config = fsx_ntfs_config();
+  config.max_batch_records = batch;
+  check_equal(fsx_ntfs_open_provider(engine, root, &config, &nt_ops, &nt,
+                                     &native_source),
+              FS_OK);
+}
+static FsNtfsInfo nt_build(void) {
+  nt_open(4096);
+  FsNtfsInfo out;
+  FsStatus status = fsx_ntfs_rebuild(native_source, &out);
+  check(status == FS_OK, "native rebuild: %s (%s)", fsx_status_name(status),
+        sqlite3_errmsg(engine->db));
+  check_true(out.caught_up);
+  return out;
+}
+static int64_t nt_scalar(const char *text) {
+  sqlite3_stmt *s = NULL;
+  check_equal(sqlite3_prepare_v2(engine->db, text, -1, &s, NULL), SQLITE_OK);
+  check_equal(sqlite3_step(s), SQLITE_ROW);
+  int64_t out = sqlite3_column_int64(s, 0);
+  sqlite3_finalize(s);
+  return out;
+}
+suite("NTFS transaction protocol") {
+  before_each() { nt_setup(); }
+  after_each() {
+    if (other_native_source)
+      check_equal(fsx_ntfs_close(&other_native_source), FS_OK);
+    if (native_source)
+      check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    teardown();
+  }
+  it("builds subtree topology and all hardlink aliases with full unsigned "
+     "identities") {
+    nt_add(30, 10, "alias.txt", false);
+    FsNtfsInfo info = nt_build();
+    check_equal(info.root_frn, NT_FRN(10));
+    check_equal(info.journal_id, nt.identity.journal_id);
+    check_equal(count("file:"), (uint64_t)2);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).key.file_id_lo, NT_FRN(30));
+    check_equal(nt_scalar("SELECT count(*) FROM objects"), (int64_t)2);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                info.next_usn);
+    open_oracle();
+    equivalent("alpha", fsx_query_options());
+  }
+  it("catches changes after initial namespace enumeration before publishing "
+     "U1") {
+    nt.inject_create = true;
+    FsNtfsInfo info = nt_build();
+    check_equal(count("catchup"), (uint64_t)1);
+    check_equal(info.journal_records, (uint64_t)1);
+    check_equal(info.next_usn, nt.identity.next_usn);
+  }
+
+  it("aborts MFT handoff if the journal stops covering U0 during enumeration") {
+    nt.inject_gap = true;
+    nt_open(4096);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_STALE);
+    check_true(info.needs_rebuild);
+    check_equal(nt_scalar("SELECT count(*) FROM sources"), (int64_t)0);
+    check_equal(nt_scalar("SELECT count(*) FROM fsx_ntfs_sources"), (int64_t)0);
+    check_equal(count("alpha"), (uint64_t)0);
+  }
+  it("resumes a committed checkpoint after closing and reopening the session") {
+    FsNtfsInfo first = nt_build();
+    unsigned lists = nt.lists;
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    nt_open(4096);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(info.next_usn, first.next_usn);
+    check_equal(nt.lists, lists);
+    NtNode *node = nt_add(40, 20, "created.txt", false);
+    nt_event(node, FSX_USN_CREATE);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("created"), (uint64_t)1);
+    check_equal(info.next_usn, nt.identity.next_usn);
+  }
+
+  it("refreshes an older mirror before acknowledging a checkpoint advanced by "
+     "another engine") {
+    nt_build();
+    open_oracle();
+    FsNtfsConfig config = fsx_ntfs_config();
+    check_equal(fsx_ntfs_open_provider(oracle_engine, root, &config, &nt_ops,
+                                       &nt, &other_native_source),
+                FS_OK);
+    NtNode *node = nt_add(40, 20, "external.txt", false);
+    nt_event(node, FSX_USN_CREATE);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(other_native_source, &info), FS_OK);
+    check_equal(count("external"), (uint64_t)0);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_true(info.caught_up);
+    check_equal(count("external"), (uint64_t)1);
+    check_equal(info.snapshot_epoch, (uint64_t)2);
+  }
+  it("handles split rename records and aliases without requiring an OLD NEW "
+     "pair") {
+    nt_build();
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    nt_open(1);
+    nt_event(&nt.nodes[2], FSX_USN_OLD);
+    strcpy(nt.nodes[2].name, "renamed.txt");
+    nt_event(&nt.nodes[2], FSX_USN_NEW);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_false(info.caught_up);
+    check_equal(count("alpha"), (uint64_t)0);
+    check_equal(count("renamed"), (uint64_t)1);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_true(info.caught_up);
+    nt_add(30, 10, "hardlink.txt", false);
+    nt_event(&nt.nodes[2], FSX_USN_LINK);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("file:"), (uint64_t)2);
+  }
+  it("rewrites descendant paths on directory rename while preserving alias "
+     "entry keys") {
+    nt_build();
+    check_equal(count("alpha"), (uint64_t)1);
+    uint64_t key = entry(0, NULL).entry_key;
+    nt_event(&nt.nodes[1], FSX_USN_OLD);
+    strcpy(nt.nodes[1].name, "moved");
+    nt_event(&nt.nodes[1], FSX_USN_NEW);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).entry_key, key);
+    check_contains(entry(0, NULL).path, "/moved/alpha.txt");
+  }
+  it("drops subtrees moved outside the selected root and enumerates them on "
+     "return") {
+    nt_build();
+    nt.nodes[1].parent = NT_FRN(90);
+    nt_event(&nt.nodes[1], FSX_USN_NEW);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)0);
+    nt.nodes[1].parent = NT_FRN(10);
+    nt_event(&nt.nodes[1], FSX_USN_NEW);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+  }
+  it("refreshes indexed object metadata for writes through an outside alias") {
+    nt_build();
+    nt.nodes[2].size = 999;
+    NtNode outside = nt.nodes[2];
+    outside.parent = NT_FRN(90);
+    nt_event(&outside, 1);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)999);
+  }
+  it("distinguishes a reused MFT record number by its sequence bits") {
+    nt_build();
+    nt.nodes[2].frn = UINT64_C(0x812400000000001e);
+    nt_event(&nt.nodes[2], FSX_USN_CREATE);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).key.file_id_lo, nt.nodes[2].frn);
+  }
+  it("rolls back both facts and cursor when a required directory is denied") {
+    FsNtfsInfo before = nt_build();
+    NtNode *node = nt_add(40, 20, "denied.txt", false);
+    nt_event(node, FSX_USN_CREATE);
+    nt.list_failure = FS_DENIED;
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_DENIED);
+    check_equal(info.next_usn, before.next_usn);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    check_equal(count("denied"), (uint64_t)0);
+    nt.list_failure = FS_OK;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("denied"), (uint64_t)1);
+  }
+  it("requires rebuilding after journal wrap or reset without advancing the "
+     "checkpoint") {
+    FsNtfsInfo before = nt_build();
+    nt.identity.first_usn = before.next_usn + 8;
+    nt.identity.next_usn += 8;
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_STALE);
+    check_true(info.needs_rebuild);
+    check_equal(info.next_usn, before.next_usn);
+    nt.identity.first_usn = 0;
+    nt.identity.journal_id++;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+    check_equal(info.journal_id, nt.identity.journal_id);
+  }
+  it("rejects truncated and unsupported journal records atomically") {
+    FsNtfsInfo before = nt_build();
+    nt_event(&nt.nodes[2], 1);
+    nt.read_fault = 1;
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_CORRUPT);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    nt.read_fault = 2;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+    nt_event(&nt.nodes[2], 1);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_UNSUPPORTED);
+  }
+  it("retains the prior snapshot and checkpoint when SQL projection fails") {
+    FsNtfsInfo before = nt_build();
+    NtNode *node = nt_add(40, 20, "rollback.txt", false);
+    nt_event(node, FSX_USN_CREATE);
+    edit_database("CREATE TRIGGER refuse_native BEFORE INSERT ON entries BEGIN "
+                  "SELECT RAISE(ABORT,'injected failure'); END;");
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_CORRUPT);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    check_equal(count("rollback"), (uint64_t)0);
+    edit_database("DROP TRIGGER refuse_native");
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+    check_equal(count("rollback"), (uint64_t)1);
+  }
+  it("invalidates the native profile when a generic scan replaces the source") {
+    nt_build();
+    put("generic.txt", "x");
+    scan();
+    check_equal(nt_scalar("SELECT count(*) FROM sources"), (int64_t)1);
+    check_equal(nt_scalar("SELECT valid FROM fsx_ntfs_sources"), (int64_t)0);
+    check_equal(nt_scalar("SELECT count(*) FROM fsx_ntfs_names"), (int64_t)0);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_STALE);
+    check_equal(count("generic"), (uint64_t)1);
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+  }
+
+  it("publishes no partial state when managed allocations exceed the owned "
+     "budget") {
+    FsNtfsInfo before = nt_build();
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    uint64_t budget = engine->config.owned_memory_budget;
+    engine->config.owned_memory_budget = progress.owned_bytes + 1;
+    NtNode *node = nt_add(40, 20, "budget.txt", false);
+    nt_event(node, FSX_USN_CREATE);
+    FsNtfsInfo info;
+    FsStatus status = fsx_ntfs_sync(native_source, &info);
+    engine->config.owned_memory_budget = budget;
+    check_equal(status, FS_NOMEM);
+    check_equal(info.next_usn, before.next_usn);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    check_equal(count("budget"), (uint64_t)0);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("budget"), (uint64_t)1);
+  }
+  it("retains old result metadata while FTS observes the newly committed "
+     "revision") {
+    nt_build();
+    check_equal(count("alpha"), (uint64_t)1);
+    retained_result = held_result;
+    held_result = NULL;
+    nt.nodes[2].size = 111;
+    nt_event(&nt.nodes[2], 1);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)111);
+    FsHit hit;
+    size_t written;
+    FsEntryView previous;
+    check_equal(fsx_result_page(retained_result, 0, 1, &hit, 1, &written),
+                FS_OK);
+    check_equal(fsx_result_entry(retained_result, hit, &previous), FS_OK);
+    check_equal(previous.size, (uint64_t)7);
+    open_oracle();
+    equivalent("alpha", fsx_query_options());
+  }
+  it("handles directory name swaps without unique path collisions") {
+    nt_add(40, 10, "other", true);
+    nt_add(50, 40, "beta.txt", false);
+    nt_build();
+    strcpy(nt.nodes[1].name, "other");
+    strcpy(nt.nodes[3].name, "sub");
+    nt_event(&nt.nodes[1], FSX_USN_NEW);
+    nt_event(&nt.nodes[3], FSX_USN_NEW);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_contains(entry(0, NULL).path, "/other/");
+    check_equal(count("beta"), (uint64_t)1);
+    check_contains(entry(0, NULL).path, "/sub/");
+  }
+  it("refuses MFT inventory limits without creating a partial source "
+     "checkpoint") {
+    FsNtfsConfig config = fsx_ntfs_config();
+    config.max_mft_records = 1;
+    check_equal(fsx_ntfs_open_provider(engine, root, &config, &nt_ops, &nt,
+                                       &native_source),
+                FS_OK);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_LIMIT);
+    check_equal(nt_scalar("SELECT count(*) FROM fsx_ntfs_sources"), (int64_t)0);
+    check_equal(nt_scalar("SELECT count(*) FROM sources"), (int64_t)0);
+    check_equal(count(""), (uint64_t)0);
+  }
+  it("rejects malformed UTF16 names without publishing partial text coverage") {
+    unsigned char raw[] = {0x00, 0xd8};
+    char *text = NULL;
+    check_equal(fsx_ntfs_text(engine, raw, sizeof(raw), &text), FS_UNSUPPORTED);
+    check_null(text);
+    unsigned char slash[] = {'a', 0, '/', 0};
+    check_equal(fsx_ntfs_text(engine, slash, sizeof(slash), &text),
+                FS_UNSUPPORTED);
+    check_null(text);
+  }
+#ifdef _WIN32
+  it("rejects a persistent database inside the native source root before "
+     "opening the journal") {
+    check_equal(fsx_engine_close(&engine, FSX_DEADLINE_INFINITE), FS_OK);
+    snprintf(database, sizeof(database), "%s/inside.db", root);
+    open_engine();
+    FsNtfsConfig config = fsx_ntfs_config();
+    check_equal(fsx_ntfs_open(engine, root, &config, &native_source),
+                FS_INVALID);
+    check_null(native_source);
+  }
+#endif
+
+  it("leaves indexed filename facts unchanged for events outside the selected "
+     "tree") {
+    nt_build();
+    edit_database(
+        "CREATE TRIGGER reject_unrelated_update BEFORE UPDATE ON entries BEGIN"
+        " SELECT RAISE(ABORT,'unchanged entry touched'); END;");
+    NtNode outside = {NT_FRN(99), NT_FRN(90), 1, 0, "outside", true};
+    nt_event(&outside, 1);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+  }
+  it("keeps empty scopes stable on outside-volume journal activity") {
+    nt.nodes[2].live = false;
+    nt_build();
+    unsigned lists = nt.lists;
+    NtNode outside = {NT_FRN(99), NT_FRN(90), 1, 0, "outside", true};
+    nt_event(&outside, 1);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(nt.lists, lists);
+  }
+  it("holds an external engine handle and observes STOPPING at the next "
+     "boundary") {
+    nt_build();
+    check_equal(fsx_engine_close(&engine, 0), FS_BUSY);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_CANCELLED);
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    check_equal(nt.closed, 1u);
+  }
+#ifdef _WIN32
+  it("reports native volume capabilities explicitly without switching to RDC") {
+    const FsNtfsOps *ops = NULL;
+    void *context = NULL;
+    FsNtfsConfig config = fsx_ntfs_config();
+    FsOpenError diagnostic = {0};
+    config.open_error = &diagnostic;
+
+    wchar_t probe_path[2048], filesystem[32] = {0};
+    wide(root, probe_path, 2048);
+    HANDLE probe =
+        CreateFileW(probe_path, FILE_READ_ATTRIBUTES,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    check(probe != INVALID_HANDLE_VALUE, "native capability probe");
+    BOOL detected = GetVolumeInformationByHandleW(probe, NULL, 0, NULL, NULL,
+                                                  NULL, filesystem, 32);
+    DWORD detected_error = GetLastError();
+    CloseHandle(probe);
+    fprintf(stderr,
+            "NTFS native filesystem probe: success=%u error=%lu name=%ls\n",
+            detected, detected_error, filesystem);
+    FsStatus status =
+        fsx_ntfs_native_open(engine, root, &config, &ops, &context);
+    if (status == FS_OK) {
+      FsNtfsIdentity id;
+      check_equal(ops->query(context, &id), FS_OK);
+      unsigned char buffer[65536];
+      size_t size = 0;
+      FsStatus enumerated = ops->mft(context, 0, buffer, sizeof(buffer), &size);
+      check(enumerated == FS_OK || enumerated == FS_DENIED,
+            "MFT capability: %s", fsx_status_name(enumerated));
+      if (enumerated == FS_OK)
+        check_true(size >= 8);
+      fprintf(stderr, "NTFS native capability: journal=OK MFT=%s\n",
+              fsx_status_name(enumerated));
+      ops->close(context);
+    } else {
+      fprintf(stderr, "NTFS native capability: open=%s error=%d phase=%s\n",
+              fsx_status_name(status), diagnostic.native_code,
+              diagnostic.diagnostic);
+      check(status == FS_DENIED || status == FS_STALE ||
+                (status == FS_UNSUPPORTED &&
+                 (!detected || wcscmp(filesystem, L"NTFS"))),
+            "native open: %s (%s)", fsx_status_name(status),
+            diagnostic.diagnostic);
+    }
   }
 #endif
 }

@@ -235,3 +235,80 @@ and [read-transaction isolation](https://sqlite.org/isolation.html). The current
 indexed universe contains only supported Unicode names; omitted native names
 remain partial coverage. Future raw-name storage must add a safe scan union
 before using these candidates over a larger universe.
+
+## NTFS MFT/USN source protocol
+
+The NTFS source is an explicit, local Windows backend; it does not change token
+privileges, create/delete a journal, or fall back to RDC. It admits NTFS, a volume
+GUID plus full volume serial, a full 64-bit root FRN (including sequence), and V2
+USN records. Other record majors, inaccessible required directories, unsupported
+native names and missing journals fail explicitly. ReFS/128-bit FRNs are outside
+this profile. A private provider boundary supplies the actual native operations;
+formal tests exercise the same coordinator with deterministic records/faults.
+
+A session is one external engine handle. Hosts serialize calls on a session.
+Rebuild/sync reserve the existing single writer; queries retain old snapshots.
+The session owns one bounded I/O buffer (4–1024 KiB; default 64 KiB); the provider
+owns bounded native resources. MFT enumeration is bounded by a configured record
+limit, scope/aliases by engine entry/depth limits, and journal work by a configured
+records-per-batch limit. SQLite staging uses file-backed temporary storage and the
+existing cache/row limits, not an asserted process-wide RSS cap. Hosts join session
+callers before close releases the source; STOPPING is checked at batch and
+row boundaries. There are no background threads or blocking journal waits.
+
+Rebuild captures JournalID and U0 before enumerating MFT records. The persistent
+directory graph covers the volume so subtree moves can be classified. Directory
+entry batches from selected directory IDs complete actual name edges, including
+all hardlink aliases, without trusting one MFT name per file. Reparse entries
+remain searchable but are not descended. Rebuild then captures a fixed U1 and
+reconciles journal records in [U0,U1), never saving a queried head as an applied
+cursor without consuming that interval. Initial inventory, entries, FTS, source
+coverage, root/volume identity and cursor commit together; the complete immutable
+mirror is allocated/validated before commit and published afterwards. Initial
+rebuild work is synchronous and cancellable at native batch/row boundaries;
+the bounded sync record count does not bound full rebuild time.
+
+Sync resumes the durable cursor. Metadata events refresh the shared object by
+full FRN, including writes via aliases outside the selected tree. Create/delete
+events reconcile affected parents. Directory events refresh topology by full
+FRN and admit newly entering subtrees. File rename/hardlink events conservatively
+reconcile all selected directories, so split OLD/NEW batches need no guessed
+rename pairing and cannot omit a new alias. This is a deliberate bounded fallback,
+not a claim of optimal per-rename performance. Materialized paths are rewritten
+for moved subtrees while retained directory-entry keys remain stable.
+
+Only complete validated V2 records advance a batch cursor. Unknown/truncated
+records, identity changes, cursor regression, journal wrap/discontinuity, source
+replacement, OOM and database errors retain the old committed cursor and mirror.
+A JournalID/gap or invalidated backend checkpoint requires explicit rebuild.
+Derived filename state and its cursor are one SQLite transaction. The final
+identity/floor is rechecked before commit. caught_up means reconciliation through
+the captured head; it does not claim a transactional filesystem snapshot.
+
+Optional schema-v1 NTFS tables are created only by a creation-enabled profile.
+Legacy databases remain readable; NTFS checkpoint mode/version is admitted
+separately. Native open requests GENERIC_READ on the volume and reports its
+admission phase/native error through the optional borrowed open_error output.
+The database must resolve outside the selected tree. A directory-profile scan of an NTFS source invalidates its checkpoint
+in that same transaction, preventing later journal replay over unrelated facts.
+Active sessions participate in needs_rescan aggregation; another source's success
+cannot acknowledge their lag/gap. Reopened sessions always query the journal,
+and stale persisted cursors never silently resume.
+
+Native references: [MFT enumeration](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_enum_usn_data),
+[USN reads](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_read_usn_journal),
+[V2 record layout](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-usn_record_v2).
+
+The CLI exposes ntfs-index (explicit rebuild), ntfs-sync (one resumed batch)
+and ntfs-watch (initial rebuild, then polling batches). A caught-up poll pauses
+250 ms to avoid a tight loop over the volume's unrelated journal traffic,
+including SQLite writes outside the selected root. Materialized filename rows
+and FTS are changed only when their facts differ; saving an outside-tree cursor
+can still publish a new revision. Scope projection and snapshot loading still
+visit complete scopes/rows; the current implementation makes no latency claim.
+
+Checkpoint/profile admission occurs under BEGIN IMMEDIATE, including caught-up
+polls, so another database writer cannot replace a source between admission and
+batch commit. A caught-up poll loads the committed mirror if another engine has
+already advanced its revision; acknowledging the newer cursor with an older
+mirror is forbidden.

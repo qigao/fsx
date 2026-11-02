@@ -117,5 +117,29 @@ class FileSearchCli(unittest.TestCase):
             self.assertEqual(result.returncode, 2, result.stderr)
             self.assertFalse(self.database.exists())
 
+    def test_native_commands_validate_arguments_before_database_creation(self):
+        for command in ("ntfs-index", "ntfs-sync"):
+            for args in [(), (self.root, "extra")]:
+                result = self.run_cli(command, self.database, *args)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertFalse(self.database.exists())
+        result = self.run_cli("ntfs-sync", self.database, self.root)
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(self.database.exists())
+        for args in [("--duration-ms", "0"), ("--updates", "-1"), ("--updates",)]:
+            result = self.run_cli("ntfs-watch", self.database, self.root, *args)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertFalse(self.database.exists())
+
+    @unittest.skipUnless(os.name == "nt", "NTFS backend is Windows-only")
+    def test_native_index_rejects_database_beneath_source(self):
+        inside = self.root / "inside.db"
+        result = self.run_cli("ntfs-index", inside, self.root)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("invalid", result.stderr.lower())
+        info = self.run_cli("info", inside)
+        self.assertEqual(info.returncode, 0, info.stderr)
+        self.assertIn("revision=0 entries=0", info.stdout)
+
 if __name__ == "__main__":
     unittest.main()

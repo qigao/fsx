@@ -2,7 +2,7 @@
 
 A working C11/CMeta file-search library and CLI using SaltsCore, SQLite FTS5 and
 PCRE2. The [design](docs/FileSearch-C11-设计.md) remains the roadmap; the current
-implementation includes snapshot scanning and FTS5 candidate planning; later
+implementation includes directory/RDC scanning, NTFS MFT/USN and FTS5 candidate planning; later
 milestones remain on the roadmap.
 
 ## Implemented
@@ -29,10 +29,15 @@ milestones remain on the roadmap.
   notification buffers, root identity checks, overflow/interruption recovery and
   retryable shutdown. The CLI runs the wait/rescan loop.
 
-Incremental source queues, NTFS USN/MFT,
+- Cooperative Windows NTFS sources: MFT directory topology, complete directory
+  aliases, U0/U1 journal handoff, bounded USN batches, durable cursor recovery,
+  subtree moves and atomic facts/FTS/checkpoint publication.
+
+Dedicated asynchronous source queues,
 raw-unit queries for invalid Unicode names and Everything import are later work.
 The current collector explicitly marks skipped/unrepresentable names as partial
-coverage. Watches reconcile whole roots; they have no durable change cursor.
+coverage. RDC watches reconcile whole roots and have no durable change cursor;
+NTFS sources use the strict profile described below.
 
 See the [runtime and ownership contract](docs/runtime-contract.md) for precise
 boundaries and limits. The C API is in [api.h](include/fsx/api.h); CMeta value and
@@ -159,10 +164,44 @@ Keep the event-loop thread alive to avoid Windows canceling its pending I/O on
 thread exit; serialized handoffs recover by marking a gap and rescanning.
 Every reopened watch requires validation, and partial coverage remains explicit.
 
+The NTFS commands use a separate native backend:
+
+```powershell
+.\build\windows-debug\bin\fsx.exe ntfs-index .\catalog.db C:/data
+.\build\windows-debug\bin\fsx.exe ntfs-sync .\catalog.db C:/data
+.\build\windows-debug\bin\fsx.exe ntfs-watch .\catalog.db C:/data --duration-ms 60000
+```
+
+`ntfs-index` explicitly rebuilds MFT topology, enumerates selected directory IDs
+to complete hardlink aliases, and catches up USN before committing. `ntfs-sync`
+resumes an existing checkpoint for one bounded journal batch; repeat until
+`caught_up=true`. `ntfs-watch` starts with a rebuild and polls incremental sync,
+pausing 250 ms after reaching each captured head. The initial pass counts toward
+`--updates`; duration/interrupts are checked between synchronous operations.
+
+The database must be outside the selected tree. This backend requires a local
+NTFS volume with an active journal and permission to open/read the volume and
+required directories. It does not enable privileges, create a journal, or switch
+to RDC. Open failures report the native code and admission phase. Journal wrap,
+reset or a generic scan replacing native state requires `ntfs-index` before
+resuming. ReFS and V3/V4 records are outside this profile.
+
+File rename/hardlink events conservatively reconcile selected directories.
+Metadata events refresh indexed objects even when the changed alias is outside
+the selected tree. Descendant paths follow directory moves; unchanged alias
+edges retain their entry keys. Snapshot preparation still reads all database
+rows, and topology/path projection visits the selected scope. This is the first
+correctness implementation, with no measured MFT speed claim.
+
+Embedded hosts use `fsx_ntfs_open/rebuild/sync/close`, serialize session calls and
+join callers before close. The session pins an external engine handle. Default
+limits are a 64 KiB I/O buffer, 16 million MFT records and 4096 USN records per sync;
+engine limits bound indexed aliases and depth.
+
 ## Validation
 
 Windows x64 LLVM-MinGW Debug builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 48 engine cases and 6 CLI end-to-end
+CLI and formal tests. The current suite has 73 engine cases and 8 CLI end-to-end
 cases, run through two CTest entries. Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.
@@ -185,3 +224,12 @@ boundary, failures retained across independent root scans, conservative validati
 after an unidentified failure, and a deterministic directory-to-junction swap
 during observation. Stable junctions remain searchable without traversing targets.
 Linux and sanitizer runs have not been performed in this environment.
+
+NTFS protocol tests use the real SQLite/FTS/snapshot coordinator with a
+deterministic native-operation provider. They cover U0/U1 changes and gaps,
+split renames, hardlinks, subtree moves/name swaps, outside-alias metadata,
+full FRN sequence/unsigned IDs, checkpoint resume, generic-profile invalidation,
+malformed records, SQL/OOM rollback and retained results. The native capability
+test detected NTFS and received access denied (Win32 5) opening the volume in
+the current token. Full real-volume MFT/USN integration and performance remain
+unverified; no elevation was attempted. Linux/sanitizer profiles were not run.

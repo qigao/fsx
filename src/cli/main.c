@@ -1,9 +1,15 @@
+#ifndef _WIN32
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <fsx/api.h>
 #include <inttypes.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
+#include <time.h>
+#endif
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -97,25 +103,107 @@ static FsStatus watch_directory(FsEngine *engine, const char *root,
   FsStatus closed = fsx_watch_close(&watch);
   return status == FS_OK ? closed : status;
 }
+
+static void print_ntfs(const FsNtfsInfo *info) {
+  printf("revision=%" PRIu64 " source=%u next_usn=%" PRId64
+         " target_usn=%" PRId64 " caught_up=%s mft=%" PRIu64 " journal=%" PRIu64
+         " directories=%" PRIu64 "\n",
+         info->snapshot_epoch, info->source_id, info->next_usn,
+         info->target_usn, info->caught_up ? "true" : "false",
+         info->mft_records, info->journal_records,
+         info->directories_reconciled);
+  fflush(stdout);
+}
+static FsStatus ntfs_command(FsEngine *engine, const char *command,
+                             const char *root, uint32_t duration,
+                             uint32_t updates) {
+  FsNtfsConfig config = fsx_ntfs_config();
+  FsOpenError diagnostic = {0};
+  config.open_error = &diagnostic;
+  FsNtfs *source = NULL;
+  FsStatus status = fsx_ntfs_open(engine, root, &config, &source);
+  if (status != FS_OK) {
+    fprintf(stderr, "NTFS open: %s native=%d phase=%s\n",
+            fsx_status_name(status), diagnostic.native_code,
+            diagnostic.diagnostic);
+    return status;
+  }
+  bool continuous = !strcmp(command, "ntfs-watch");
+  interrupted = 0;
+  void (*previous)(int) = NULL;
+  if (continuous) {
+    previous = signal(SIGINT, interrupt_watch);
+    if (previous == SIG_ERR) {
+      fsx_ntfs_close(&source);
+      return FS_IO;
+    }
+  }
+  uint64_t start = fsx_engine_now_ns(engine);
+  uint32_t completed = 0;
+  FsNtfsInfo info = {0};
+  if (!strcmp(command, "ntfs-sync"))
+    status = fsx_ntfs_sync(source, &info);
+  else
+    status = fsx_ntfs_rebuild(source, &info);
+  while (status == FS_OK) {
+    print_ntfs(&info);
+    completed++;
+    if (!continuous || interrupted || (updates && completed >= updates))
+      break;
+    uint64_t now = fsx_engine_now_ns(engine);
+    if (duration && now - start >= (uint64_t)duration * 1000000)
+      break;
+    if (info.caught_up) {
+      uint32_t pause = 250;
+      if (duration) {
+        uint64_t left = (uint64_t)duration - (now - start) / 1000000;
+        if (left < pause)
+          pause = (uint32_t)left;
+      }
+#ifdef _WIN32
+      Sleep(pause);
+#else
+      struct timespec delay = {0, (long)pause * 1000000};
+      nanosleep(&delay, NULL);
+#endif
+    }
+    if (interrupted)
+      break;
+    status = fsx_ntfs_sync(source, &info);
+  }
+  if (status != FS_OK)
+    fprintf(stderr,
+            "NTFS: %s native=%u next_usn=%" PRId64 " needs_rebuild=%s\n",
+            fsx_status_name(status), info.native_error, info.next_usn,
+            info.needs_rebuild ? "true" : "false");
+  if (continuous)
+    signal(SIGINT, previous);
+  FsStatus closed = fsx_ntfs_close(&source);
+  return status == FS_OK ? closed : status;
+}
 static int run(int argc, char **argv) {
   if (argc < 3) {
-    fputs("Usage: fsx index DATABASE ROOT\n       fsx search DATABASE [--limit "
-          "N] [--offset N] [--sort name|path|size|mtime] [--desc] [--case] "
-          "[--jit] [--scan-only] [--allow-partial-text] [--json] -- QUERY\n    "
-          "   fsx info "
-          "DATABASE\n       fsx watch DATABASE ROOT [--duration-ms N] "
-          "[--updates N]\n",
-          stderr);
+    fputs(
+        "Usage: fsx index DATABASE ROOT\n       fsx search DATABASE [--limit "
+        "N] [--offset N] [--sort name|path|size|mtime] [--desc] [--case] "
+        "[--jit] [--scan-only] [--allow-partial-text] [--json] -- QUERY\n    "
+        "   fsx info "
+        "DATABASE\n       fsx watch DATABASE ROOT [--duration-ms N] "
+        "[--updates N]\n       fsx ntfs-index DATABASE ROOT\n"
+        "       fsx ntfs-sync DATABASE ROOT\n"
+        "       fsx ntfs-watch DATABASE ROOT [--duration-ms N] [--updates N]\n",
+        stderr);
     return 2;
   }
   FsEngineConfig config = fsx_engine_config(argv[2]);
   FsQueryOptions options = fsx_query_options();
   FsOpenError open_error = {0};
   config.open_error = &open_error;
-  if (strcmp(argv[1], "index") && strcmp(argv[1], "watch"))
+  if (strcmp(argv[1], "index") && strcmp(argv[1], "watch") &&
+      strcmp(argv[1], "ntfs-index") && strcmp(argv[1], "ntfs-watch"))
     config.flags &= ~FS_ENGINE_CREATE_DATABASE;
   uint32_t watch_duration = 0, watch_updates = 0;
-  if (!strcmp(argv[1], "watch")) {
+  if (!strcmp(argv[1], "watch") || !strcmp(argv[1], "ntfs-watch")) {
     if (argc < 4)
       return 2;
     for (int i = 4; i < argc; i += 2) {
@@ -132,6 +220,9 @@ static int run(int argc, char **argv) {
         return 2;
     }
   }
+  if ((!strcmp(argv[1], "ntfs-index") || !strcmp(argv[1], "ntfs-sync")) &&
+      argc != 4)
+    return 2;
   bool json = false;
   const char *text = "";
   for (int i = 3; strcmp(argv[1], "search") == 0 && i < argc; i++) {
@@ -196,7 +287,11 @@ static int run(int argc, char **argv) {
     return 1;
   }
   int exit_code = 0;
-  if (!strcmp(argv[1], "watch")) {
+  if (!strcmp(argv[1], "ntfs-index") || !strcmp(argv[1], "ntfs-sync") ||
+      !strcmp(argv[1], "ntfs-watch")) {
+    status =
+        ntfs_command(engine, argv[1], argv[3], watch_duration, watch_updates);
+  } else if (!strcmp(argv[1], "watch")) {
     status = watch_directory(engine, argv[3], watch_duration, watch_updates,
                              &exit_code);
   } else if (!strcmp(argv[1], "index") && argc == 4) {

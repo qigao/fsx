@@ -9,11 +9,26 @@ typedef struct FsEngine FsEngine;
 typedef struct FsQuery FsQuery;
 typedef struct FsResult FsResult;
 typedef struct FsWatch FsWatch;
+typedef struct FsNtfs FsNtfs;
 typedef struct FsOpenError {
   FsStatus status;
   int native_code;
   char diagnostic[192];
 } FsOpenError;
+typedef struct FsNtfsConfig {
+  uint32_t struct_size, api_version, buffer_bytes;
+  uint32_t max_mft_records, max_batch_records;
+  FsOpenError *open_error; /* Optional diagnostic, borrowed only during open. */
+} FsNtfsConfig;
+typedef struct FsNtfsInfo {
+  FsNtfsState state;
+  FsStatus status;
+  uint32_t native_error, source_id;
+  uint64_t snapshot_epoch, volume_serial, root_frn, journal_id;
+  int64_t next_usn, target_usn;
+  uint64_t mft_records, journal_records, directories_reconciled;
+  bool needs_rebuild, caught_up;
+} FsNtfsInfo;
 typedef struct FsEngineConfig {
   uint32_t struct_size, api_version, flags, worker_threads;
   const char *database_path; /* UTF-8, copied by open; :memory: is supported. */
@@ -40,9 +55,11 @@ typedef struct FsWatchConfig {
 } FsWatchConfig;
 typedef struct FsWatchInfo {
   FsWatchState state;
-  /* Last scan/monitor status; the wait return value separately reports timeout. */
+  /* Last scan/monitor status; the wait return value separately reports timeout.
+   */
   FsStatus status;
-  /* Last observed native error, including recovered notification interruptions. */
+  /* Last observed native error, including recovered notification interruptions.
+   */
   uint32_t native_error, source_id;
   uint64_t snapshot_epoch, change_batches, overflows, interruptions, rescans;
   bool needs_rescan, coverage_complete;
@@ -99,6 +116,15 @@ FsStatus fsx_watch_wait(FsWatch *, uint64_t deadline_ns, FsWatchInfo *out);
 FsStatus fsx_watch_scan(FsWatch *, FsScanInfo *out);
 /* Join watch callers before close. Engine STOPPING wakes outstanding waits. */
 FsStatus fsx_watch_close(FsWatch **);
+FsNtfsConfig fsx_ntfs_config(void);
+/* Local NTFS + V2 USN. No privilege changes or automatic RDC fallback.
+ * Host serializes session callers. Rebuild performs MFT/USN handoff; sync
+ * commits one bounded journal batch. Repeat sync until caught_up. */
+FsStatus fsx_ntfs_open(FsEngine *, const char *root_utf8, const FsNtfsConfig *,
+                       FsNtfs **out);
+FsStatus fsx_ntfs_rebuild(FsNtfs *, FsNtfsInfo *out);
+FsStatus fsx_ntfs_sync(FsNtfs *, FsNtfsInfo *out);
+FsStatus fsx_ntfs_close(FsNtfs **);
 FsStatus fsx_query_submit(FsEngine *, const FsQueryRequest *, FsQuery **out);
 FsStatus fsx_query_poll(FsQuery *, FsQueryInfo *out);
 FsStatus fsx_query_wait(FsQuery *, uint64_t deadline_ns);
