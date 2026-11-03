@@ -174,6 +174,7 @@ The NTFS commands use a separate native backend:
 
 ```powershell
 .\build\windows-debug\bin\fsx.exe ntfs-index .\catalog.db C:/data
+.\build\windows-debug\bin\fsx.exe ntfs-index .\catalog.db C:/data --raw-mft
 .\build\windows-debug\bin\fsx.exe ntfs-sync .\catalog.db C:/data
 .\build\windows-debug\bin\fsx.exe ntfs-watch .\catalog.db C:/data --duration-ms 60000
 ```
@@ -184,6 +185,14 @@ resumes an existing checkpoint for one bounded journal batch; repeat until
 `caught_up=true`. `ntfs-watch` starts with a rebuild and polls incremental sync,
 pausing 250 ms after reaching each captured head. The initial pass counts toward
 `--updates`; duration/interrupts are checked between synchronous operations.
+
+The optional `--raw-mft` inventory reads MFT chunks directly from checked
+volume extents and validates USA and directory attributes, with bounded kernel
+assistance for metadata/extension records. ENUM remains the default. Raw errors
+are reported without changing mode. Existing directory alias completion and USN
+handoff still run. See the [raw reader protocol and validation](docs/raw-mft-reader.md).
+The C API sets `FsNtfsConfig.mft_reader = FS_NTFS_MFT_RAW` after the factory call.
+Rebuild hosts against the updated FsNtfsConfig/FsNtfsInfo header.
 
 The database must be outside the selected tree. This backend requires a local
 NTFS volume with an active journal and permission to open/read the volume and
@@ -206,14 +215,16 @@ graph, and remains expensive for a small selected subtree.
 
 Embedded hosts use `fsx_ntfs_open/rebuild/sync/close`, serialize session calls and
 join callers before close. The session pins an external engine handle. Default
-limits are a 64 KiB I/O buffer, 16 million MFT records and 4096 USN records per sync;
-engine limits bound indexed aliases and depth.
+limits are a 64 KiB I/O buffer, 16 million MFT records and 4096 USN records per
+sync. Raw mode applies the MFT bound to captured slots, including free slots,
+before allocating. Engine limits bound indexed aliases and depth.
 
 ## Validation
 
 Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 85 engine cases and 9 CLI end-to-end
-cases, run through two CTest entries. Coverage includes hardlinks, Unicode full
+CLI and formal tests. The current suite has 88 engine cases, 17 dedicated raw
+reader cases and 10 CLI cases, run through three ordinary CTest entries.
+Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.
 FTS/scanner comparisons cover Unicode scalar lengths and folding, phrase escaping,

@@ -27,7 +27,7 @@ typedef struct Provider {
   const FsNtfsOps *ops;
   void *context;
   uint64_t mft_ns, read_ns, list_ns, stat_ns, query_ns, mft_calls, read_calls,
-      list_calls, stat_calls, mft_bytes;
+      list_calls, stat_calls, mft_bytes, raw_ns;
   uint64_t announced;
 } Provider;
 static Provider provider;
@@ -257,6 +257,14 @@ static FsStatus p_links(void *ctx, uint64_t frn, FsNtfsParentFn visit,
   Provider *p = ctx;
   return p->ops->links(p->context, frn, visit, target);
 }
+static FsStatus p_inventory(void *ctx, FsNtfsRecordFn visit, void *target,
+                            FsNtfsRawStats *stats) {
+  Provider *p = ctx;
+  uint64_t start = now();
+  FsStatus status = p->ops->inventory(p->context, visit, target, stats);
+  p->raw_ns += now() - start;
+  return status;
+}
 static uint32_t p_error(void *ctx) {
   Provider *p = ctx;
   return p->ops->error(p->context);
@@ -266,8 +274,9 @@ static void p_close(void *ctx) {
   p->ops->close(p->context);
   p->context = NULL;
 }
-static const FsNtfsOps profiling_ops = {p_query, p_mft,   p_read,  p_list,
-                                        p_stat,  p_error, p_close, p_links};
+static const FsNtfsOps profiling_ops = {p_query, p_mft,   p_read,
+                                        p_list,  p_stat,  p_error,
+                                        p_close, p_links, p_inventory};
 
 static void open_engine(FsEngine **out, const char *name, bool scanner) {
   snprintf(database, sizeof(database), "%s/%s", fixture, name);
@@ -298,6 +307,9 @@ static void open_source(FsEngine *engine) {
     sqlite3_progress_handler(engine->db, 100000, sql_progress, NULL);
   }
   FsNtfsConfig config = fsx_ntfs_config();
+  const char *raw = getenv("FSX_NTFS_TEST_RAW_MFT");
+  if (raw && !strcmp(raw, "1"))
+    config.mft_reader = FS_NTFS_MFT_RAW;
   config.buffer_bytes = 1048576;
   config.max_batch_records = 65536;
   FsOpenError error = {0};
@@ -369,6 +381,17 @@ static void record(const char *phase, unsigned sample, Measurement before,
           initial ? provider.list_calls - initial->list_calls : 0,
           (double)mft / 1e6, (double)read / 1e6, (double)list / 1e6,
           (double)stat / 1e6);
+  /* Raw inventory includes SQL directory callbacks; separate it from native
+   * MFT-lookup time so the two readers do not imply equal provider work. */
+  fprintf(metrics,
+          "# raw sample=%u slots=%" PRIu64 " bytes=%" PRIu64 " calls=%" PRIu64
+          " kernel_records=%" PRIu64 " inventory_callback_ms=%.6f\n",
+          sample, native ? native->mft_slots : 0,
+          native ? native->raw_read_bytes : 0,
+          native ? native->raw_read_calls : 0,
+          native ? native->mft_kernel_records : 0,
+          initial ? (double)(provider.raw_ns - initial->raw_ns) / 1e6 : 0);
+
   sql_report();
   fflush(metrics);
   fprintf(stderr,
@@ -540,6 +563,11 @@ static void setup(void) {
           "rebuilds=%u updates=%u\n",
           FSX_TEST_BUILD_TYPE, __clang_version__, system.dwNumberOfProcessors,
           GROUPS * FILES_PER_GROUP, GROUPS, REBUILDS, UPDATES);
+  fprintf(metrics, "# reader=%s\n",
+          getenv("FSX_NTFS_TEST_RAW_MFT") &&
+                  !strcmp(getenv("FSX_NTFS_TEST_RAW_MFT"), "1")
+              ? "raw"
+              : "enum");
   fputs("# OS cache uncontrolled; list_ms includes directory callbacks/SQLite; "
         "peak_ws is cumulative process peak; IO bytes are process counters, "
         "not physical disk bytes.\n",
@@ -681,6 +709,12 @@ suite("Real NTFS volume acceptance and performance") {
             fsx_status_name(native_status), info.native_error, info.next_usn);
       check_true(info.caught_up);
       check_true(info.mft_records > GROUPS * FILES_PER_GROUP);
+      if (source->config.mft_reader == FS_NTFS_MFT_RAW) {
+        check_true(info.mft_slots >= info.mft_records);
+        check_true(info.raw_read_bytes > 0);
+        check_true(info.raw_read_calls > 0);
+        check_true(info.mft_kernel_records >= 2);
+      }
       compare(target, directory_engine);
       close_source();
       if (sample)

@@ -134,11 +134,15 @@ distinct-parent capacity guard was added after this measurement and passed the
 full-volume timing was not repeated for that guard. Linux and sanitizer profiles
 were not run.
 
-## Remaining initialization work
+## Initialization follow-up
 
-Full initialization still uses FSCTL_ENUM_USN_DATA, persists the volume directory
+The explicit [raw MFT reader](../raw-mft-reader.md) was implemented after this
+measurement. The following paragraph describes this report's ENUM baseline;
+see the linked reader report for subsequent raw measurements.
+
+Full initialization in the measured ENUM mode uses FSCTL_ENUM_USN_DATA, persists the volume directory
 graph, completes selected directory aliases, refreshes metadata by ID and catches
-up USN. It has not been replaced with a raw MFT parser. Small-subtree directory
+up USN. This measurement predates the optional raw inventory implementation. Small-subtree directory
 indexing remains an appropriate way to avoid whole-volume ingestion.
 
 A raw MFT reader needs its own bounded USA-fixup, nonresident/runlist,

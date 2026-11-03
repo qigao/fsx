@@ -139,6 +139,16 @@ class FileSearchCli(unittest.TestCase):
             self.assertFalse(self.database.exists())
 
     @unittest.skipUnless(os.name == "nt", "NTFS backend is Windows-only")
+    def test_raw_native_flag_is_accepted_and_preserves_scope_admission(self):
+        inside = self.root / "raw.db"
+        result = self.run_cli("ntfs-index", inside, self.root, "--raw-mft")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("invalid", result.stderr.lower())
+        result = self.run_cli("ntfs-watch", inside, self.root, "--raw-mft", "--updates", "1")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("invalid", result.stderr.lower())
+
+    @unittest.skipUnless(os.name == "nt", "NTFS backend is Windows-only")
     def test_native_index_rejects_database_beneath_source(self):
         inside = self.root / "inside.db"
         result = self.run_cli("ntfs-index", inside, self.root)

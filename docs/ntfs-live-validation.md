@@ -46,6 +46,13 @@ The native backend requests GENERIC_READ on the volume. A denied admission fails
 this opt-in acceptance; it is never converted into a passing RDC fallback or a
 skip. CTest gives the single live test 30 minutes and serializes it.
 
+## Raw reader variant
+
+The later explicit raw inventory mode uses the same complete acceptance body.
+Set FSX_NTFS_TEST_RAW_MFT=1 for its opt-in run; see
+[raw-mft-reader.md](raw-mft-reader.md) for implementation, limits and results.
+The original measurements below remain an ENUM baseline.
+
 ## Measurements
 
 The test creates CSV artifacts in `build/windows-native-release/tests/` and

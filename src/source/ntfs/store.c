@@ -164,7 +164,7 @@ typedef struct Tx {
   uint32_t source;
   uint64_t revision, parent, enumerated, mft_records, journal_records,
       directories, dirty_parents;
-  bool all, topology_changed, structural;
+  bool all, topology_changed, structural, raw_bootstrap;
   sqlite3_stmt *statements[10];
 } Tx;
 static int prepare(Tx *t, unsigned slot, const char *text, sqlite3_stmt **out) {
@@ -265,6 +265,9 @@ static FsStatus directory(Tx *t, const FsNtfsRecord *r) {
     t->topology_changed = t->structural = true;
   fsx_free(name);
   return fsx_db_status(rc);
+}
+static FsStatus raw_directory(void *context, const FsNtfsRecord *r) {
+  return directory(context, r);
 }
 static FsStatus inventory(void *context, const FsNtfsRecord *r) {
   Tx *t = context;
@@ -430,6 +433,7 @@ static FsStatus temp_tables(Tx *t, bool rebuild) {
           "CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path "
           "TEXT NOT NULL,depth INTEGER NOT NULL);"
           "CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);"
+          "CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);"
           "CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);"
           "CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);"
           "CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);"
@@ -441,7 +445,8 @@ static FsStatus temp_tables(Tx *t, bool rebuild) {
           "BLOB,entry_key INTEGER,name TEXT,path TEXT,"
           "name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY "
           "KEY(parent,raw));"
-          "DELETE FROM nt_scope;DELETE FROM nt_processed;DELETE FROM "
+          "DELETE FROM nt_verified;DELETE FROM nt_scope;DELETE FROM "
+          "nt_processed;DELETE FROM "
           "nt_dirty;DELETE FROM nt_changes;DELETE FROM nt_refresh;DELETE FROM "
           "nt_relinks;"
           "DELETE FROM nt_old_keys;DELETE FROM nt_projection;"
@@ -557,6 +562,41 @@ static FsStatus found_dir(void *context, const FsNtfsRecord *r) {
   FsStatus status = dirty_parent(lookup->tx, r->parent);
   return status == FS_OK ? directory(lookup->tx, r) : status;
 }
+static FsStatus current_directory(Tx *t, uint64_t frn) {
+  FsStatus status;
+  size_t bytes = 0;
+  status = t->n->ops->mft(t->n->provider, frn & UINT64_C(0x0000ffffffffffff),
+                          t->n->buffer, 4096, &bytes);
+  Lookup lookup = {t, frn, false};
+  if (status == FS_OK) {
+    uint64_t next;
+    uint32_t count;
+    status = fsx_ntfs_records(t->n->buffer, bytes, false,
+                              frn & UINT64_C(0x0000ffffffffffff), 0, UINT32_MAX,
+                              found_dir, &lookup, &next, &count);
+  } else if (status == FS_END)
+    status = FS_OK;
+  if (status == FS_OK && !lookup.found) {
+    if (frn == t->n->identity.root_frn) {
+      return FS_STALE;
+    }
+    sqlite3_stmt *remove = NULL;
+    int step = sqlite3_prepare_v2(
+        t->e->db, "DELETE FROM fsx_ntfs_dirs WHERE source_id=?1 AND frn=?2", -1,
+        &remove, NULL);
+    if (step == SQLITE_OK) {
+      sqlite3_bind_int64(remove, 1, t->source);
+      bind_id(remove, 2, frn);
+      step = sqlite3_step(remove);
+    }
+    if (step == SQLITE_DONE && sqlite3_changes(t->e->db))
+      t->topology_changed = t->structural = true;
+    sqlite3_finalize(remove);
+    status = fsx_db_status(step);
+  }
+
+  return status;
+}
 static FsStatus changes(Tx *t) {
   sqlite3_stmt *rows = NULL;
   int rc = sqlite3_prepare_v2(t->e->db, "SELECT frn,attributes FROM nt_changes",
@@ -568,41 +608,8 @@ static FsStatus changes(Tx *t) {
       status = FS_CORRUPT;
       break;
     }
-    uint32_t attributes = (uint32_t)sqlite3_column_int64(rows, 1);
-    if (attributes & FSX_NTFS_DIR) {
-      size_t bytes = 0;
-      status =
-          t->n->ops->mft(t->n->provider, frn & UINT64_C(0x0000ffffffffffff),
-                         t->n->buffer, 4096, &bytes);
-      Lookup lookup = {t, frn, false};
-      if (status == FS_OK) {
-        uint64_t next;
-        uint32_t count;
-        status = fsx_ntfs_records(
-            t->n->buffer, bytes, false, frn & UINT64_C(0x0000ffffffffffff), 0,
-            UINT32_MAX, found_dir, &lookup, &next, &count);
-      } else if (status == FS_END)
-        status = FS_OK;
-      if (status == FS_OK && !lookup.found) {
-        if (frn == t->n->identity.root_frn) {
-          status = FS_STALE;
-          break;
-        }
-        sqlite3_stmt *remove = NULL;
-        int step = sqlite3_prepare_v2(
-            t->e->db, "DELETE FROM fsx_ntfs_dirs WHERE source_id=?1 AND frn=?2",
-            -1, &remove, NULL);
-        if (step == SQLITE_OK) {
-          sqlite3_bind_int64(remove, 1, t->source);
-          bind_id(remove, 2, frn);
-          step = sqlite3_step(remove);
-        }
-        if (step == SQLITE_DONE && sqlite3_changes(t->e->db))
-          t->topology_changed = t->structural = true;
-        sqlite3_finalize(remove);
-        status = fsx_db_status(step);
-      }
-    }
+    if ((uint32_t)sqlite3_column_int64(rows, 1) & FSX_NTFS_DIR)
+      status = current_directory(t, frn);
   }
   if (status == FS_OK && rc != SQLITE_DONE)
     status = fsx_db_status(rc);
@@ -687,7 +694,10 @@ static FsStatus reconcile(Tx *t) {
     sqlite3_stmt *pick = NULL;
     int rc = sqlite3_prepare_v2(
         t->e->db,
-        "SELECT s.frn FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn"
+        "SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),"
+        "EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND "
+        "old.frn=s.frn)"
+        " FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn"
         " WHERE p.frn IS NULL AND (s.frn IN(SELECT frn FROM nt_dirty) OR NOT "
         "EXISTS"
         "(SELECT 1 FROM fsx_ntfs_scopes n WHERE n.source_id=?1 AND "
@@ -697,6 +707,8 @@ static FsStatus reconcile(Tx *t) {
       sqlite3_bind_int64(pick, 1, t->source);
       rc = sqlite3_step(pick);
     }
+    bool verify = rc == SQLITE_ROW && !sqlite3_column_int(pick, 1) &&
+                  (t->raw_bootstrap || !sqlite3_column_int(pick, 2));
     uint64_t frn = 0;
     if (rc == SQLITE_ROW && !id_column(pick, 0, &frn)) {
       sqlite3_finalize(pick);
@@ -707,6 +719,29 @@ static FsStatus reconcile(Tx *t) {
       break;
     if (rc != SQLITE_ROW)
       return fsx_db_status(rc);
+    if (verify) {
+      status = current_directory(t, frn);
+      if (status != FS_OK)
+        return status;
+      sqlite3_stmt *verified = NULL;
+      int step = sqlite3_prepare_v2(
+          t->e->db, "INSERT OR IGNORE INTO nt_verified VALUES(?1)", -1,
+          &verified, NULL);
+      if (step == SQLITE_OK) {
+        bind_id(verified, 1, frn);
+        step = sqlite3_step(verified);
+      }
+      sqlite3_finalize(verified);
+      if (step != SQLITE_DONE)
+        return fsx_db_status(step);
+      if (t->topology_changed) {
+        status = make_scope(t);
+        t->topology_changed = false;
+        if (status != FS_OK)
+          return status;
+        continue; /* The verified directory may have left the selected scope. */
+      }
+    }
     t->parent = frn;
     sqlite3_stmt *clear = NULL;
     rc = sqlite3_prepare_v2(
@@ -1233,6 +1268,8 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
     n->info.caught_up = true;
     n->info.needs_rebuild = false;
     n->info.native_error = 0;
+    n->info.mft_slots = n->info.raw_read_bytes = n->info.raw_read_calls =
+        n->info.mft_kernel_records = 0;
     n->info.mft_records = 0;
     n->info.journal_records = 0;
     n->info.directories_reconciled = 0;
@@ -1245,9 +1282,17 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   t.revision = (uint64_t)revision + 1;
   if (status == FS_OK)
     status = temp_tables(&t, rebuild);
+  FsNtfsRawStats raw = {0};
+  t.raw_bootstrap = rebuild && n->config.mft_reader == FS_NTFS_MFT_RAW;
+  if (status == FS_OK && t.raw_bootstrap) {
+    status = n->ops->inventory
+                 ? n->ops->inventory(n->provider, raw_directory, &t, &raw)
+                 : FS_UNSUPPORTED;
+    t.mft_records = raw.records;
+  }
   if (status == FS_OK && rebuild) {
     uint64_t from = 0;
-    for (;;) {
+    while (!t.raw_bootstrap) {
       if (atomic_load(&e->stopping)) {
         status = FS_CANCELLED;
         break;
@@ -1341,6 +1386,10 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   n->info.next_usn = cursor;
   n->info.target_usn = head.next_usn;
   n->info.snapshot_epoch = t.revision;
+  n->info.mft_slots = raw.slots;
+  n->info.raw_read_bytes = raw.read_bytes;
+  n->info.raw_read_calls = raw.read_calls;
+  n->info.mft_kernel_records = raw.kernel_records;
   n->info.mft_records = t.mft_records;
   n->info.journal_records = t.journal_records;
   n->info.directories_reconciled = t.directories;

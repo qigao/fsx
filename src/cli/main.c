@@ -107,17 +107,20 @@ static FsStatus watch_directory(FsEngine *engine, const char *root,
 static void print_ntfs(const FsNtfsInfo *info) {
   printf("revision=%" PRIu64 " source=%u next_usn=%" PRId64
          " target_usn=%" PRId64 " caught_up=%s mft=%" PRIu64 " journal=%" PRIu64
-         " directories=%" PRIu64 "\n",
+         " directories=%" PRIu64 " mft_slots=%" PRIu64 " raw_bytes=%" PRIu64
+         " raw_reads=%" PRIu64 " kernel_records=%" PRIu64 "\n",
          info->snapshot_epoch, info->source_id, info->next_usn,
          info->target_usn, info->caught_up ? "true" : "false",
-         info->mft_records, info->journal_records,
-         info->directories_reconciled);
+         info->mft_records, info->journal_records, info->directories_reconciled,
+         info->mft_slots, info->raw_read_bytes, info->raw_read_calls,
+         info->mft_kernel_records);
   fflush(stdout);
 }
 static FsStatus ntfs_command(FsEngine *engine, const char *command,
                              const char *root, uint32_t duration,
-                             uint32_t updates) {
+                             uint32_t updates, bool raw_mft) {
   FsNtfsConfig config = fsx_ntfs_config();
+  config.mft_reader = raw_mft ? FS_NTFS_MFT_RAW : FS_NTFS_MFT_ENUM;
   FsOpenError diagnostic = {0};
   config.open_error = &diagnostic;
   FsNtfs *source = NULL;
@@ -183,17 +186,17 @@ static FsStatus ntfs_command(FsEngine *engine, const char *command,
 }
 static int run(int argc, char **argv) {
   if (argc < 3) {
-    fputs(
-        "Usage: fsx index DATABASE ROOT\n       fsx search DATABASE [--limit "
-        "N] [--offset N] [--sort name|path|size|mtime] [--desc] [--case] "
-        "[--jit] [--fts] [--scan-only] [--allow-partial-text] [--json] -- "
-        "QUERY\n    "
-        "   fsx info "
-        "DATABASE\n       fsx watch DATABASE ROOT [--duration-ms N] "
-        "[--updates N]\n       fsx ntfs-index DATABASE ROOT\n"
-        "       fsx ntfs-sync DATABASE ROOT\n"
-        "       fsx ntfs-watch DATABASE ROOT [--duration-ms N] [--updates N]\n",
-        stderr);
+    fputs("Usage: fsx index DATABASE ROOT\n       fsx search DATABASE [--limit "
+          "N] [--offset N] [--sort name|path|size|mtime] [--desc] [--case] "
+          "[--jit] [--fts] [--scan-only] [--allow-partial-text] [--json] -- "
+          "QUERY\n    "
+          "   fsx info "
+          "DATABASE\n       fsx watch DATABASE ROOT [--duration-ms N] "
+          "[--updates N]\n       fsx ntfs-index DATABASE ROOT [--raw-mft]\n"
+          "       fsx ntfs-sync DATABASE ROOT [--raw-mft]\n"
+          "       fsx ntfs-watch DATABASE ROOT [--raw-mft] [--duration-ms N] "
+          "[--updates N]\n",
+          stderr);
     return 2;
   }
   FsEngineConfig config = fsx_engine_config(argv[2]);
@@ -204,10 +207,16 @@ static int run(int argc, char **argv) {
       strcmp(argv[1], "ntfs-index") && strcmp(argv[1], "ntfs-watch"))
     config.flags &= ~FS_ENGINE_CREATE_DATABASE;
   uint32_t watch_duration = 0, watch_updates = 0;
+  bool raw_mft = false;
   if (!strcmp(argv[1], "watch") || !strcmp(argv[1], "ntfs-watch")) {
     if (argc < 4)
       return 2;
     for (int i = 4; i < argc; i += 2) {
+      if (!strcmp(argv[1], "ntfs-watch") && !strcmp(argv[i], "--raw-mft")) {
+        raw_mft = true;
+        i--;
+        continue;
+      }
       if (i + 1 >= argc)
         return 2;
       uint32_t *value;
@@ -221,9 +230,12 @@ static int run(int argc, char **argv) {
         return 2;
     }
   }
-  if ((!strcmp(argv[1], "ntfs-index") || !strcmp(argv[1], "ntfs-sync")) &&
-      argc != 4)
-    return 2;
+  if (!strcmp(argv[1], "ntfs-index") || !strcmp(argv[1], "ntfs-sync")) {
+    if (argc == 5 && !strcmp(argv[4], "--raw-mft"))
+      raw_mft = true;
+    else if (argc != 4)
+      return 2;
+  }
   bool json = false;
   const char *text = "";
   for (int i = 3; strcmp(argv[1], "search") == 0 && i < argc; i++) {
@@ -292,8 +304,8 @@ static int run(int argc, char **argv) {
   int exit_code = 0;
   if (!strcmp(argv[1], "ntfs-index") || !strcmp(argv[1], "ntfs-sync") ||
       !strcmp(argv[1], "ntfs-watch")) {
-    status =
-        ntfs_command(engine, argv[1], argv[3], watch_duration, watch_updates);
+    status = ntfs_command(engine, argv[1], argv[3], watch_duration,
+                          watch_updates, raw_mft);
   } else if (!strcmp(argv[1], "watch")) {
     status = watch_directory(engine, argv[3], watch_duration, watch_updates,
                              &exit_code);

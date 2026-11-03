@@ -1752,7 +1752,8 @@ static struct {
   unsigned node_count, event_count, queries, lists, closed;
   bool inject_create, inject_gap, inject_directory, stale_metadata;
   int read_fault;
-  FsStatus list_failure, link_status;
+  FsStatus list_failure, link_status, inventory_failure;
+  bool stale_inventory;
 } nt;
 static FsNtfs *native_source, *other_native_source;
 #define NT_FRN(index) (UINT64_C(0x8123000000000000) | (index))
@@ -1951,6 +1952,43 @@ static FsStatus nt_links(void *context, uint64_t frn, FsNtfsParentFn visit,
     }
   return found ? FS_OK : FS_END;
 }
+static FsStatus nt_inventory(void *context, FsNtfsRecordFn visit, void *target,
+                             FsNtfsRawStats *stats) {
+  (void)context;
+  memset(stats, 0, sizeof(*stats));
+  stats->slots = nt.node_count;
+  stats->read_calls = 1;
+  stats->read_bytes = 4096;
+  stats->kernel_records = 2;
+  for (unsigned i = 0; i < nt.node_count; i++) {
+    NtNode *node = &nt.nodes[i];
+    if (!node->live)
+      continue;
+    stats->records++;
+    if (!(node->attributes & FSX_NTFS_DIR))
+      continue;
+    unsigned char raw[96];
+    size_t bytes = strlen(node->name) * 2;
+    for (size_t j = 0; j < bytes / 2; j++)
+      nt16(raw + j * 2, (unsigned char)node->name[j]);
+    FsNtfsRecord item = {0};
+    item.frn = node->frn;
+    item.parent = node->parent;
+    item.attributes = node->attributes;
+    item.name = raw;
+    item.name_bytes = (uint16_t)bytes;
+    if (nt.stale_inventory && node->frn == NT_FRN(40))
+      item.parent = NT_FRN(10); /* A moved-out directory still on disk. */
+    if (nt.stale_inventory && node->frn == NT_FRN(60))
+      item.parent = NT_FRN(40); /* Must be checked when 40 later enters. */
+    FsStatus status = visit(target, &item);
+    if (status != FS_OK)
+      return status;
+    if (nt.inventory_failure != FS_OK)
+      return nt.inventory_failure;
+  }
+  return FS_OK;
+}
 static uint32_t nt_error(void *context) {
   (void)context;
   return nt.list_failure == FS_DENIED ? 5 : 0;
@@ -1959,8 +1997,9 @@ static void nt_close(void *context) {
   (void)context;
   nt.closed++;
 }
-static const FsNtfsOps nt_ops = {nt_query, nt_mft,   nt_read,  nt_list,
-                                 nt_stat,  nt_error, nt_close, nt_links};
+static const FsNtfsOps nt_ops = {nt_query, nt_mft,   nt_read,
+                                 nt_list,  nt_stat,  nt_error,
+                                 nt_close, nt_links, nt_inventory};
 static void nt_setup(void) {
   setup();
   memset(&nt, 0, sizeof(nt));
@@ -2049,6 +2088,70 @@ suite("NTFS transaction protocol") {
     check_equal(
         fsx_ntfs_link_records(raw, 30, 4, capture_parent, &parents, &count),
         FS_CORRUPT);
+  }
+  it("verifies stale raw directory edges and newly entering cached scopes") {
+    NtNode *outside = nt_add(40, 90, "outside", true);
+    nt_add(50, 40, "arriving.txt", false);
+    nt_add(60, 90, "elsewhere", true);
+    nt_add(70, 60, "ghost.txt", false);
+    nt.stale_inventory = true;
+    FsNtfsConfig config = fsx_ntfs_config();
+    config.mft_reader = FS_NTFS_MFT_RAW;
+    check_equal(fsx_ntfs_open_provider(engine, root, &config, &nt_ops, &nt,
+                                       &native_source),
+                FS_OK);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+    check_equal(info.mft_slots, (uint64_t)7);
+    check_equal(count("ghost"), (uint64_t)0);
+    check_equal(count("arriving"), (uint64_t)0);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    nt_open(4096); /* ENUM resume must also verify newly entering raw-cache
+                      nodes. */
+    outside->parent = NT_FRN(10);
+    nt_event(outside, FSX_USN_NEW);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("arriving"), (uint64_t)1);
+    check_equal(count("ghost"), (uint64_t)0);
+  }
+  it("rejects old raw config layouts and an unavailable raw provider without "
+     "downgrade") {
+    FsNtfsConfig config = fsx_ntfs_config();
+    config.struct_size = offsetof(FsNtfsConfig, mft_reader);
+    check_equal(fsx_ntfs_open(engine, root, &config, &native_source),
+                FS_INVALID);
+    check_null(native_source);
+    config = fsx_ntfs_config();
+    config.mft_reader = FS_NTFS_MFT_RAW;
+    static const FsNtfsOps no_raw = {nt_query, nt_mft,   nt_read,
+                                     nt_list,  nt_stat,  nt_error,
+                                     nt_close, nt_links, NULL};
+    check_equal(fsx_ntfs_open_provider(engine, root, &config, &no_raw, &nt,
+                                       &native_source),
+                FS_OK);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_UNSUPPORTED);
+    check_equal(nt.lists, 0u);
+    check_equal(nt_scalar("SELECT count(*) FROM sources"), (int64_t)0);
+  }
+  it("rolls back a partially emitted raw inventory and permits retry") {
+    FsNtfsInfo before = nt_build();
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    FsNtfsConfig config = fsx_ntfs_config();
+    config.mft_reader = FS_NTFS_MFT_RAW;
+    check_equal(fsx_ntfs_open_provider(engine, root, &config, &nt_ops, &nt,
+                                       &native_source),
+                FS_OK);
+    nt.inventory_failure = FS_IO;
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_IO);
+    check_equal(nt_scalar("SELECT revision FROM fsx_meta"),
+                (int64_t)before.snapshot_epoch);
+    check_equal(count("alpha"), (uint64_t)1);
+    nt.inventory_failure = FS_OK;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
   }
   it("builds subtree topology and all hardlink aliases with full unsigned "
      "identities") {

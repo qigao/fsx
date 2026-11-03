@@ -25,6 +25,9 @@ typedef struct FsNtfsRecord {
 typedef FsStatus (*FsNtfsRecordFn)(void *, const FsNtfsRecord *);
 typedef FsStatus (*FsNtfsParentFn)(void *, uint64_t);
 
+typedef struct FsNtfsRawStats {
+  uint64_t slots, records, read_calls, read_bytes, kernel_records;
+} FsNtfsRawStats;
 typedef struct FsNtfsOps {
   FsStatus (*query)(void *, FsNtfsIdentity *);
   FsStatus (*mft)(void *, uint64_t, void *, size_t, size_t *);
@@ -34,6 +37,7 @@ typedef struct FsNtfsOps {
   uint32_t (*error)(void *);
   void (*close)(void *);
   FsStatus (*links)(void *, uint64_t, FsNtfsParentFn, void *);
+  FsStatus (*inventory)(void *, FsNtfsRecordFn, void *, FsNtfsRawStats *);
 } FsNtfsOps;
 struct FsNtfs {
   FsEngine *engine;

@@ -2,7 +2,7 @@
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0602
 #endif
-#include "ntfs.h"
+#include "raw.h"
 #include <stdio.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -16,6 +16,7 @@ typedef struct Native {
   wchar_t *root;
   FsNtfsIdentity identity;
   uint32_t error, buffer_bytes;
+  FsNtfsConfig config;
 } Native;
 static FsStatus error_status(Native *n, DWORD error) {
   n->error = error;
@@ -289,6 +290,106 @@ static FsStatus link_parents(void *context, uint64_t frn, FsNtfsParentFn visit,
   fsx_free(buffer);
   return status;
 }
+static FsStatus raw_read(void *context, uint64_t offset, void *out,
+                         size_t bytes) {
+  Native *n = context;
+  LARGE_INTEGER position;
+  position.QuadPart = (LONGLONG)offset;
+  if (!SetFilePointerEx(n->volume, position, NULL, FILE_BEGIN))
+    return error_status(n, GetLastError());
+  DWORD returned = 0;
+  if (!ReadFile(n->volume, out, (DWORD)bytes, &returned, NULL))
+    return error_status(n, GetLastError());
+  return returned == bytes ? FS_OK : FS_IO;
+}
+static FsStatus raw_record(void *context, uint64_t frn, void *out,
+                           size_t capacity, size_t *bytes) {
+  Native *n = context;
+  NTFS_FILE_RECORD_INPUT_BUFFER request = {0};
+  request.FileReferenceNumber.QuadPart = (LONGLONG)frn;
+  DWORD returned = 0;
+  if (!DeviceIoControl(n->volume, FSCTL_GET_NTFS_FILE_RECORD, &request,
+                       sizeof(request), out, (DWORD)capacity, &returned, NULL))
+    return error_status(n, GetLastError());
+  const NTFS_FILE_RECORD_OUTPUT_BUFFER *reply = out;
+  size_t fixed = offsetof(NTFS_FILE_RECORD_OUTPUT_BUFFER, FileRecordBuffer);
+  if (returned < fixed || reply->FileRecordLength > returned - fixed)
+    return FS_CORRUPT;
+  if (((uint64_t)reply->FileReferenceNumber.QuadPart &
+       UINT64_C(0x0000ffffffffffff)) != (frn & UINT64_C(0x0000ffffffffffff)))
+    return FS_END; /* The IOCTL may return a lower allocated record. */
+  *bytes = reply->FileRecordLength;
+  memmove(out, reply->FileRecordBuffer, *bytes);
+  /* The kernel supplies a normalized record. Some systems return the protected
+   * form instead. Only fix it when ALL trailers match; raw reads are stricter.
+   */
+  unsigned char *p = out;
+  if (*bytes >= 512 && *bytes <= 65536 && *bytes % 512 == 0) {
+    uint32_t usa = (uint32_t)p[4] | (uint32_t)p[5] << 8;
+    uint32_t count = (uint32_t)p[6] | (uint32_t)p[7] << 8;
+    if (usa >= 48 && usa + count * 2 <= 510 && count == *bytes / 512 + 1) {
+      bool protected = true;
+      for (uint32_t i = 1; i < count; i++)
+        if (memcmp(p + i * 512 - 2, p + usa, 2))
+          protected = false;
+      if (protected)
+        return fsx_ntfs_raw_fixup(out, *bytes);
+    }
+  }
+  return FS_OK;
+}
+static FsStatus raw_geometry(Native *n, FsNtfsRawGeometry *out) {
+  struct VolumeData {
+    NTFS_VOLUME_DATA_BUFFER basic;
+    NTFS_EXTENDED_VOLUME_DATA extended;
+  } data = {0};
+  DWORD bytes = 0;
+  if (!DeviceIoControl(n->volume, FSCTL_GET_NTFS_VOLUME_DATA, NULL, 0, &data,
+                       sizeof(data), &bytes, NULL))
+    return error_status(n, GetLastError());
+  if (bytes < sizeof(data) || data.extended.ByteCount < sizeof(data.extended))
+    return FS_CORRUPT;
+  if (data.extended.MajorVersion != 3 || data.extended.MinorVersion != 1)
+    return FS_UNSUPPORTED;
+  if ((uint64_t)data.basic.VolumeSerialNumber.QuadPart !=
+      n->identity.volume_serial)
+    return FS_STALE;
+  if (data.basic.NumberSectors.QuadPart <= 0 || !data.basic.BytesPerSector ||
+      (uint64_t)data.basic.NumberSectors.QuadPart >
+          INT64_MAX / data.basic.BytesPerSector ||
+      data.basic.MftStartLcn.QuadPart < 0 ||
+      data.basic.MftValidDataLength.QuadPart <= 0)
+    return FS_CORRUPT;
+  *out = (FsNtfsRawGeometry){(uint64_t)data.basic.NumberSectors.QuadPart *
+                                 data.basic.BytesPerSector,
+                             (uint64_t)data.basic.MftStartLcn.QuadPart,
+                             (uint64_t)data.basic.MftValidDataLength.QuadPart,
+                             data.basic.BytesPerSector,
+                             data.basic.BytesPerCluster,
+                             data.basic.BytesPerFileRecordSegment};
+  return FS_OK;
+}
+static FsStatus raw_inventory(void *context, FsNtfsRecordFn visit, void *target,
+                              FsNtfsRawStats *stats) {
+  Native *n = context;
+  FsNtfsRawGeometry before, after;
+  FsStatus status = raw_geometry(n, &before);
+  if (status != FS_OK)
+    return status;
+  static const FsNtfsRawIO io = {raw_read, raw_record};
+  status = fsx_ntfs_raw_inventory(n->engine, &n->config, &before, &io, n, visit,
+                                  target, stats);
+  if (status == FS_OK)
+    status = raw_geometry(n, &after);
+  if (status == FS_OK && (before.volume_bytes != after.volume_bytes ||
+                          before.mft_lcn != after.mft_lcn ||
+                          before.sector_bytes != after.sector_bytes ||
+                          before.cluster_bytes != after.cluster_bytes ||
+                          before.record_bytes != after.record_bytes ||
+                          after.mft_bytes < before.mft_bytes))
+    status = FS_STALE;
+  return status;
+}
 static uint32_t last_error(void *context) { return ((Native *)context)->error; }
 static void close_native(void *context) {
   Native *n = context;
@@ -297,9 +398,9 @@ static void close_native(void *context) {
   fsx_free(n->root);
   fsx_free(n);
 }
-static const FsNtfsOps ops = {query,        mft,         read_journal,
-                              list,         stat_file,   last_error,
-                              close_native, link_parents};
+static const FsNtfsOps ops = {query,        mft,          read_journal,
+                              list,         stat_file,    last_error,
+                              close_native, link_parents, raw_inventory};
 
 static FsStatus database_outside(Native *n, HANDLE root) {
   if (!n->engine->reader_path)
@@ -354,6 +455,8 @@ FsStatus fsx_ntfs_native_open(FsEngine *e, const char *root,
   memset(n, 0, sizeof(*n));
   n->engine = e;
   n->buffer_bytes = config->buffer_bytes;
+  n->config = *config;
+  n->config.open_error = NULL;
   n->volume = INVALID_HANDLE_VALUE;
   char *canonical = NULL;
   FsStatus status = fsx_native_root(e, root, &canonical);

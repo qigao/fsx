@@ -403,3 +403,62 @@ immutable. OOM, cancellation, invalid ordering, identity/alias mismatch or commi
 failure releases the prepared snapshot and rolls back the cursor and facts.
 Publication still follows COMMIT and requires no allocation. External revision
 advancement, namespace changes and incomplete bases use the full loader.
+
+## Raw MFT inventory protocol
+
+FsNtfsConfig appends mft_reader after open_error so its struct_size changes;
+old layouts are rejected before reading the new member. Hosts rebuild and use
+fsx_ntfs_config(). The explicit RAW reader replaces only full-rebuild inventory.
+ENUM remains the default; a raw failure never silently retries a different
+backend. Both modes produce the same SQLite source/alias facts and use the same U0/U1 reconciliation,
+required metadata reads and commit-before-publication protocol. A resumed source
+may use either inventory mode; no second persistence format is introduced.
+
+One synchronous writer owns the raw reader, its volume file pointer, stream maps,
+bitmap, I/O chunks and scratch records. There are no new threads, queues or
+shared mutable readers. Windows supplies normalized MFT metadata/extension
+records through FSCTL_GET_NTFS_FILE_RECORD; checked mapping-pair decoding resolves
+the unnamed MFT DATA and BITMAP streams, including ATTRIBUTE_LIST references.
+Bulk FILE records are read directly from mapped volume extents, not through
+FSCTL_ENUM_USN_DATA. The OS-assisted extension resolver is explicit and counted.
+
+Only NTFS 3.1, 512..4096-byte power-of-two sectors, bounded power-of-two clusters
+and 512..65536-byte FILE records are admitted. USA protection has a fixed
+512-byte stride, independent of physical sector size. Every admitted raw record
+must validate FILE signature, USA trailers, used/allocated sizes and record
+number. Used directory/metadata attributes also validate bounds, full FRN/sequence
+and base/extension ownership. File content/metadata attributes are not ingested
+from raw file records; selected aliases still come from live directory handles.
+Deleted and extension records are not independent namespace nodes. Directory FILE_NAME and
+STANDARD_INFORMATION attributes are resolved across checked attribute lists;
+DOS-only names do not replace a long name. Ambiguous directory name edges fail.
+
+MFT slot count is capped by max_mft_records before allocation. Each map admits
+at most 4096 non-sparse, uncompressed, unencrypted extents. Attribute lists have
+at most 1 MiB and 4096 entries; one record has at most 65536 bytes. The bitmap is
+bounded by ceil(max_mft_records/8). Entire chunks with no allocated bitmap bits
+are skipped before volume I/O; partially allocated chunks are read and checked
+record by record. Captured slots include both read and bitmap-skipped positions.
+Chunks use the configured buffer size rounded up to record/sector size, at most
+1 MiB. Stream maps, bitmap, aligned buffers, scratch and saved map verification are charged to the engine budget. Overflow,
+OOM, missing/stale extension, invalid mapping or partial native read fails the
+complete transaction. There is no dropping of records on capacity exhaustion.
+
+Borrowed raw/attribute/name views last only through the synchronous callback;
+SQLite copies all retained facts. Stream mapping is reloaded after inventory and
+must describe the same physical prefix through the captured MFT length. Growth
+is left to USN catch-up. Geometry/serial are checked again. Raw reads do not
+constitute a transactional or cache-coherent filesystem snapshot: each selected
+directory is verified through the live kernel MFT lookup before initial raw
+enumeration, and each newly entering scope is similarly verified on every mode.
+Live parent enumeration discovers descendants missing from cached/raw topology.
+This prevents old on-disk parent edges from admitting moved-out directories.
+The selected namespace is then refreshed/reconciled with U0/U1 as before.
+
+STOPPING is checked between native reads, records, attributes and list entries.
+Hosts serialize source operations and join before close. All reader allocations
+are released before the source operation returns, including failure/callback
+cancellation. Old queries keep their original immutable pages. Raw read bytes,
+calls, slots, live base records and kernel-resolved records are reported as
+aggregate source-operation counters. Physical-device I/O is not inferred from
+these counters. Full rebuild remains synchronous.

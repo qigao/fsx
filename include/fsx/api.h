@@ -15,10 +15,13 @@ typedef struct FsOpenError {
   int native_code;
   char diagnostic[192];
 } FsOpenError;
+enum { FS_NTFS_MFT_ENUM = 0, FS_NTFS_MFT_RAW = 1 };
 typedef struct FsNtfsConfig {
   uint32_t struct_size, api_version, buffer_bytes;
   uint32_t max_mft_records, max_batch_records;
   FsOpenError *open_error; /* Optional diagnostic, borrowed only during open. */
+  /* ENUM by default; RAW is explicit and never downgraded. */
+  uint32_t mft_reader;
 } FsNtfsConfig;
 typedef struct FsNtfsInfo {
   FsNtfsState state;
@@ -27,6 +30,7 @@ typedef struct FsNtfsInfo {
   uint64_t snapshot_epoch, volume_serial, root_frn, journal_id;
   int64_t next_usn, target_usn;
   uint64_t mft_records, journal_records, directories_reconciled;
+  uint64_t mft_slots, raw_read_bytes, raw_read_calls, mft_kernel_records;
   bool needs_rebuild, caught_up;
 } FsNtfsInfo;
 typedef struct FsEngineConfig {
