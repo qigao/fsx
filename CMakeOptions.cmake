@@ -1,4 +1,5 @@
 option(BUILD_TESTING "Build FileSearch's formal native tests" OFF)
+option(FSX_BUILD_NTFS_LIVE_TESTS "Build privileged real-volume NTFS acceptance and performance tests" OFF)
 option(FSX_BUILD_PARSER_TOOLS "Build host Lemon and resolve re2c for query parser generation" ON)
 set(FSX_HOST_LEMON_EXECUTABLE "" CACHE FILEPATH
   "Native host Lemon executable for cross compilation")

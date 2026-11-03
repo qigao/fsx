@@ -52,6 +52,15 @@
       }
     },
     {
+      "name": "windows-native-release",
+      "displayName": "Windows NTFS live acceptance (Release)",
+      "inherits": "windows-release",
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "FSX_BUILD_NTFS_LIVE_TESTS": "ON"
+      }
+    },
+    {
       "name": "linux-debug",
       "displayName": "Linux x64 Debug",
       "inherits": [
@@ -104,6 +113,11 @@
       "jobs": 2
     },
     {
+      "name": "windows-native-release",
+      "configurePreset": "windows-native-release",
+      "jobs": 2
+    },
+    {
       "name": "linux-debug",
       "configurePreset": "linux-debug",
       "jobs": 2
@@ -133,6 +147,22 @@
       },
       "execution": {
         "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-native-release",
+      "configurePreset": "windows-native-release",
+      "filter": {
+        "include": {
+          "name": "^fsx_ntfs_live_test$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "jobs": 1
       }
     },
     {

@@ -164,8 +164,8 @@ typedef struct Tx {
   uint32_t source;
   uint64_t revision, parent, enumerated, mft_records, journal_records,
       directories;
-  bool all;
-  sqlite3_stmt *statements[8];
+  bool all, topology_changed;
+  sqlite3_stmt *statements[9];
 } Tx;
 static int prepare(Tx *t, unsigned slot, const char *text, sqlite3_stmt **out) {
   *out = t->statements[slot];
@@ -179,7 +179,7 @@ static int prepare(Tx *t, unsigned slot, const char *text, sqlite3_stmt **out) {
   return rc;
 }
 static void finish(Tx *t) {
-  for (unsigned i = 0; i < 8; i++)
+  for (unsigned i = 0; i < 9; i++)
     sqlite3_finalize(t->statements[i]);
 }
 static FsStatus source(Tx *t, const FsNtfsIdentity *id) {
@@ -243,7 +243,11 @@ static FsStatus directory(Tx *t, const FsNtfsRecord *r) {
                    "INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6)"
                    " ON CONFLICT(source_id,frn) DO UPDATE SET "
                    "parent=excluded.parent,name=excluded.name,"
-                   "raw=excluded.raw,attributes=excluded.attributes",
+                   "raw=excluded.raw,attributes=excluded.attributes WHERE "
+                   "fsx_ntfs_dirs.parent IS NOT excluded.parent OR "
+                   "fsx_ntfs_dirs.name IS NOT excluded.name OR "
+                   "fsx_ntfs_dirs.raw IS NOT excluded.raw OR "
+                   "(fsx_ntfs_dirs.attributes&1040)!=excluded.attributes",
                    &s);
   if (rc == SQLITE_OK) {
     sqlite3_bind_int64(s, 1, t->source);
@@ -254,9 +258,11 @@ static FsStatus directory(Tx *t, const FsNtfsRecord *r) {
     else
       sqlite3_bind_null(s, 4);
     sqlite3_bind_blob(s, 5, r->name, r->name_bytes, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(s, 6, r->attributes);
+    sqlite3_bind_int64(s, 6, r->attributes & (FSX_NTFS_DIR | FSX_NTFS_REPARSE));
     rc = sqlite3_step(s);
   }
+  if (rc == SQLITE_DONE && sqlite3_changes(t->e->db))
+    t->topology_changed = true;
   fsx_free(name);
   return fsx_db_status(rc);
 }
@@ -340,6 +346,14 @@ static FsStatus alias(void *context, const FsObserved *o) {
     r.name_bytes = (uint16_t)o->raw_bytes;
     status = directory(t, &r);
   }
+  if (status == FS_OK) {
+    int step = prepare(t, 8, "INSERT OR IGNORE INTO nt_refresh VALUES(?1)", &s);
+    if (step == SQLITE_OK) {
+      bind_id(s, 1, o->file_lo);
+      step = sqlite3_step(s);
+    }
+    status = fsx_db_status(step);
+  }
   return status;
 }
 static FsStatus dirty_parent(Tx *t, uint64_t parent) {
@@ -384,6 +398,7 @@ static FsStatus temp_tables(Tx *t, bool rebuild) {
           "TEXT NOT NULL,depth INTEGER NOT NULL);"
           "CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);"
           "CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);"
+          "CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);"
           "CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY "
           "KEY,attributes INTEGER);"
           "CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw "
@@ -393,7 +408,7 @@ static FsStatus temp_tables(Tx *t, bool rebuild) {
           "name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY "
           "KEY(parent,raw));"
           "DELETE FROM nt_scope;DELETE FROM nt_processed;DELETE FROM "
-          "nt_dirty;DELETE FROM nt_changes;"
+          "nt_dirty;DELETE FROM nt_changes;DELETE FROM nt_refresh;"
           "DELETE FROM nt_old_keys;DELETE FROM nt_projection;"
           "CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON "
           "nt_projection(entry_key);");
@@ -415,6 +430,11 @@ static FsStatus temp_tables(Tx *t, bool rebuild) {
   }
   return status;
 }
+/* For a scope with S directories and depth H in a volume graph of V nodes,
+ * drive each level from scope parents and indexed (source,parent) lookups:
+ * With C child records examined, O(H*S + S*log(V) + C), excluding path bytes.
+ * Avoid a volume-wide range scan at every level, and rebuild only when
+ * discovered topology changes. */
 static FsStatus make_scope(Tx *t) {
   FsStatus status = sql(t->e, "DELETE FROM nt_scope");
   if (status != FS_OK)
@@ -431,14 +451,15 @@ static FsStatus make_scope(Tx *t) {
   if (rc != SQLITE_DONE)
     return fsx_db_status(rc);
   for (uint32_t depth = 0; depth <= t->e->config.max_scan_depth; depth++) {
-    rc = sqlite3_prepare_v2(t->e->db,
-                            "SELECT count(*),coalesce(sum(d.name IS "
-                            "NULL),0),coalesce(max(length(CAST(p.path AS BLOB))"
-                            "+length(CAST(d.name AS BLOB))+1),0) FROM "
-                            "fsx_ntfs_dirs d JOIN nt_scope p ON d.parent=p.frn"
-                            " WHERE d.source_id=?1 AND p.depth=?2 AND "
-                            "d.frn!=?3 AND (d.attributes&1024)=0",
-                            -1, &s, NULL);
+    rc = sqlite3_prepare_v2(
+        t->e->db,
+        "SELECT count(*),coalesce(sum(d.name IS "
+        "NULL),0),coalesce(max(length(CAST(p.path AS BLOB))"
+        "+length(CAST(d.name AS BLOB))+1),0) FROM "
+        "nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent"
+        " WHERE d.parent=p.frn AND d.source_id=?1 AND p.depth=?2 AND "
+        "d.frn!=?3 AND (d.attributes&1024)=0",
+        -1, &s, NULL);
     if (rc == SQLITE_OK) {
       sqlite3_bind_int64(s, 1, t->source);
       sqlite3_bind_int64(s, 2, depth);
@@ -464,8 +485,9 @@ static FsStatus make_scope(Tx *t) {
         t->e->db,
         "INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN "
         "substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1"
-        " FROM fsx_ntfs_dirs d JOIN nt_scope p ON d.parent=p.frn WHERE "
-        "d.source_id=?1 AND p.depth=?2"
+        " FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY "
+        "fsx_ntfs_dirs_parent WHERE "
+        "d.parent=p.frn AND d.source_id=?1 AND p.depth=?2"
         " AND d.frn!=?3 AND (d.attributes&1024)=0",
         -1, &s, NULL);
     if (rc == SQLITE_OK) {
@@ -594,6 +616,7 @@ static FsStatus changes(Tx *t) {
 }
 static FsStatus reconcile(Tx *t) {
   FsStatus status = make_scope(t);
+  t->topology_changed = false;
   if (status != FS_OK)
     return status;
   char command[384];
@@ -653,6 +676,8 @@ static FsStatus reconcile(Tx *t) {
         bind_id(remove, 2, frn);
         rc = sqlite3_step(remove);
       }
+      if (rc == SQLITE_DONE && sqlite3_changes(t->e->db))
+        t->topology_changed = true;
       sqlite3_finalize(remove);
       status = fsx_db_status(rc);
     } else if (status == FS_OK) {
@@ -683,15 +708,128 @@ static FsStatus reconcile(Tx *t) {
     sqlite3_finalize(mark);
     if (rc != SQLITE_DONE)
       return fsx_db_status(rc);
-    status = make_scope(t);
-    if (status != FS_OK)
-      return status;
+    if (t->topology_changed) {
+      status = make_scope(t);
+      t->topology_changed = false;
+      if (status != FS_OK)
+        return status;
+    }
   }
   snprintf(command, sizeof(command),
            "DELETE FROM fsx_ntfs_names WHERE source_id=%u AND parent NOT "
            "IN(SELECT frn FROM nt_scope);",
            t->source);
   return sql(t->e, command);
+}
+
+/* Directory enumeration metadata is cached duplicate information on NTFS.
+ * Refresh observed objects, changed objects and affected parent directories by
+ * full identity after namespace reconciliation. Each identity is read once. */
+static FsStatus refresh_metadata(Tx *t) {
+  FsStatus status =
+      sql(t->e, "INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;"
+                "INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;");
+  if (status != FS_OK)
+    return status;
+  sqlite3_stmt *rows = NULL;
+  int rc = sqlite3_prepare_v2(
+      t->e->db,
+      "SELECT r.frn FROM nt_refresh r WHERE EXISTS"
+      "(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)",
+      -1, &rows, NULL);
+  if (rc == SQLITE_OK)
+    sqlite3_bind_int64(rows, 1, t->source);
+  else
+    return fsx_db_status(rc);
+  while ((rc = sqlite3_step(rows)) == SQLITE_ROW) {
+    if (atomic_load(&t->e->stopping)) {
+      status = FS_CANCELLED;
+      break;
+    }
+    uint64_t frn;
+    if (!id_column(rows, 0, &frn)) {
+      status = FS_CORRUPT;
+      break;
+    }
+    FsObserved observed = {0};
+    status = t->n->ops->stat(t->n->provider, frn, &observed);
+    sqlite3_stmt *change = NULL;
+    int step;
+    if (status == FS_END) {
+      step = sqlite3_prepare_v2(
+          t->e->db, "DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2",
+          -1, &change, NULL);
+      if (step == SQLITE_OK) {
+        sqlite3_bind_int64(change, 1, t->source);
+        bind_id(change, 2, frn);
+        step = sqlite3_step(change);
+      }
+      sqlite3_finalize(change);
+      change = NULL;
+      if (step != SQLITE_DONE) {
+        status = fsx_db_status(step);
+        break;
+      }
+      step = sqlite3_prepare_v2(
+          t->e->db, "DELETE FROM fsx_ntfs_dirs WHERE source_id=?1 AND frn=?2",
+          -1, &change, NULL);
+      if (step == SQLITE_OK) {
+        sqlite3_bind_int64(change, 1, t->source);
+        bind_id(change, 2, frn);
+        step = sqlite3_step(change);
+      }
+      if (step == SQLITE_DONE && sqlite3_changes(t->e->db))
+        t->topology_changed = true;
+      sqlite3_finalize(change);
+      status = fsx_db_status(step);
+    } else if (status == FS_OK) {
+      if (observed.file_lo != frn || observed.file_hi ||
+          observed.flags & ~15u) {
+        status = FS_CORRUPT;
+        break;
+      }
+      sqlite3_int64 key;
+      status = object(t, &observed, &key);
+      if (status == FS_OK) {
+        step = sqlite3_prepare_v2(
+            t->e->db,
+            "UPDATE fsx_ntfs_dirs SET attributes=?3"
+            " WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3",
+            -1, &change, NULL);
+        if (step == SQLITE_OK) {
+          sqlite3_bind_int64(change, 1, t->source);
+          bind_id(change, 2, frn);
+          sqlite3_bind_int(
+              change, 3,
+              (observed.flags & FS_ENTRY_DIRECTORY ? FSX_NTFS_DIR : 0) |
+                  (observed.flags & FS_ENTRY_LINK ? FSX_NTFS_REPARSE : 0));
+          step = sqlite3_step(change);
+        }
+        if (step == SQLITE_DONE && sqlite3_changes(t->e->db))
+          t->topology_changed = true;
+        sqlite3_finalize(change);
+        status = fsx_db_status(step);
+      }
+    }
+    if (status != FS_OK)
+      break;
+  }
+  sqlite3_finalize(rows);
+  if (status == FS_OK && rc != SQLITE_DONE)
+    status = fsx_db_status(rc);
+  if (status == FS_OK && t->topology_changed) {
+    status = make_scope(t);
+    t->topology_changed = false;
+    if (status == FS_OK) {
+      char command[160];
+      snprintf(command, sizeof(command),
+               "DELETE FROM fsx_ntfs_names WHERE source_id=%u"
+               " AND parent NOT IN(SELECT frn FROM nt_scope)",
+               t->source);
+      status = sql(t->e, command);
+    }
+  }
+  return status;
 }
 
 /* Projection is staged before changing unique paths. Entry identity follows the
@@ -778,17 +916,20 @@ static FsStatus project(Tx *t) {
   if (rc != SQLITE_DONE)
     return fsx_db_status(rc);
   int64_t bad;
-  status = number(t->e,
-                  "SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON "
-                  "p.entry_key=e.entry_key"
-                  " WHERE p.entry_key IS NOT NULL AND (e.entry_key IS NULL OR"
-                  " e.source_id!=(SELECT source_id FROM fsx_ntfs_names n WHERE "
-                  "n.parent=p.parent AND n.raw=p.raw"
-                  " AND n.object_key=p.object_key LIMIT 1))",
-                  &bad);
+  char command[512];
+  /* Each projection edge belongs to this source. Validate through primary-key
+   * lookups, rather than searching the alias table once for every entry. */
+  snprintf(command, sizeof(command),
+           "SELECT count(*) FROM nt_projection p"
+           " LEFT JOIN entries e ON p.entry_key=e.entry_key"
+           " LEFT JOIN objects o ON p.object_key=o.object_key"
+           " WHERE o.object_key IS NULL OR o.source_id!=%u OR (p.entry_key IS "
+           "NOT NULL"
+           " AND (e.entry_key IS NULL OR e.source_id!=%u))",
+           t->source, t->source);
+  status = number(t->e, command, &bad);
   if (status != FS_OK || bad)
     return status == FS_OK ? FS_CORRUPT : status;
-  char command[512];
   snprintf(command, sizeof(command),
            "DELETE FROM entries WHERE source_id=%u AND entry_key NOT IN"
            "(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);"
@@ -1060,6 +1201,8 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   }
   if (status == FS_OK && (!rebuild || t.journal_records))
     status = reconcile(&t);
+  if (status == FS_OK)
+    status = refresh_metadata(&t);
   int64_t dirs = 0;
   if (status == FS_OK) {
     char command[96];

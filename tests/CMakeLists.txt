@@ -7,3 +7,15 @@ set_tests_properties(fsx_cli_test PROPERTIES TIMEOUT 60 LABELS "cli;e2e")
 # Keep all native test temporary files, including SQLite spill files, in the build tree.
 set_tests_properties(fsx_engine_test fsx_cli_test PROPERTIES
   ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")
+
+if(FSX_BUILD_NTFS_LIVE_TESTS)
+  if(NOT WIN32)
+    message(FATAL_ERROR "FSX_BUILD_NTFS_LIVE_TESTS requires Windows and a readable local NTFS volume")
+  endif()
+  cmake_add_test(fsx_ntfs_live_test SOURCES ntfs_live_test.c
+    LIBS Fsx::Fsx Salts::TinyTest Salts::Platform unofficial::sqlite3::sqlite3 psapi
+    DEFS "FSX_TEST_BUILD_TYPE=\"${CMAKE_BUILD_TYPE}\"" FOLDER tests/ntfs)
+  set_tests_properties(fsx_ntfs_live_test PROPERTIES TIMEOUT 1800
+    LABELS "ntfs;live;performance;privileged" RUN_SERIAL TRUE
+    ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")
+endif()

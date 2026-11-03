@@ -32,6 +32,18 @@ static FsStatus error_status(Native *n, DWORD error) {
     return FS_NOMEM;
   return FS_IO;
 }
+/* A constructed FileIdType descriptor and the pinned NTFS volume are already
+ * admitted. Windows returns INVALID_PARAMETER for a deleted/reused historical
+ * FRN as well as FILE_NOT_FOUND. Restrict this classification to OpenFileById;
+ * an invalid FSCTL request must still fail. Final identity/journal checks
+ * remain mandatory before committing any removal. */
+static FsStatus id_error(Native *n, DWORD error) {
+  if (error == ERROR_INVALID_PARAMETER) {
+    n->error = error;
+    return FS_END;
+  }
+  return error_status(n, error);
+}
 static uint64_t file_id(const BY_HANDLE_FILE_INFORMATION *info) {
   return (uint64_t)info->nFileIndexHigh << 32 | info->nFileIndexLow;
 }
@@ -131,7 +143,7 @@ static FsStatus stat_file(void *context, uint64_t frn, FsObserved *out) {
   Native *n = context;
   HANDLE file = by_id(n, frn, FILE_READ_ATTRIBUTES);
   if (file == INVALID_HANDLE_VALUE)
-    return error_status(n, GetLastError());
+    return id_error(n, GetLastError());
   BY_HANDLE_FILE_INFORMATION info;
   BOOL ok = GetFileInformationByHandle(file, &info);
   DWORD error = GetLastError();
@@ -158,7 +170,7 @@ static FsStatus list(void *context, uint64_t frn, FsObserve visit,
   Native *n = context;
   HANDLE directory = by_id(n, frn, FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES);
   if (directory == INVALID_HANDLE_VALUE)
-    return error_status(n, GetLastError());
+    return id_error(n, GetLastError());
   BY_HANDLE_FILE_INFORMATION identity;
   FsStatus status = FS_OK;
   if (!GetFileInformationByHandle(directory, &identity))

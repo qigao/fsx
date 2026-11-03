@@ -200,8 +200,8 @@ engine limits bound indexed aliases and depth.
 
 ## Validation
 
-Windows x64 LLVM-MinGW Debug builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 73 engine cases and 8 CLI end-to-end
+Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native tools,
+CLI and formal tests. The current suite has 76 engine cases and 8 CLI end-to-end
 cases, run through two CTest entries. Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.
@@ -230,6 +230,15 @@ deterministic native-operation provider. They cover U0/U1 changes and gaps,
 split renames, hardlinks, subtree moves/name swaps, outside-alias metadata,
 full FRN sequence/unsigned IDs, checkpoint resume, generic-profile invalidation,
 malformed records, SQL/OOM rollback and retained results. The native capability
-test detected NTFS and received access denied (Win32 5) opening the volume in
-the current token. Full real-volume MFT/USN integration and performance remain
-unverified; no elevation was attempted. Linux/sanitizer profiles were not run.
+test under a normal Medium token reports access denied (Win32 5). The opt-in
+authorized Release test now passes real full-volume MFT enumeration and selected
+subtree/USN parity: approximately 4.55 million MFT records and 10,000 fixture files.
+The [measurement report](docs/ntfs-live-validation.md) includes results and fixes.
+Full initialization is slower for this small subtree, and conservative incremental
+fallbacks still affect tail latency. Linux/sanitizer profiles were not run.
+
+Opt-in real-volume acceptance and measurement uses the Release
+`windows-native-release` configure/build/test presets. It requires authorized
+native volume access and is separate from ordinary CI tests; denied admission
+fails the live test rather than skipping it. See the
+[real NTFS procedure and measurements](docs/ntfs-live-validation.md).

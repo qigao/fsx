@@ -312,3 +312,26 @@ polls, so another database writer cannot replace a source between admission and
 batch commit. A caught-up poll loads the committed mirror if another engine has
 already advanced its revision; acknowledging the newer cursor with an older
 mirror is forbidden.
+
+Real-volume validation established two additional native rules. NTFS directory
+enumeration can return cached duplicate metadata. After namespace reconciliation,
+a bounded temporary identity set collects observed objects, changed objects and
+affected parents. Each indexed identity is refreshed through OpenFileById and
+GetFileInformationByHandle before projection/commit. Missing identities remove
+aliases, and changed directory/reparse state prunes scope before publication.
+A metadata read failure rolls back the complete batch and cursor. Invalid size
+or timestamp fields remain governed by their entry-validity flags.
+
+For an already admitted FileIdType descriptor and pinned NTFS volume,
+OpenFileById can return ERROR_INVALID_PARAMETER (87) for a deleted historical
+FRN. Only this identity-lookup boundary classifies it as missing. Invalid FSCTL
+parameters remain errors, and final root/volume/journal validation is required
+before any resulting removals commit.
+
+Scope expansion is driven from selected parents through the
+(source_id,parent) index, and is recomputed only when discovered topology
+changes. Projection validates entry/object source ownership by primary-key
+lookups; it does not scan all alias bindings for each entry. These changes
+preserve the same atomicity, source boundaries and retained-page contracts.
+The opt-in Release acceptance/measurement procedure is documented in
+[ntfs-live-validation.md](ntfs-live-validation.md).

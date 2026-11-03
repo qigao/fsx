@@ -1730,7 +1730,7 @@ static struct {
   NtNode nodes[32];
   NtEvent events[64];
   unsigned node_count, event_count, queries, lists, closed;
-  bool inject_create, inject_gap;
+  bool inject_create, inject_gap, inject_directory, stale_metadata;
   int read_fault;
   FsStatus list_failure;
 } nt;
@@ -1870,6 +1870,12 @@ static FsStatus nt_list(void *context, uint64_t parent, FsObserve visit,
                         void *target) {
   (void)context;
   nt.lists++;
+  if (nt.inject_directory && parent == NT_FRN(10)) {
+    nt.inject_directory = false;
+    NtNode *dir = nt_add(40, 10, "late-directory", true);
+    nt_event(dir, FSX_USN_CREATE);
+    nt_add(50, 40, "late-file.txt", false);
+  }
   if (nt.list_failure != FS_OK)
     return nt.list_failure;
   bool exists = false;
@@ -1888,6 +1894,10 @@ static FsStatus nt_list(void *context, uint64_t parent, FsObserve visit,
       nt16(raw + 2 * j, (unsigned char)node->name[j]);
     FsObserved o;
     nt_observed(node, &o);
+    if (nt.stale_metadata) {
+      o.size = 1;
+      o.mtime = 1;
+    }
     o.name = node->name;
     o.raw_name = raw;
     o.raw_bytes = 2 * n;
@@ -1983,6 +1993,20 @@ suite("NTFS transaction protocol") {
     open_oracle();
     equivalent("alpha", fsx_query_options());
   }
+  it("refreshes cached enumeration metadata by full identity before "
+     "publishing") {
+    nt.stale_metadata = true;
+    nt_build();
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)7);
+    check_equal(entry(0, NULL).mtime_ticks, (uint64_t)100);
+    nt.nodes[2].size = 999;
+    nt_event(&nt.nodes[2], 1);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)999);
+  }
   it("catches changes after initial namespace enumeration before publishing "
      "U1") {
     nt.inject_create = true;
@@ -1992,6 +2016,13 @@ suite("NTFS transaction protocol") {
     check_equal(info.next_usn, nt.identity.next_usn);
   }
 
+  it("expands scope when directory enumeration discovers topology absent from "
+     "MFT inventory") {
+    nt.inject_directory = true;
+    nt_build();
+    check_equal(count("late-file"), (uint64_t)1);
+    check_contains(entry(0, NULL).path, "/late-directory/late-file.txt");
+  }
   it("aborts MFT handoff if the journal stops covering U0 during enumeration") {
     nt.inject_gap = true;
     nt_open(4096);
@@ -2144,6 +2175,24 @@ suite("NTFS transaction protocol") {
     check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
     nt_event(&nt.nodes[2], 1);
     check_equal(fsx_ntfs_sync(native_source, &info), FS_UNSUPPORTED);
+  }
+
+  it("rejects a native alias binding that points into another source") {
+    FsNtfsInfo before = nt_build();
+    subdir("other");
+    put("other/independent.txt", "x");
+    char other_root[2048];
+    snprintf(other_root, sizeof(other_root), "%s/other", root);
+    FsScanInfo scanned;
+    check_equal(fsx_engine_scan(engine, other_root, &scanned), FS_OK);
+    edit_database("UPDATE fsx_ntfs_names SET entry_key=(SELECT min(entry_key)"
+                  " FROM entries WHERE source_id=2) WHERE name='alpha.txt'");
+    nt_event(&nt.nodes[2], 1);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_CORRUPT);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    check_equal(count("independent"), (uint64_t)1);
   }
   it("retains the prior snapshot and checkpoint when SQL projection fails") {
     FsNtfsInfo before = nt_build();
