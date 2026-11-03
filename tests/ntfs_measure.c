@@ -1,6 +1,5 @@
 #include "ntfs_measure.h"
 #include <inttypes.h>
-#include <stddef.h>
 #include <stdlib.h>
 #define TINYTEST_NO_MAIN
 #include <tinytest.h>
@@ -9,9 +8,10 @@ typedef struct MeasuredFile {
   sqlite3_file base;
   sqlite3_io_methods methods;
   FsTestIo io;
-  max_align_t alignment;
-  /* Parent file follows this aligned header. */
+  /* SQLite file storage guarantees eight-byte alignment. The parent file
+   * follows this header; no member may require stronger alignment. */
 } MeasuredFile;
+_Static_assert(_Alignof(MeasuredFile) <= 8, "SQLite VFS storage alignment");
 static sqlite3_vfs measured_vfs;
 static sqlite3_vfs *parent_vfs;
 static sqlite3_file *under(sqlite3_file *f) {
@@ -255,9 +255,10 @@ void fsx_test_queries_report(FsTestQueries *q, FILE *file, const char *phase,
 #define METRICS(X)                                                             \
   X(initialize_ns)                                                             \
   X(inventory_ns)                                                              \
-  X(journal_ns) X(reconcile_ns) X(projection_ns) X(snapshot_ns) X(commit_ns)   \
-      X(publish_ns) X(total_ns) X(producer_waits) X(producer_wait_ns)          \
-          X(consumer_waits) X(consumer_wait_ns) X(consumer_callback_ns)
+  X(journal_ns)                                                                \
+  X(reconcile_ns) X(projection_ns) X(snapshot_ns) X(commit_ns) X(publish_ns)   \
+      X(total_ns) X(producer_waits) X(producer_wait_ns) X(consumer_waits)      \
+          X(consumer_wait_ns) X(consumer_callback_ns)
 void fsx_test_metrics_add(FsNtfsMetrics *out, const FsNtfsMetrics *in) {
 #define ADD(name) out->name += in->name;
   METRICS(ADD)

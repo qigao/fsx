@@ -419,6 +419,26 @@ suite("NTFS controlled replay and diagnostics") {
   before_each() { setup(); }
   after_each() { teardown(); }
   it("attributes work-pager writes and detects actual spill") {
+    /* SQLite reserves file storage at eight-byte boundaries inside pagers.
+     * Exercise a valid address which is deliberately not 16-byte aligned. */
+    sqlite3_vfs *vfs = sqlite3_vfs_find(NULL);
+    unsigned char *allocation = sqlite3_malloc(vfs->szOsFile + 16);
+    check_not_null(allocation);
+    uintptr_t address = ((uintptr_t)allocation + 7) & ~(uintptr_t)7;
+    if (!(address % 16))
+      address += 8;
+    sqlite3_file *file = (sqlite3_file *)address;
+    check_equal(vfs->xOpen(vfs, NULL, file,
+                           SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
+                               SQLITE_OPEN_DELETEONCLOSE | SQLITE_OPEN_TEMP_DB,
+                           NULL),
+                SQLITE_OK);
+    unsigned char payload[16] = {1, 2, 3}, copied[16] = {0};
+    check_equal(file->pMethods->xWrite(file, payload, 16, 0), SQLITE_OK);
+    check_equal(file->pMethods->xRead(file, copied, 16, 0), SQLITE_OK);
+    check_equal(memcmp(payload, copied, 16), 0);
+    check_equal(file->pMethods->xClose(file), SQLITE_OK);
+    sqlite3_free(allocation);
     for (unsigned memory = 0; memory < 2; memory++) {
       open_engine(memory ? 4096 : 0);
       check_equal(sqlite3_exec(engine->db,
