@@ -186,7 +186,8 @@ static int run(int argc, char **argv) {
     fputs(
         "Usage: fsx index DATABASE ROOT\n       fsx search DATABASE [--limit "
         "N] [--offset N] [--sort name|path|size|mtime] [--desc] [--case] "
-        "[--jit] [--scan-only] [--allow-partial-text] [--json] -- QUERY\n    "
+        "[--jit] [--fts] [--scan-only] [--allow-partial-text] [--json] -- "
+        "QUERY\n    "
         "   fsx info "
         "DATABASE\n       fsx watch DATABASE ROOT [--duration-ms N] "
         "[--updates N]\n       fsx ntfs-index DATABASE ROOT\n"
@@ -244,6 +245,8 @@ static int run(int argc, char **argv) {
       config.flags |= FS_ENGINE_REGEX_JIT;
     else if (!strcmp(argv[i], "--scan-only"))
       config.flags |= FS_ENGINE_SCAN_ONLY;
+    else if (!strcmp(argv[i], "--fts"))
+      config.fts_min_entries = 0;
     else if (!strcmp(argv[i], "--allow-partial-text"))
       options.flags |= FS_QUERY_ALLOW_PARTIAL_TEXT;
     else if ((!strcmp(argv[i], "--limit") || !strcmp(argv[i], "--offset")) &&

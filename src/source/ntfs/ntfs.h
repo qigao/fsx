@@ -23,6 +23,8 @@ typedef struct FsNtfsRecord {
   uint16_t name_bytes;
 } FsNtfsRecord;
 typedef FsStatus (*FsNtfsRecordFn)(void *, const FsNtfsRecord *);
+typedef FsStatus (*FsNtfsParentFn)(void *, uint64_t);
+
 typedef struct FsNtfsOps {
   FsStatus (*query)(void *, FsNtfsIdentity *);
   FsStatus (*mft)(void *, uint64_t, void *, size_t, size_t *);
@@ -31,6 +33,7 @@ typedef struct FsNtfsOps {
   FsStatus (*stat)(void *, uint64_t, FsObserved *);
   uint32_t (*error)(void *);
   void (*close)(void *);
+  FsStatus (*links)(void *, uint64_t, FsNtfsParentFn, void *);
 } FsNtfsOps;
 struct FsNtfs {
   FsEngine *engine;
@@ -58,6 +61,8 @@ static inline void fsx_ntfs_put64(unsigned char p[8], uint64_t value) {
 FsStatus fsx_ntfs_records(const void *, size_t, bool journal, uint64_t from,
                           int64_t target, uint32_t limit, FsNtfsRecordFn,
                           void *, uint64_t *next, uint32_t *count);
+FsStatus fsx_ntfs_link_records(const void *, size_t, uint32_t, FsNtfsParentFn,
+                               void *, uint32_t *);
 FsStatus fsx_ntfs_text(FsEngine *, const void *, size_t, char **);
 FsStatus fsx_ntfs_open_provider(FsEngine *, const char *, const FsNtfsConfig *,
                                 const FsNtfsOps *, void *, FsNtfs **);

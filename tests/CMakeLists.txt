@@ -15,6 +15,10 @@ if(FSX_BUILD_NTFS_LIVE_TESTS)
   cmake_add_test(fsx_ntfs_live_test SOURCES ntfs_live_test.c
     LIBS Fsx::Fsx Salts::TinyTest Salts::Platform unofficial::sqlite3::sqlite3 psapi
     DEFS "FSX_TEST_BUILD_TYPE=\"${CMAKE_BUILD_TYPE}\"" FOLDER tests/ntfs)
+  add_test(NAME fsx_ntfs_link_test COMMAND fsx_ntfs_live_test --filter "enumerates all current hardlink")
+  set_tests_properties(fsx_ntfs_link_test PROPERTIES TIMEOUT 30
+    LABELS "ntfs;live;privileged" RUN_SERIAL TRUE
+    ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")
   set_tests_properties(fsx_ntfs_live_test PROPERTIES TIMEOUT 1800
     LABELS "ntfs;live;performance;privileged" RUN_SERIAL TRUE
     ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")

@@ -9,12 +9,13 @@
 #include <wchar.h>
 #include <windows.h>
 #include <winioctl.h>
+#include <winternl.h>
 typedef struct Native {
   FsEngine *engine;
   HANDLE volume;
   wchar_t *root;
   FsNtfsIdentity identity;
-  uint32_t error;
+  uint32_t error, buffer_bytes;
 } Native;
 static FsStatus error_status(Native *n, DWORD error) {
   n->error = error;
@@ -252,6 +253,42 @@ static FsStatus list(void *context, uint64_t frn, FsObserve visit,
   CloseHandle(directory);
   return status;
 }
+
+static FsStatus link_parents(void *context, uint64_t frn, FsNtfsParentFn visit,
+                             void *target) {
+  Native *n = context;
+  if (atomic_load(&n->engine->stopping))
+    return FS_CANCELLED;
+  HANDLE file = by_id(n, frn, FILE_READ_ATTRIBUTES);
+  if (file == INVALID_HANDLE_VALUE)
+    return id_error(n, GetLastError());
+  unsigned char *buffer = fsx_alloc(n->engine, n->buffer_bytes);
+  if (!buffer) {
+    CloseHandle(file);
+    return FS_NOMEM;
+  }
+  IO_STATUS_BLOCK io = {0};
+  NTSTATUS result = NtQueryInformationFile(file, &io, buffer, n->buffer_bytes,
+                                           FileHardLinkInformation);
+  CloseHandle(file);
+  FsStatus status;
+  if (result < 0) {
+    if ((uint32_t)result == UINT32_C(0x80000005) ||
+        (uint32_t)result == UINT32_C(0xc0000023))
+      status = FS_LIMIT;
+    else
+      status = error_status(n, RtlNtStatusToDosError(result));
+  } else if (io.Information > n->buffer_bytes)
+    status = FS_CORRUPT;
+  else {
+    uint32_t count;
+    status = fsx_ntfs_link_records(buffer, (size_t)io.Information,
+                                   n->engine->config.max_entries, visit, target,
+                                   &count);
+  }
+  fsx_free(buffer);
+  return status;
+}
 static uint32_t last_error(void *context) { return ((Native *)context)->error; }
 static void close_native(void *context) {
   Native *n = context;
@@ -260,8 +297,9 @@ static void close_native(void *context) {
   fsx_free(n->root);
   fsx_free(n);
 }
-static const FsNtfsOps ops = {query,     mft,        read_journal, list,
-                              stat_file, last_error, close_native};
+static const FsNtfsOps ops = {query,        mft,         read_journal,
+                              list,         stat_file,   last_error,
+                              close_native, link_parents};
 
 static FsStatus database_outside(Native *n, HANDLE root) {
   if (!n->engine->reader_path)
@@ -315,6 +353,7 @@ FsStatus fsx_ntfs_native_open(FsEngine *e, const char *root,
     return FS_NOMEM;
   memset(n, 0, sizeof(*n));
   n->engine = e;
+  n->buffer_bytes = config->buffer_bytes;
   n->volume = INVALID_HANDLE_VALUE;
   char *canonical = NULL;
   FsStatus status = fsx_native_root(e, root, &canonical);

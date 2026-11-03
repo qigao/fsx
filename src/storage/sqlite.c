@@ -382,6 +382,148 @@ done:
     *out = snap;
   return status;
 }
+
+/* Metadata-only transaction cursor: the loader's first ten columns, followed by
+ * expected alias name/path and an ownership relation boolean. The admitted
+ * writer guarantees an unchanged namespace and an exact base revision. */
+FsStatus fsx_snapshot_patch(FsEngine *e, uint64_t epoch, sqlite3_stmt *rows,
+                            FsSnapshot **out) {
+  *out = NULL;
+  FsSnapshot *base = e->current;
+  if (!base || epoch <= base->epoch || epoch > INT64_MAX)
+    return FS_INVALID;
+  FsSnapshot *next = fsx_alloc(e, sizeof(*next));
+  if (!next)
+    return FS_NOMEM;
+  memset(next, 0, sizeof(*next));
+  atomic_init(&next->refs, 1);
+  next->engine = e;
+  next->epoch = epoch;
+  next->count = base->count;
+  next->sources = base->sources;
+  next->incomplete = base->incomplete;
+  next->unsupported = base->unsupported;
+  next->page_count = base->page_count;
+  FsStatus status = FS_OK;
+  if (next->page_count) {
+    if (sizeof(*next->pages) > SIZE_MAX / next->page_count) {
+      status = FS_LIMIT;
+      goto done;
+    }
+    next->pages = fsx_alloc(e, next->page_count * sizeof(*next->pages));
+    if (!next->pages) {
+      status = FS_NOMEM;
+      goto done;
+    }
+    memset(next->pages, 0, next->page_count * sizeof(*next->pages));
+    for (uint32_t i = 0; i < next->page_count; i++) {
+      status = fsx_page_retain(base->pages[i]);
+      if (status != FS_OK)
+        goto done;
+      next->pages[i] = base->pages[i];
+      next->reused_pages++;
+    }
+  }
+  uint64_t previous = 0;
+  int rc;
+  while ((rc = sqlite3_step(rows)) == SQLITE_ROW) {
+    if (atomic_load(&e->stopping)) {
+      status = FS_CANCELLED;
+      goto done;
+    }
+    sqlite3_int64 key = sqlite3_column_int64(rows, 0),
+                  source = sqlite3_column_int64(rows, 1);
+    if (sqlite3_column_type(rows, 0) != SQLITE_INTEGER || key <= 0 ||
+        (uint64_t)key <= previous || source <= 0 || source > UINT32_MAX ||
+        sqlite3_column_bytes(rows, 2) != 16 ||
+        sqlite3_column_bytes(rows, 7) != 8 ||
+        sqlite3_column_bytes(rows, 8) != 8 ||
+        sqlite3_column_int(rows, 12) != 1) {
+      status = FS_CORRUPT;
+      goto done;
+    }
+    previous = (uint64_t)key;
+    uint32_t lo = 0, hi = base->count;
+    while (lo < hi) {
+      uint32_t mid = lo + (hi - lo) / 2;
+      if (fsx_snapshot_entry(base, mid)->entry_key < (uint64_t)key)
+        lo = mid + 1;
+      else
+        hi = mid;
+    }
+    if (lo == base->count) {
+      status = FS_CORRUPT;
+      goto done;
+    }
+    const FsEntry *old = fsx_snapshot_entry(base, lo);
+    const unsigned char *id = sqlite3_column_blob(rows, 2);
+    if (old->entry_key != (uint64_t)key ||
+        old->key.source_id != (uint32_t)source ||
+        old->key.file_id_lo != decode64(id) ||
+        old->key.file_id_hi != decode64(id + 8)) {
+      status = FS_CORRUPT;
+      goto done;
+    }
+    const char *expected[] = {old->name,      old->path, old->name_fold,
+                              old->path_fold, old->name, old->path};
+    const int columns[] = {3, 4, 5, 6, 10, 11};
+    for (unsigned i = 0; i < 6; i++) {
+      char *text = NULL;
+      status = column_view(rows, columns[i], &text);
+      if (status != FS_OK)
+        goto done;
+      if (strcmp(text, expected[i])) {
+        status = FS_CORRUPT;
+        goto done;
+      }
+    }
+    uint64_t size = decode64(sqlite3_column_blob(rows, 7)),
+             mtime = decode64(sqlite3_column_blob(rows, 8));
+    sqlite3_int64 raw_flags = sqlite3_column_int64(rows, 9);
+    uint32_t flags = (uint32_t)raw_flags;
+    if (sqlite3_column_type(rows, 9) != SQLITE_INTEGER || raw_flags < 0 ||
+        raw_flags > 15) {
+      status = FS_CORRUPT;
+      goto done;
+    }
+    if (size == old->size && mtime == old->mtime && flags == old->flags)
+      continue;
+    uint32_t page_id = lo / FSX_PAGE_ENTRIES, offset = lo % FSX_PAGE_ENTRIES;
+    if (next->pages[page_id] == base->pages[page_id]) {
+      FsPage *copy = fsx_page_create(e, base->pages[page_id]->count);
+      if (!copy) {
+        status = FS_NOMEM;
+        goto done;
+      }
+      for (uint32_t i = 0; i < base->pages[page_id]->count; i++) {
+        if (atomic_load(&e->stopping))
+          status = FS_CANCELLED;
+        else
+          status = fsx_page_append(e, copy, &base->pages[page_id]->entries[i]);
+        if (status != FS_OK) {
+          fsx_page_release(copy);
+          goto done;
+        }
+      }
+      fsx_page_release(next->pages[page_id]);
+      next->pages[page_id] = copy;
+      next->reused_pages--;
+    }
+    FsEntry *item = &next->pages[page_id]->entries[offset];
+    item->size = size;
+    item->mtime = mtime;
+    item->flags = flags;
+  }
+  if (rc != SQLITE_DONE)
+    status = fsx_db_status(rc);
+done:
+  if (status != FS_OK)
+    fsx_snapshot_release(next);
+  else
+    *out = next;
+  return status;
+}
+
 typedef struct StoreScan {
   FsEngine *engine;
   sqlite3_stmt *object, *entry;

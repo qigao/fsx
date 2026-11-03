@@ -35,6 +35,8 @@ typedef struct FsEngineConfig {
   /* fsx/PCRE2 heap allocations; see docs/runtime-contract.md. */
   uint64_t owned_memory_budget;
   uint32_t max_entries, max_handles, max_query_window, max_scan_depth;
+  /* Safe FTS admission floor; default 65,536; 0 admits any safe plan. */
+  uint32_t fts_min_entries;
   FsOpenError *open_error; /* Optional output, borrowed only during open. */
 } FsEngineConfig;
 typedef struct FsQueryRequest {

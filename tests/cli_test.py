@@ -55,7 +55,7 @@ class FileSearchCli(unittest.TestCase):
         (self.root / "unrelated.md").write_text("other", encoding="utf-8")
         self.assertEqual(self.run_cli("index", self.database, self.root).returncode, 0)
         args = ("--json", "--sort", "size", "--desc", "--offset", "9", "--limit", "3", "--", "record")
-        accelerated = self.run_cli("search", self.database, *args)
+        accelerated = self.run_cli("search", self.database, "--fts", *args)
         scanned = self.run_cli("search", self.database, "--scan-only", *args)
         self.assertEqual(accelerated.returncode, 0, accelerated.stderr)
         self.assertEqual(scanned.returncode, 0, scanned.stderr)
@@ -67,6 +67,13 @@ class FileSearchCli(unittest.TestCase):
         self.assertEqual(actual, baseline)
         self.assertEqual(actual["total"], 40)
         self.assertEqual([e["size"] for e in actual["entries"]], [31, 30, 29])
+
+    def test_small_indexes_default_to_memory_scan(self):
+        (self.root / "needle.txt").write_text("x", encoding="utf-8")
+        self.assertEqual(self.run_cli("index", self.database, self.root).returncode, 0)
+        result = self.run_cli("search", self.database, "--json", "--", "needle")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["candidate_strategy"], "scan_cost")
 
     def test_invalid_query_returns_diagnostic_and_nonzero_exit(self):
         (self.root / "file.txt").write_text("x", encoding="utf-8")

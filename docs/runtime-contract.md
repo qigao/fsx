@@ -80,9 +80,10 @@ Totals are exact within the indexed coverage, not the whole changing filesystem.
 
 A failed scan or consumed watch notification marks the in-process engine as
 needing rescan. Results capture that control state at submission. Cooperative
-Windows watches are described below. There is no persistent change-stream
-checkpoint or durable gap/retry ledger. Reopening recovers the last committed
-scan and its committed coverage; a reopened watch always requires a fresh scan.
+Windows RDC watches are described below. That backend has no persistent
+change-stream checkpoint or durable gap/retry ledger. Reopening recovers the last
+committed scan and coverage; a reopened RDC watch always requires a fresh scan.
+The separate NTFS backend persists its USN checkpoint as described below.
 
 ## Snapshot page ownership
 
@@ -271,10 +272,11 @@ the bounded sync record count does not bound full rebuild time.
 Sync resumes the durable cursor. Metadata events refresh the shared object by
 full FRN, including writes via aliases outside the selected tree. Create/delete
 events reconcile affected parents. Directory events refresh topology by full
-FRN and admit newly entering subtrees. File rename/hardlink events conservatively
-reconcile all selected directories, so split OLD/NEW batches need no guessed
-rename pairing and cannot omit a new alias. This is a deliberate bounded fallback,
-not a claim of optimal per-rename performance. Materialized paths are rewritten
+FRN and admit newly entering subtrees. File rename/hardlink events reconcile
+saved alias parents plus current parents queried by full file ID. Split OLD/NEW
+batches need no guessed rename pairing. An unavailable or denied auxiliary
+hardlink query falls back to all selected directories; incomplete replies fail
+the batch. Materialized paths are rewritten
 for moved subtrees while retained directory-entry keys remain stable.
 
 Only complete validated V2 records advance a batch cursor. Unknown/truncated
@@ -304,8 +306,9 @@ and ntfs-watch (initial rebuild, then polling batches). A caught-up poll pauses
 250 ms to avoid a tight loop over the volume's unrelated journal traffic,
 including SQLite writes outside the selected root. Materialized filename rows
 and FTS are changed only when their facts differ; saving an outside-tree cursor
-can still publish a new revision. Scope projection and snapshot loading still
-visit complete scopes/rows; the current implementation makes no latency claim.
+can still publish a new revision. Namespace changes still project the selected
+scope and load complete mirror rows. Metadata-only batches with an exact complete
+base can use the page patch protocol below; scope staging remains synchronous.
 
 Checkpoint/profile admission occurs under BEGIN IMMEDIATE, including caught-up
 polls, so another database writer cannot replace a source between admission and
@@ -335,3 +338,68 @@ lookups; it does not scan all alias bindings for each entry. These changes
 preserve the same atomicity, source boundaries and retained-page contracts.
 The opt-in Release acceptance/measurement procedure is documented in
 [ntfs-live-validation.md](ntfs-live-validation.md).
+
+## Measured query and USN planning revision
+
+The 10,104-entry live benchmark measured about 4.83 ms for an eligible FTS query
+versus 0.31 ms for a retained-memory scan. Default query planning therefore uses
+a configurable entry-count admission floor before opening a candidate reader:
+fts_min_entries defaults to 65,536, 0 admits any safe FTS plan. This adds a field
+to FsEngineConfig; hosts must rebuild with this header and initialize config via
+fsx_engine_config(). The existing exact struct_size admission rejects old layouts.
+Below the floor, SCAN_COST scans the retained immutable snapshot without touching SQLite, like
+the explicit scan profile; it does not validate a newer on-disk identity. Forced
+FTS tests set the floor to 0 and retain the existing UUID/revision handshake,
+stale/corrupt posting rejection and WAL-release requirements. This threshold is
+a tunable heuristic grounded in the measured small corpus, not a universal
+crossover guarantee. No new mutable shared cache or reader lifetime is added.
+
+USN filename changes are staged by full FRN in a bounded SQLite temporary set.
+After directory topology refresh, the admitted writer dirties every saved
+alias parent and every current hardlink parent returned by the native provider.
+The native operation opens the exact full FRN without following reparse points,
+queries FileHardLinkInformation into at most the configured I/O buffer, validates
+the complete response, and synchronously borrows parent IDs through a callback.
+Callbacks do not retain response views. Distinct changed FRNs are bounded by
+the batch/transaction record limits. Distinct dirty parents have a separate
+max_mft_records cap, checked after each staging insert (including saved parents
+and complete-scope fallback); overflow rolls back rather than dropping parents.
+This avoids multiplying unbounded parent staging by each file's link count.
+No extra background threads or unbounded heap containers are introduced. The one writer
+owns all mutations, and queries retain old immutable snapshots.
+
+An unavailable or access-denied auxiliary hardlink lookup conservatively
+reconciles the selected scope. Required selected-object metadata still must pass
+its final identity reads. A partial/malformed response, another native error, OOM
+or exceeded buffer/record bound does not acknowledge the change: the transaction
+and cursor roll back. A missing full identity dirties saved parents, then missing aliases are reconciled. Root,
+volume and journal coverage are rechecked before commit. Split rename records,
+outside aliases moving into the scope, source mode invalidation, retained results
+and metadata refresh keep the same correctness obligations.
+
+Pure file data/basic-metadata reasons refresh indexed objects without enumerating
+a parent. Namespace reasons dirty parents; directory facts still use checked
+MFT refresh. A one-directory MFT lookup requests at most 4 KiB rather than a full
+inventory buffer. Bounded native reads, cooperative cancellation and STOPPING
+checks remain at record/object boundaries.
+
+Metadata-only native batches may patch immutable snapshot pages when the admitted
+database revision exactly matches the current mirror, the source checkpoint is
+valid, no selected directory was enumerated, no alias/topology removal/change
+occurred and the base has complete represented coverage. Other cases retain full
+projection/load. The single writer owns the new snapshot directory, retains all
+base pages, and lazily clones an affected page through existing budgeted page
+APIs. Only numeric metadata changes in cloned entries; names, paths, folds,
+source IDs, full file IDs, alias bindings and sorted entry keys must match the
+old validated entry and the transaction's alias facts.
+
+The patch input is an ordered bounded row cursor owned/finalized by the native
+writer. SQLite strings are borrowed only until the next step and are compared
+before advancing; page cloning copies existing owned strings. Space is bounded
+by a page directory plus at most the affected existing pages, all charged to the
+engine budget. With P patches, N entries, G pages and C cloned pages, work is
+O(G + P log N + C*4096) plus copied strings. Old query/result snapshots remain
+immutable. OOM, cancellation, invalid ordering, identity/alias mismatch or commit
+failure releases the prepared snapshot and rolls back the cursor and facts.
+Publication still follows COMMIT and requires no allocation. External revision
+advancement, namespace changes and incomplete bases use the full loader.

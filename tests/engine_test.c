@@ -187,6 +187,8 @@ static void teardown(void) {
 }
 static void open_engine(void) {
   FsEngineConfig config = fsx_engine_config(database);
+  config.fts_min_entries =
+      0; /* Existing posting/identity tests explicitly exercise FTS. */
   FsOpenError diagnostic = {0};
   config.open_error = &diagnostic;
   FsStatus status = fsx_engine_open(&config, &engine);
@@ -1402,6 +1404,24 @@ suite("FileSearch engine") {
     sqlite3_finalize(q);
     sqlite3_close(db);
   }
+
+  it("uses a configured small-index scan floor and admits FTS at the "
+     "boundary") {
+    put("needle.txt", "x");
+    FsEngineConfig config = fsx_engine_config(database);
+    config.fts_min_entries = 2;
+    check_equal(fsx_engine_open(&config, &engine), FS_OK);
+    scan();
+    check_equal(count("needle"), (uint64_t)1);
+    FsResultInfo info;
+    fsx_result_info(held_result, &info);
+    check_equal(info.candidate_strategy, FS_CANDIDATE_SCAN_COST);
+    put("ordinary.txt", "x");
+    scan();
+    check_equal(count("needle"), (uint64_t)1);
+    fsx_result_info(held_result, &info);
+    check_equal(info.candidate_strategy, FS_CANDIDATE_FTS5);
+  }
   it("uses FTS candidates with exact totals and scanner-equivalent pages") {
     for (unsigned i = 0; i < 256; i++) {
       char name[64];
@@ -1732,7 +1752,7 @@ static struct {
   unsigned node_count, event_count, queries, lists, closed;
   bool inject_create, inject_gap, inject_directory, stale_metadata;
   int read_fault;
-  FsStatus list_failure;
+  FsStatus list_failure, link_status;
 } nt;
 static FsNtfs *native_source, *other_native_source;
 #define NT_FRN(index) (UINT64_C(0x8123000000000000) | (index))
@@ -1916,6 +1936,21 @@ static FsStatus nt_stat(void *context, uint64_t frn, FsObserved *out) {
     }
   return FS_END;
 }
+static FsStatus nt_links(void *context, uint64_t frn, FsNtfsParentFn visit,
+                         void *target) {
+  (void)context;
+  if (nt.link_status != FS_OK)
+    return nt.link_status;
+  bool found = false;
+  for (unsigned i = 0; i < nt.node_count; i++)
+    if (nt.nodes[i].live && nt.nodes[i].frn == frn) {
+      found = true;
+      FsStatus status = visit(target, nt.nodes[i].parent);
+      if (status != FS_OK)
+        return status;
+    }
+  return found ? FS_OK : FS_END;
+}
 static uint32_t nt_error(void *context) {
   (void)context;
   return nt.list_failure == FS_DENIED ? 5 : 0;
@@ -1924,8 +1959,8 @@ static void nt_close(void *context) {
   (void)context;
   nt.closed++;
 }
-static const FsNtfsOps nt_ops = {nt_query, nt_mft,   nt_read, nt_list,
-                                 nt_stat,  nt_error, nt_close};
+static const FsNtfsOps nt_ops = {nt_query, nt_mft,   nt_read,  nt_list,
+                                 nt_stat,  nt_error, nt_close, nt_links};
 static void nt_setup(void) {
   setup();
   memset(&nt, 0, sizeof(nt));
@@ -1969,6 +2004,17 @@ static int64_t nt_scalar(const char *text) {
   sqlite3_finalize(s);
   return out;
 }
+typedef struct ParentIds {
+  uint64_t ids[4];
+  uint32_t count;
+} ParentIds;
+static FsStatus capture_parent(void *context, uint64_t parent) {
+  ParentIds *ids = context;
+  if (ids->count == 4)
+    return FS_LIMIT;
+  ids->ids[ids->count++] = parent;
+  return FS_OK;
+}
 suite("NTFS transaction protocol") {
   before_each() { nt_setup(); }
   after_each() {
@@ -1977,6 +2023,32 @@ suite("NTFS transaction protocol") {
     if (native_source)
       check_equal(fsx_ntfs_close(&native_source), FS_OK);
     teardown();
+  }
+
+  it("validates complete native hardlink buffers and preserves full parent "
+     "FRNs") {
+    unsigned char raw[64] = {0};
+    nt32(raw, 30);
+    nt32(raw + 4, 1);
+    fsx_ntfs_put64(raw + 16, NT_FRN(20));
+    nt32(raw + 24, 1);
+    nt16(raw + 28, 'a');
+    ParentIds parents = {0};
+    uint32_t count;
+    check_equal(
+        fsx_ntfs_link_records(raw, 30, 4, capture_parent, &parents, &count),
+        FS_OK);
+    check_equal(count, 1u);
+    check_equal(parents.ids[0], NT_FRN(20));
+    nt32(raw + 4, 2);
+    check_equal(
+        fsx_ntfs_link_records(raw, 30, 4, capture_parent, &parents, &count),
+        FS_CORRUPT);
+    nt32(raw + 4, 1);
+    nt32(raw + 24, UINT32_MAX);
+    check_equal(
+        fsx_ntfs_link_records(raw, 30, 4, capture_parent, &parents, &count),
+        FS_CORRUPT);
   }
   it("builds subtree topology and all hardlink aliases with full unsigned "
      "identities") {
@@ -2114,6 +2186,67 @@ suite("NTFS transaction protocol") {
     check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
     check_equal(count("alpha"), (uint64_t)1);
   }
+
+  it("limits file rename and hardlink reconciliation to known and current "
+     "parents") {
+    nt_add(40, 10, "untouched", true);
+    nt_add(50, 40, "unrelated.txt", false);
+    nt_build();
+    unsigned lists = nt.lists;
+    nt_event(&nt.nodes[2], FSX_USN_OLD);
+    strcpy(nt.nodes[2].name, "renamed.txt");
+    nt_event(&nt.nodes[2], FSX_USN_NEW);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(nt.lists - lists, 1u);
+    check_equal(count("renamed"), (uint64_t)1);
+    NtNode *outside = nt_add(60, 90, "outside.txt", false);
+    lists = nt.lists;
+    nt_event(outside, FSX_USN_OLD);
+    nt_event(outside, FSX_USN_NEW);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(nt.lists, lists);
+  }
+  it("finds a newly added inside hardlink when its journal parent is outside") {
+    NtNode *outside = nt_add(60, 90, "outside.txt", false);
+    nt_build();
+    nt_add(60, 20, "entered.txt", false);
+    nt_event(outside, FSX_USN_LINK);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("entered"), (uint64_t)1);
+  }
+  it("retains cursor on a partial hardlink response and keeps an explicit "
+     "unsupported fallback") {
+    FsNtfsInfo before = nt_build();
+    nt_event(&nt.nodes[2], FSX_USN_LINK);
+    nt.link_status = FS_LIMIT;
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_LIMIT);
+    check_equal(info.next_usn, before.next_usn);
+    nt.link_status = FS_UNSUPPORTED;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_true(info.caught_up);
+    check_equal(count("alpha"), (uint64_t)1);
+  }
+  it("bounds distinct hardlink parents without acknowledging a partial set") {
+    FsNtfsConfig config = fsx_ntfs_config();
+    config.max_mft_records = 3;
+    check_equal(fsx_ntfs_open_provider(engine, root, &config, &nt_ops, &nt,
+                                       &native_source),
+                FS_OK);
+    FsNtfsInfo before, info;
+    check_equal(fsx_ntfs_rebuild(native_source, &before), FS_OK);
+    nt_add(30, 40, "outside-a.txt", false);
+    nt_add(30, 50, "outside-b.txt", false);
+    nt_add(30, 60, "outside-c.txt", false);
+    nt_event(&nt.nodes[2], FSX_USN_LINK);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_LIMIT);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(info.snapshot_epoch, before.snapshot_epoch);
+  }
   it("refreshes indexed object metadata for writes through an outside alias") {
     nt_build();
     nt.nodes[2].size = 999;
@@ -2124,6 +2257,85 @@ suite("NTFS transaction protocol") {
     check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
     check_equal(count("alpha"), (uint64_t)1);
     check_equal(entry(0, NULL).size, (uint64_t)999);
+  }
+  it("patches only affected native metadata pages and rolls back partial "
+     "copies") {
+    FsNtfsInfo before = nt_build();
+    subdir("other");
+    for (unsigned i = 0; i < 4100; i++) {
+      char name[64];
+      snprintf(name, sizeof(name), "other/item-%04u.txt", i);
+      put(name, "x");
+    }
+    char other_root[2048];
+    snprintf(other_root, sizeof(other_root), "%s/other", root);
+    FsScanInfo scanned;
+    check_equal(fsx_engine_scan(engine, other_root, &scanned), FS_OK);
+    check_equal(engine->current->page_count, 2u);
+    check_equal(count("alpha"), (uint64_t)1);
+    FsEntryView old = entry(0, NULL);
+    retained_result = held_result;
+    held_result = NULL;
+    FsSnapshot *base = engine->current;
+    FsPage *untouched = base->pages[1];
+    FsProgress progress, after;
+    fsx_engine_progress(engine, &progress);
+    uint64_t budget = engine->config.owned_memory_budget;
+    /* Admit a new page and its first strings, but not its complete contents. */
+    engine->config.owned_memory_budget = progress.owned_bytes + sizeof(FsPage) +
+                                         FSX_PAGE_ENTRIES * sizeof(FsEntry) +
+                                         4096;
+    nt.nodes[2].size = 555;
+    nt_event(&nt.nodes[2], 1);
+    FsNtfsInfo info;
+    FsStatus status = fsx_ntfs_sync(native_source, &info);
+    engine->config.owned_memory_budget = budget;
+    check_equal(status, FS_NOMEM);
+    check_true(engine->current == base);
+    fsx_engine_progress(engine, &after);
+    check_equal(after.owned_bytes, progress.owned_bytes);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    check_equal(old.size, (uint64_t)7);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_true(engine->current->pages[0] != base->pages[0]);
+    check_true(engine->current->pages[1] == untouched);
+    check_equal(engine->current->reused_pages, 1u);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)555);
+    check_equal(old.size, (uint64_t)7);
+    check_equal(old.name, "alpha.txt");
+    check_equal(count("item-4099"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)1);
+  }
+  it("falls back to namespace removal for a missing metadata-only identity") {
+    nt_build();
+    nt.nodes[2].live = false;
+    nt_event(&nt.nodes[2], 1);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)0);
+    check_equal(
+        nt_scalar("SELECT count(*) FROM fsx_ntfs_names WHERE name='alpha.txt'"),
+        (int64_t)0);
+  }
+  it("reloads external namespace changes before patching native metadata") {
+    nt_build();
+    open_oracle();
+    FsNtfsConfig config = fsx_ntfs_config();
+    check_equal(fsx_ntfs_open_provider(oracle_engine, root, &config, &nt_ops,
+                                       &nt, &other_native_source),
+                FS_OK);
+    NtNode *node = nt_add(40, 20, "external.txt", false);
+    nt_event(node, FSX_USN_CREATE);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_sync(other_native_source, &info), FS_OK);
+    nt.nodes[2].size = 222;
+    nt_event(&nt.nodes[2], 1);
+    check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+    check_equal(count("external"), (uint64_t)1);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)222);
   }
   it("distinguishes a reused MFT record number by its sequence bits") {
     nt_build();

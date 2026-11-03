@@ -39,7 +39,8 @@ cmeta_enum(FsCandidateStrategy,
   (FS_CANDIDATE_SCAN_REVISION, 2, "scan_revision"),
   (FS_CANDIDATE_SCAN_MEMORY, 3, "scan_memory"),
   (FS_CANDIDATE_SCAN_LEGACY, 4, "scan_legacy"),
-  (FS_CANDIDATE_SCAN_PROFILE, 5, "scan_profile"));
+  (FS_CANDIDATE_SCAN_PROFILE, 5, "scan_profile"),
+  (FS_CANDIDATE_SCAN_COST, 6, "scan_cost"));
 cmeta_enum(FsWatchState,
   (FS_WATCH_DIRTY, 0, "dirty"), (FS_WATCH_IDLE, 1, "idle"),
   (FS_WATCH_SCANNING, 2, "scanning"), (FS_WATCH_FAILED, 3, "failed"),

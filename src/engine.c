@@ -11,6 +11,7 @@ FsEngineConfig fsx_engine_config(const char *path) {
   c.flags = FS_ENGINE_CREATE_DATABASE;
   c.owned_memory_budget = 256u * 1024u * 1024u;
   c.max_entries = 1000000;
+  c.fts_min_entries = 65536;
   c.max_handles = 32;
   c.max_query_window = 100000;
   c.max_scan_depth = 256;

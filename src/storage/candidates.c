@@ -34,6 +34,10 @@ FsStatus fsx_candidates_open(FsQuery *query, const char *expression,
     cursor->strategy = FS_CANDIDATE_SCAN_LEGACY;
     return FS_OK;
   }
+  if (query->snapshot->count < engine->config.fts_min_entries) {
+    cursor->strategy = FS_CANDIDATE_SCAN_COST;
+    return FS_OK;
+  }
   int rc = sqlite3_open_v2(engine->reader_path, &cursor->connection,
                            SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX |
                                SQLITE_OPEN_PRIVATECACHE,

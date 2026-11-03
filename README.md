@@ -130,9 +130,14 @@ JIT profile. `regexb:` forbids pattern-controlled UTF/UCP. Unsupported `fuzzy:`
 functions return an error. `--allow-partial-text` permits regex over represented
 names when a source contains unsupported names; result coverage remains partial.
 
-Eligible name literals use FTS5 automatically. Short terms, path/glob/regex-only
-queries and unsafe Boolean plans scan the retained snapshot. A database revision
-ahead of that snapshot also selects scanning. `--scan-only` forces the baseline;
+Safe name-literal plans use FTS5 when the snapshot reaches the configured
+entry-count floor (65,536 by default). Smaller snapshots report `scan_cost` and
+scan retained memory without opening a SQLite candidate reader. The C API sets
+`fts_min_entries`; 0 admits any safe FTS plan. `--fts` sets that floor to 0;
+`--scan-only` forces scanning and takes precedence. The floor is a measured small
+corpus heuristic, not a guaranteed crossover. Short terms, path/glob/regex-only
+queries and unsafe Boolean plans scan the retained snapshot. An FTS reader finding
+a database revision ahead of that snapshot also selects scanning.
 JSON reports `candidate_strategy` and `candidates_examined`. Those counters measure
 entries passed to the predicates, rather than elapsed time or SQLite's internal
 work. All predicates still run on each candidate, with the same sorting and totals.
@@ -143,8 +148,9 @@ missing or initialize empty databases. Results are observations of the indexed
 revision, not authorization to open a file or a guarantee of current disk state.
 
 `info` includes `pages` and `reused_pages` for the current snapshot. Page reuse
-reduces retained memory for unchanged data; scans still read all database rows,
-and insertions/deletions can shift later dense page boundaries.
+reduces retained memory for unchanged data. Generic scans and namespace changes
+still read all database rows, and insertions/deletions can shift later dense page
+boundaries. Admitted NTFS metadata-only batches patch affected pages directly.
 Reuse counts describe that engine's last snapshot build; a newly opened `info`
 process loads its initial snapshot and reports zero reused pages.
 
@@ -186,12 +192,17 @@ to RDC. Open failures report the native code and admission phase. Journal wrap,
 reset or a generic scan replacing native state requires `ntfs-index` before
 resuming. ReFS and V3/V4 records are outside this profile.
 
-File rename/hardlink events conservatively reconcile selected directories.
-Metadata events refresh indexed objects even when the changed alias is outside
-the selected tree. Descendant paths follow directory moves; unchanged alias
-edges retain their entry keys. Snapshot preparation still reads all database
-rows, and topology/path projection visits the selected scope. This is the first
-correctness implementation, with no measured MFT speed claim.
+File rename/hardlink events reconcile saved alias parents and current parents
+queried by full file ID. An unsupported or denied auxiliary hardlink lookup
+reconciles the selected scope; malformed/partial replies fail without advancing
+the cursor. Required indexed-object metadata reads still must succeed.
+Metadata events refresh indexed objects and affected parents even when the
+changed alias is outside the selected tree. They avoid directory enumeration;
+with an exact base revision and unchanged complete namespace, only affected
+immutable pages are copied. Other cases use full projection/loading. Descendant
+paths follow directory moves; unchanged alias edges retain their entry keys.
+Full-volume MFT initialization still builds and persists the volume directory
+graph, and remains expensive for a small selected subtree.
 
 Embedded hosts use `fsx_ntfs_open/rebuild/sync/close`, serialize session calls and
 join callers before close. The session pins an external engine handle. Default
@@ -201,7 +212,7 @@ engine limits bound indexed aliases and depth.
 ## Validation
 
 Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 76 engine cases and 8 CLI end-to-end
+CLI and formal tests. The current suite has 85 engine cases and 9 CLI end-to-end
 cases, run through two CTest entries. Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.
@@ -234,8 +245,9 @@ test under a normal Medium token reports access denied (Win32 5). The opt-in
 authorized Release test now passes real full-volume MFT enumeration and selected
 subtree/USN parity: approximately 4.55 million MFT records and 10,000 fixture files.
 The [measurement report](docs/ntfs-live-validation.md) includes results and fixes.
-Full initialization is slower for this small subtree, and conservative incremental
-fallbacks still affect tail latency. Linux/sanitizer profiles were not run.
+Full initialization is slower for this small subtree. See the
+[optimization report](docs/performance/ntfs-optimization-2026-11-03.md) for the
+measured query and incremental changes. Linux/sanitizer profiles were not run.
 
 Opt-in real-volume acceptance and measurement uses the Release
 `windows-native-release` configure/build/test presets. It requires authorized

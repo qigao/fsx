@@ -128,3 +128,41 @@ FsStatus fsx_ntfs_text(FsEngine *e, const void *data, size_t size, char **out) {
   *out = text;
   return FS_OK;
 }
+
+/* FILE_LINKS_INFORMATION / FILE_LINK_ENTRY_INFORMATION, x64 Windows ABI.
+ * Name length is UTF-16 character count, unlike the USN V2 byte count. */
+FsStatus fsx_ntfs_link_records(const void *data, size_t bytes, uint32_t limit,
+                               FsNtfsParentFn visit, void *context,
+                               uint32_t *count) {
+  *count = 0;
+  if (!data || bytes < 8 || !limit)
+    return FS_CORRUPT;
+  const unsigned char *p = data;
+  uint32_t needed = get32(p), entries = get32(p + 4);
+  if (needed < 8 || needed > bytes || !entries)
+    return FS_CORRUPT;
+  if (entries > limit)
+    return FS_LIMIT;
+  size_t at = 8;
+  for (uint32_t i = 0; i < entries; i++) {
+    if (at > needed || needed - at < 20)
+      return FS_CORRUPT;
+    uint32_t next = get32(p + at), units = get32(p + at + 16);
+    uint64_t parent = fsx_ntfs_get64(p + at + 8);
+    if (!parent || !units || units > (needed - at - 20) / 2)
+      return FS_CORRUPT;
+    size_t length = 20 + (size_t)units * 2;
+    if (i + 1 < entries) {
+      if (next < length || next % 8 || next > needed - at ||
+          needed - at - next < 20)
+        return FS_CORRUPT;
+    } else if (next)
+      return FS_CORRUPT;
+    FsStatus status = visit(context, parent);
+    if (status != FS_OK)
+      return status;
+    (*count)++;
+    at += next;
+  }
+  return FS_OK;
+}

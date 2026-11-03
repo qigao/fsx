@@ -110,6 +110,8 @@ FsStatus fsx_page_retain(FsPage *);
 FsPage *fsx_page_create(FsEngine *, uint32_t capacity);
 FsStatus fsx_page_append(FsEngine *, FsPage *, const FsEntry *);
 FsStatus fsx_snapshot_load(FsEngine *, FsSnapshot **);
+FsStatus fsx_snapshot_patch(FsEngine *, uint64_t, sqlite3_stmt *,
+                            FsSnapshot **);
 FsStatus fsx_db_open(FsEngine *);
 typedef struct FsCandidates {
   sqlite3 *connection;

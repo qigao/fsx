@@ -76,7 +76,13 @@ For diagnosis only, `FSX_NTFS_SQL_PROFILE=1` enables SQLite trace/profile and
 attempt fail. Profiling attempts are reported separately from final measurements;
 normal measurement runs leave both settings unset.
 
-## 2026-11-03 results
+## 2026-11-03 original baseline
+
+The results in this section are the original baseline. The subsequent
+[optimization report](performance/ntfs-optimization-2026-11-03.md) records targeted
+parent reconciliation, small-index planning and metadata page patching, including
+the successful 284.22 s / 52,824-assertion rerun. The original CSV is unchanged.
+
 
 **Passed**: the complete elevated Release CTest acceptance finished in 302.48 s,
 with 52,318 assertions and no failures/skips. The production coordinator used
@@ -165,6 +171,7 @@ SQLite diagnosis used its official [trace/profile hook](https://www.sqlite.org/c
 [statement counters](https://www.sqlite.org/c3ref/c_stmtstatus_counter.html).
 
 Real selected-subtree correctness is validated. All protected paths on C: were
-not indexed, and Linux/sanitizer profiles were not run. Further performance work
-should narrow rename/hardlink reconciliation, reduce complete projection/mirror
-work and account for FTS setup cost on small snapshots.
+not indexed, and Linux/sanitizer profiles were not run. Those baseline findings motivated the implemented
+[query/incremental optimizations](performance/ntfs-optimization-2026-11-03.md).
+Whole-volume initialization and conservative work caused by unrelated directory
+events remain performance work.

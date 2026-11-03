@@ -252,6 +252,11 @@ static FsStatus p_stat(void *ctx, uint64_t frn, FsObserved *out) {
   p->stat_calls++;
   return s;
 }
+static FsStatus p_links(void *ctx, uint64_t frn, FsNtfsParentFn visit,
+                        void *target) {
+  Provider *p = ctx;
+  return p->ops->links(p->context, frn, visit, target);
+}
 static uint32_t p_error(void *ctx) {
   Provider *p = ctx;
   return p->ops->error(p->context);
@@ -261,8 +266,8 @@ static void p_close(void *ctx) {
   p->ops->close(p->context);
   p->context = NULL;
 }
-static const FsNtfsOps profiling_ops = {p_query, p_mft,   p_read, p_list,
-                                        p_stat,  p_error, p_close};
+static const FsNtfsOps profiling_ops = {p_query, p_mft,   p_read,  p_list,
+                                        p_stat,  p_error, p_close, p_links};
 
 static void open_engine(FsEngine **out, const char *name, bool scanner) {
   snprintf(database, sizeof(database), "%s/%s", fixture, name);
@@ -566,9 +571,57 @@ static void teardown(void) {
     cleanup(fixture);
   fixture_ready = false;
 }
+
+typedef struct RealParents {
+  uint64_t values[4];
+  unsigned count;
+} RealParents;
+static FsStatus real_parent(void *context, uint64_t parent) {
+  RealParents *parents = context;
+  if (parents->count == 4)
+    return FS_LIMIT;
+  parents->values[parents->count++] = parent;
+  return FS_OK;
+}
+static uint64_t fixture_id(const char *path) {
+  wchar_t wide_path[4096];
+  wide(path, wide_path, 4096);
+  HANDLE file = CreateFileW(
+      wide_path, FILE_READ_ATTRIBUTES,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+      OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+      NULL);
+  check(file != INVALID_HANDLE_VALUE, "open identity fixture");
+  BY_HANDLE_FILE_INFORMATION value;
+  BOOL ok = GetFileInformationByHandle(file, &value);
+  CloseHandle(file);
+  check_true(ok != 0);
+  return (uint64_t)value.nFileIndexHigh << 32 | value.nFileIndexLow;
+}
 suite("Real NTFS volume acceptance and performance") {
   before_each() { setup(); }
   after_each() { teardown(); }
+
+  it("enumerates all current hardlink parent identities through the admitted "
+     "native handle") {
+    open_engine(&native_engine, "native-0.db", false);
+    open_source(native_engine);
+    put("link-target.txt", 5);
+    char target[4096], alias[4096];
+    path_for(target, sizeof(target), "link-target.txt");
+    snprintf(alias, sizeof(alias), "%s/link-alias.txt", outside);
+    link_path(target, alias);
+    RealParents parents = {0};
+    FsStatus status = provider.ops->links(provider.context, fixture_id(target),
+                                          real_parent, &parents);
+    check(status == FS_OK, "native link query: %s error=%u",
+          fsx_status_name(status), provider.ops->error(provider.context));
+    check_equal(parents.count, 2u);
+    uint64_t a = fixture_id(root), b = fixture_id(outside);
+    check((parents.values[0] == a && parents.values[1] == b) ||
+              (parents.values[1] == a && parents.values[0] == b),
+          "full parent identity including sequence");
+  }
   it("fully enumerates the real MFT and reconciles an owned subtree against "
      "directory scanning") {
     /* A denied open is a failed opt-in acceptance, never a passing fallback. */
@@ -708,18 +761,31 @@ suite("Real NTFS volume acceptance and performance") {
         Measurement m = begin_measurement();
         FsResultInfo got;
         FsStatus query_status = execute_status(native_engine, queries[q], &got);
-        record(q == 0   ? "query_fts"
-               : q == 1 ? "query_unicode"
+        record(q == 0   ? "query_auto"
+               : q == 1 ? "query_unicode_auto"
                         : "query_size",
                sample, m, native_engine, NULL, NULL);
         check_equal(query_status, FS_OK);
         check_equal(got.total_count, expected);
+        if (q < 2) {
+          uint32_t floor = native_engine->config.fts_min_entries;
+          native_engine->config.fts_min_entries = 0;
+          m = begin_measurement();
+          query_status = execute_status(native_engine, queries[q], &got);
+          record(q == 0 ? "query_force_fts" : "query_unicode_force_fts", sample,
+                 m, native_engine, NULL, NULL);
+          native_engine->config.fts_min_entries = floor;
+          check_equal(query_status, FS_OK);
+          check_equal(got.total_count, expected);
+          check_equal(got.candidate_strategy, FS_CANDIDATE_FTS5);
+        }
         m = begin_measurement();
         query_status = execute_status(directory_engine, queries[q], &got);
         record(q == 0   ? "query_scan"
                : q == 1 ? "query_unicode_scan"
                         : "query_size_scan",
                sample, m, directory_engine, NULL, NULL);
+        check_equal(query_status, FS_OK);
         check_equal(got.total_count, expected);
       }
     }
