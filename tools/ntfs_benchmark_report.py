@@ -33,7 +33,13 @@ def distribution(values):
 
 
 def summarize(measurement_path, query_path):
+    accepted = [line for line in Path(measurement_path).read_text(encoding="utf-8").splitlines()
+                if line.startswith("# acceptance=passed operations=")]
+    if len(accepted) != 1:
+        raise ValueError("expected one completed replay acceptance")
     samples = list(rows(measurement_path))
+    if int(accepted[0].split("operations=")[1]) != len(samples):
+        raise ValueError("acceptance operation count does not match CSV")
     inputs = defaultdict(set)
     positions = defaultdict(list)
     groups = defaultdict(list)

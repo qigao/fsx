@@ -677,6 +677,7 @@ static void setup(void) {
            GetCurrentProcessId(), (unsigned long long)GetTickCount64());
   metrics = fopen(report, "wb");
   check_not_null(metrics);
+  fprintf(stderr, "metrics=%s\n", report);
   snprintf(report, sizeof(report), "ntfs-live-%lu-%llu-queries.csv",
            GetCurrentProcessId(), (unsigned long long)GetTickCount64());
   query_metrics = fopen(report, "wb");
@@ -715,7 +716,7 @@ static void setup(void) {
         "bytes,mft_calls,read_calls,list_calls,mft_ms,read_ms,list_callback_ms,"
         "stat_ms\n",
         metrics);
-  fprintf(stderr, "metrics=%s\n", report);
+  fprintf(stderr, "queries=%s\n", report);
   fflush(stderr);
 }
 static void teardown(void) {

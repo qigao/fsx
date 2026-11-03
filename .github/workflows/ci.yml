@@ -160,7 +160,7 @@ jobs:
           $regression = "build/${{ matrix.preset }}/tests/reports/regression"
           New-Item -ItemType Directory -Force -Path $regression | Out-Null
           Get-ChildItem "build/${{ matrix.preset }}/tests/ntfs-replay-*.csv" | Move-Item -Destination $regression
-          $replay = "build/${{ matrix.preset }}/tests/reports/replay"
+          $replay = Join-Path (Get-Location) "build/${{ matrix.preset }}/tests/reports/replay"
           New-Item -ItemType Directory -Force -Path $replay | Out-Null
           $env:FSX_NTFS_BENCHMARK = '1'
           ctest --preset windows-native-regression -R '^fsx_ntfs_benchmark_test$' --verbose --output-junit "$replay/junit.xml"
@@ -168,6 +168,10 @@ jobs:
           Get-ChildItem "build/${{ matrix.preset }}/tests/ntfs-replay-*.csv" | Move-Item -Destination $replay
           Copy-Item "build/${{ matrix.preset }}/Testing/Temporary/LastTest.log" "$replay/LastTest.log"
           if ($status -ne 0) { throw 'Controlled NTFS replay failed' }
+          $measurements = Get-ChildItem "$replay/ntfs-replay-*.csv" -Exclude '*-queries.csv'
+          $queries = Get-ChildItem "$replay/ntfs-replay-*-queries.csv"
+          python tools/ntfs_benchmark_report.py $measurements.FullName $queries.FullName > "$replay/summary.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Controlled replay analysis failed' }
           Remove-Item Env:FSX_NTFS_BENCHMARK
           $variants = @(
             @{ Name = 'serial-file'; Async = '0'; Queue = '0'; Pages = '0' },
@@ -179,7 +183,7 @@ jobs:
             $env:FSX_NTFS_TEST_INDEX_ASYNC = $variant.Async
             $env:FSX_NTFS_TEST_PIPELINE_BATCHES = $variant.Queue
             $env:FSX_NTFS_TEST_WORK_MEMORY_PAGES = $variant.Pages
-            $report = "build/${{ matrix.preset }}/tests/reports/$($variant.Name)"
+            $report = Join-Path (Get-Location) "build/${{ matrix.preset }}/tests/reports/$($variant.Name)"
             New-Item -ItemType Directory -Force -Path $report | Out-Null
             ctest --preset ${{ matrix.preset }} --verbose --output-junit "$report/junit.xml"
             $status = $LASTEXITCODE
