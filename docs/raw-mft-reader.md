@@ -19,6 +19,10 @@ The C API initializes FsNtfsConfig with fsx_ntfs_config(), then sets mft_reader
 to FS_NTFS_MFT_RAW. FS_NTFS_MFT_ENUM remains the default. Unsupported raw geometry,
 a malformed record, torn read, allocation failure or failed native operation
 returns an error and rolls back; raw mode never silently becomes ENUM.
+Raw now uses bounded two-buffer prefetch by default. Use --raw-mft-sync or set
+raw_flags=0 for serial reads. The appended raw_flags field changes config size;
+rebuild hosts against this header. See the
+[prefetch report](performance/raw-prefetch-2026-11-03.md).
 
 FsNtfsConfig and FsNtfsInfo changed; rebuild hosts against the new public header.
 The config field is appended after open_error so exact struct_size admission
@@ -59,8 +63,9 @@ enumeration discovers entries absent from raw topology. The same retained
 snapshot, root identity, reparse, coverage and journal-gap rules still apply.
 This remains a sequence of filesystem observations, not a volume transaction.
 
-The first implementation uses synchronous bounded volume reads and explicit
-kernel assistance for metadata/extension records. It does not implement IOCP,
+Raw uses at most one overlapped chunk read alongside the current writer's
+parsing/SQL callbacks, plus explicit kernel assistance for metadata/extension
+records. The source operation stays synchronous to its host. It does not use IOCP,
 parallel raw parsing, a standalone offline image importer or a general NTFS
 filesystem. Selected hardlink alias completion still uses directory enumeration.
 
@@ -79,7 +84,7 @@ There are no new worker threads or shared mutable caches.
 | Bitmap | ceil(captured slots/8), within the same record cap |
 | DATA/BITMAP/list map | 4096 extents each; no sparse/compressed/encrypted metadata stream |
 | Attribute list | 1 MiB and 4096 entries; exact extension ownership and instance checks |
-| I/O chunk | Configured buffer, rounded up to sector/record size, at most 1 MiB |
+| I/O chunks | Two with prefetch, one serial; each at most 1 MiB, plus the existing bounce buffer |
 | Changed stream mapping / stale identity | STALE; complete transaction and cursor roll back |
 | Other parse/limit/OOM/read/callback failure | Explicit status; no partial publication |
 
@@ -89,7 +94,7 @@ is in [runtime-contract.md](runtime-contract.md#raw-mft-inventory-protocol).
 
 ## Formal validation
 
-The Release build passes 88 engine cases, 17 dedicated raw-reader cases and
+The Release build passes 88 engine cases, 25 dedicated raw-reader cases and
 10 CLI cases, across three ordinary CTest entries. Raw cases cover fragmented
 and negatively encoded runlists, a FILE record crossing discontiguous extents,
 512-byte USA on 4096-byte sectors, resident/nonresident bitmap and attribute-list
@@ -103,7 +108,11 @@ callbacks roll back existing facts/cursors, unavailable raw providers are not
 downgraded and old config layouts are rejected. CLI cases exercise --raw-mft
 while preserving database-outside-root admission.
 
-## Real-volume measurements
+## Original raw versus ENUM measurements
+
+These measurements predate prefetch; see the
+[same-build prefetch/serial report](performance/raw-prefetch-2026-11-03.md)
+for the current raw implementation.
 
 Both modes passed the same complete acceptance body from the **same final
 Release build**. Raw completed in **178.87 s / 52,836 assertions**; the following

@@ -118,9 +118,11 @@ static void print_ntfs(const FsNtfsInfo *info) {
 }
 static FsStatus ntfs_command(FsEngine *engine, const char *command,
                              const char *root, uint32_t duration,
-                             uint32_t updates, bool raw_mft) {
+                             uint32_t updates, bool raw_mft, bool raw_sync) {
   FsNtfsConfig config = fsx_ntfs_config();
   config.mft_reader = raw_mft ? FS_NTFS_MFT_RAW : FS_NTFS_MFT_ENUM;
+  if (raw_sync)
+    config.raw_flags = 0;
   FsOpenError diagnostic = {0};
   config.open_error = &diagnostic;
   FsNtfs *source = NULL;
@@ -192,9 +194,11 @@ static int run(int argc, char **argv) {
           "QUERY\n    "
           "   fsx info "
           "DATABASE\n       fsx watch DATABASE ROOT [--duration-ms N] "
-          "[--updates N]\n       fsx ntfs-index DATABASE ROOT [--raw-mft]\n"
-          "       fsx ntfs-sync DATABASE ROOT [--raw-mft]\n"
-          "       fsx ntfs-watch DATABASE ROOT [--raw-mft] [--duration-ms N] "
+          "[--updates N]\n       fsx ntfs-index DATABASE ROOT "
+          "[--raw-mft|--raw-mft-sync]\n"
+          "       fsx ntfs-sync DATABASE ROOT [--raw-mft|--raw-mft-sync]\n"
+          "       fsx ntfs-watch DATABASE ROOT [--raw-mft|--raw-mft-sync] "
+          "[--duration-ms N] "
           "[--updates N]\n",
           stderr);
     return 2;
@@ -207,13 +211,16 @@ static int run(int argc, char **argv) {
       strcmp(argv[1], "ntfs-index") && strcmp(argv[1], "ntfs-watch"))
     config.flags &= ~FS_ENGINE_CREATE_DATABASE;
   uint32_t watch_duration = 0, watch_updates = 0;
-  bool raw_mft = false;
+  bool raw_mft = false, raw_sync = false;
   if (!strcmp(argv[1], "watch") || !strcmp(argv[1], "ntfs-watch")) {
     if (argc < 4)
       return 2;
     for (int i = 4; i < argc; i += 2) {
-      if (!strcmp(argv[1], "ntfs-watch") && !strcmp(argv[i], "--raw-mft")) {
+      if (!strcmp(argv[1], "ntfs-watch") &&
+          (!strcmp(argv[i], "--raw-mft") ||
+           !strcmp(argv[i], "--raw-mft-sync"))) {
         raw_mft = true;
+        raw_sync = !strcmp(argv[i], "--raw-mft-sync");
         i--;
         continue;
       }
@@ -231,9 +238,11 @@ static int run(int argc, char **argv) {
     }
   }
   if (!strcmp(argv[1], "ntfs-index") || !strcmp(argv[1], "ntfs-sync")) {
-    if (argc == 5 && !strcmp(argv[4], "--raw-mft"))
+    if (argc == 5 &&
+        (!strcmp(argv[4], "--raw-mft") || !strcmp(argv[4], "--raw-mft-sync"))) {
       raw_mft = true;
-    else if (argc != 4)
+      raw_sync = !strcmp(argv[4], "--raw-mft-sync");
+    } else if (argc != 4)
       return 2;
   }
   bool json = false;
@@ -305,7 +314,7 @@ static int run(int argc, char **argv) {
   if (!strcmp(argv[1], "ntfs-index") || !strcmp(argv[1], "ntfs-sync") ||
       !strcmp(argv[1], "ntfs-watch")) {
     status = ntfs_command(engine, argv[1], argv[3], watch_duration,
-                          watch_updates, raw_mft);
+                          watch_updates, raw_mft, raw_sync);
   } else if (!strcmp(argv[1], "watch")) {
     status = watch_directory(engine, argv[3], watch_duration, watch_updates,
                              &exit_code);

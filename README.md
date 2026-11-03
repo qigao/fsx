@@ -192,6 +192,9 @@ assistance for metadata/extension records. ENUM remains the default. Raw errors
 are reported without changing mode. Existing directory alias completion and USN
 handoff still run. See the [raw reader protocol and validation](docs/raw-mft-reader.md).
 The C API sets `FsNtfsConfig.mft_reader = FS_NTFS_MFT_RAW` after the factory call.
+Raw uses two buffers and at most one overlapped read; --raw-mft-sync or C API
+raw_flags=0 selects serial reads. See the
+[prefetch protocol and measurements](docs/performance/raw-prefetch-2026-11-03.md).
 Rebuild hosts against the updated FsNtfsConfig/FsNtfsInfo header.
 
 The database must be outside the selected tree. This backend requires a local
@@ -222,7 +225,7 @@ before allocating. Engine limits bound indexed aliases and depth.
 ## Validation
 
 Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 88 engine cases, 17 dedicated raw
+CLI and formal tests. The current suite has 88 engine cases, 25 dedicated raw
 reader cases and 10 CLI cases, run through three ordinary CTest entries.
 Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,

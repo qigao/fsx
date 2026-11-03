@@ -27,6 +27,8 @@ typedef FsStatus (*FsNtfsParentFn)(void *, uint64_t);
 
 typedef struct FsNtfsRawStats {
   uint64_t slots, records, read_calls, read_bytes, kernel_records;
+  uint64_t read_ns, kernel_ns, callback_ns, elapsed_ns, directories,
+      prefetch_reads;
 } FsNtfsRawStats;
 typedef struct FsNtfsOps {
   FsStatus (*query)(void *, FsNtfsIdentity *);

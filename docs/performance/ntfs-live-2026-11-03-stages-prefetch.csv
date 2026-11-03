@@ -1,0 +1,50 @@
+# build=Release compiler=23.1.4 (https://github.com/llvm/llvm-project.git 7a941dfb2877a0b8cf30323fefa85ad019e0b0f5) logical_processors=32 files=10000 dirs=100 rebuilds=1 updates=2
+# reader=raw
+# raw_io=prefetch profile=diagnostic
+# OS cache uncontrolled; list_ms includes directory callbacks/SQLite; peak_ws is cumulative process peak; IO bytes are process counters, not physical disk bytes.
+phase,sample,wall_ms,cpu_ms,entries,mft_records,journal_records,ws_before,ws_after,process_peak_ws,owned_bytes,io_read_bytes,io_write_bytes,mft_calls,read_calls,list_calls,mft_ms,read_ms,list_callback_ms,stat_ms
+directory_initial,0,2847.720200,2796.875000,10101,0,0,7016448,18337792,18337792,5331175,17233256,326549580,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# raw_prefetch submitted=6986
+# raw_stages read_ms=3095.851100 kernel_ms=671.631400 callback_ms=17861.078300 elapsed_ms=22247.786100 directories=729839
+# MFT progress calls=1 bytes=4032
+mft_initial,0,31123.298600,24578.125000,10101,4579212,178,18362368,32751616,32751616,6380986,8807176264,1636483636,103,1,202,44.923300,0.152300,1097.956800,1396.749600
+# raw sample=0 slots=7799808 bytes=7368273408 calls=7218 kernel_records=5325 inventory_callback_ms=22247.808700
+mixed_increment,0,1340.259900,1296.875000,10004,0,95,32686080,39047168,40116224,11661990,75886592,16674720,6,1,3,1.855700,0.193200,9.801100,15.293200
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+directory_mixed_rescan,0,2470.229200,2390.625000,10004,0,0,39047168,39858176,44933120,5280505,23330456,12173568,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# MFT progress calls=7 bytes=28336
+return_delete,0,1061.819900,921.875000,10103,0,46,40873984,41410560,47316992,11715470,78032896,12619249,2,1,3,0.156200,0.019600,18.610500,22.342400
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+directory_return_rescan,0,2107.098400,2109.375000,10103,0,0,41410560,41000960,47316992,5333985,23383296,13091304,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+reopen_resume,0,665.208300,671.875000,10104,0,48,29978624,34488320,48418816,6384338,69640192,5650144,0,1,1,0.000000,0.145200,6.210500,8.220500
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+directory_resume_rescan,0,1923.371300,1921.875000,10104,0,0,34488320,35020800,48418816,5334527,23419992,10963136,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+single_metadata_increment,0,202.681300,171.875000,10104,0,17,35852288,35856384,48418816,6384338,22183936,1980912,0,1,0,0.000000,0.015700,0.000000,0.177300
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+directory_metadata_rescan,0,2064.137200,1937.500000,10104,0,0,35856384,35250176,48418816,5334527,26492616,11181472,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+single_metadata_increment,1,179.617600,171.875000,10104,0,13,35786752,35782656,48418816,6384338,16896000,1948088,0,1,0,0.000000,0.017400,0.000000,0.193800
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+directory_metadata_rescan,1,1892.463500,1859.375000,10104,0,0,35782656,36741120,48418816,5334527,22428736,10958992,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+query_auto,0,0.471400,0.000000,10104,0,0,36847616,36847616,48418816,6385378,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+query_force_fts,0,14.562200,0.000000,10104,0,0,36847616,36925440,48418816,6385378,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+query_scan,0,0.617700,0.000000,10104,0,0,36925440,36925440,48418816,5335567,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+query_unicode_auto,0,0.399700,0.000000,10104,0,0,36925440,36925440,48418816,6385378,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+query_unicode_force_fts,0,2.582000,0.000000,10104,0,0,36925440,36925440,48418816,6385378,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+query_unicode_scan,0,0.414700,0.000000,10104,0,0,36925440,36925440,48418816,5335567,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+query_size,0,0.326400,0.000000,10104,0,0,36925440,36925440,48418816,6385387,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+query_size_scan,0,0.224600,0.000000,10104,0,0,36925440,36925440,48418816,5335576,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# acceptance=passed

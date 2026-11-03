@@ -8,7 +8,15 @@ static FsNtfsRawGeometry geometry;
 static FsNtfsConfig config;
 static unsigned seen, bootstraps;
 static bool fail_read, relocate, cancel_visit, bad_extension;
-static FsStatus callback_status;
+static FsStatus callback_status, begin_fault, finish_fault;
+static struct {
+  void *buffer;
+  uint64_t offset;
+  size_t bytes;
+  unsigned seen_before;
+} pending;
+static unsigned begun, finished, cancelled, callbacks_overlapped;
+static bool complete_inline;
 static uint64_t parents[3], identities[3];
 static char names[3][32];
 static void put16(unsigned char *p, unsigned value) {
@@ -128,6 +136,44 @@ static FsStatus read_volume(void *ctx, uint64_t offset, void *out,
   memcpy(out, disk + offset, bytes);
   return FS_OK;
 }
+static FsStatus begin_read(void *ctx, uint64_t offset, void *out,
+                           size_t bytes) {
+  (void)ctx;
+  check_null(pending.buffer);
+  if (begin_fault != FS_OK)
+    return begin_fault;
+  pending.buffer = out;
+  pending.offset = offset;
+  pending.bytes = bytes;
+  pending.seen_before = seen;
+  begun++;
+  if (complete_inline) {
+    FsStatus status = read_volume(NULL, offset, out, bytes);
+    if (status != FS_OK)
+      pending.buffer = NULL;
+    return status;
+  }
+  return FS_OK;
+}
+static FsStatus finish_read(void *ctx, bool cancel) {
+  (void)ctx;
+  check_not_null(pending.buffer);
+  void *buffer = pending.buffer;
+  uint64_t offset = pending.offset;
+  size_t bytes = pending.bytes;
+  if (seen > pending.seen_before)
+    callbacks_overlapped++;
+  pending.buffer = NULL;
+  finished++;
+  if (cancel)
+    cancelled++;
+  if (cancel || finish_fault != FS_OK) {
+    /* A late completion is allowed to write until finish has drained. */
+    memset(buffer, 0xcc, bytes);
+    return finish_fault != FS_OK ? finish_fault : FS_CANCELLED;
+  }
+  return complete_inline ? FS_OK : read_volume(NULL, offset, buffer, bytes);
+}
 static FsStatus get_record(void *ctx, uint64_t frn, void *out, size_t capacity,
                            size_t *bytes) {
   (void)ctx;
@@ -163,10 +209,11 @@ static FsStatus directory(void *ctx, const FsNtfsRecord *entry) {
     atomic_store(&engine->stopping, true);
   return FS_OK;
 }
-static const FsNtfsRawIO io = {read_volume, get_record};
+static const FsNtfsRawIO io = {read_volume, get_record, begin_read,
+                               finish_read};
 static FsStatus inventory(FsNtfsRawStats *stats) {
   return fsx_ntfs_raw_inventory(engine, &config, &geometry, &io, NULL,
-                                directory, NULL, stats);
+                                directory, NULL, false, stats);
 }
 static void setup(void) {
   FsEngineConfig ec = fsx_engine_config(":memory:");
@@ -176,6 +223,10 @@ static void setup(void) {
   geometry = (FsNtfsRawGeometry){sizeof(disk), 8,       RECORD * SLOTS,
                                  512,          CLUSTER, RECORD};
   seen = bootstraps = 0;
+  pending.buffer = NULL;
+  begun = finished = cancelled = callbacks_overlapped = 0;
+  begin_fault = finish_fault = FS_OK;
+  complete_inline = false;
   fail_read = relocate = cancel_visit = bad_extension = false;
   callback_status = FS_OK;
   memset(records, 0, sizeof(records));
@@ -220,6 +271,7 @@ static void setup(void) {
 suite("Raw NTFS MFT reader") {
   before_each() { setup(); }
   after_each() {
+    check_null(pending.buffer);
     atomic_store(&engine->stopping, false);
     check_equal(fsx_engine_close(&engine, FSX_DEADLINE_INFINITE), FS_OK);
   }
@@ -239,6 +291,25 @@ suite("Raw NTFS MFT reader") {
     check_equal(parents[1], id(5));
     check_equal(identities[1], id(6));
     check_equal(stats.read_bytes, (uint64_t)RECORD * 12);
+  }
+  it("partitions optional stage timings without changing raw inventory "
+     "results") {
+    FsNtfsRawStats stats;
+    check_equal(fsx_ntfs_raw_inventory(engine, &config, &geometry, &io, NULL,
+                                       directory, NULL, true, &stats),
+                FS_OK);
+    check_equal(stats.directories, (uint64_t)3);
+    check_equal(stats.records, (uint64_t)5);
+    check_true(stats.elapsed_ns >=
+               stats.read_ns + stats.kernel_ns + stats.callback_ns);
+    check_true(stats.callback_ns > 0);
+    seen = 0;
+    memset(names, 0, sizeof(names));
+    check_equal(inventory(&stats), FS_OK);
+    check_equal(stats.read_ns, (uint64_t)0);
+    check_equal(stats.kernel_ns, (uint64_t)0);
+    check_equal(stats.callback_ns, (uint64_t)0);
+    check_equal(stats.elapsed_ns, (uint64_t)0);
   }
   it("uses 512-byte USA strides on 4096-byte logical sectors") {
     geometry.sector_bytes = 4096;
@@ -402,6 +473,30 @@ suite("Raw NTFS MFT reader") {
     FsNtfsRawStats stats;
     uint64_t owned = engine->owned;
     check_equal(inventory(&stats), FS_CANCELLED);
+    check_equal(engine->owned, owned);
+    check_equal(begun, finished);
+    check_equal(cancelled, 1u);
+  }
+
+  it("charges the spare chunk to the budget and allows serial recovery") {
+    config.buffer_bytes = 1048576;
+    uint64_t owned = engine->owned, budget = engine->config.owned_memory_budget;
+    engine->config.owned_memory_budget = owned + 4u * 1024u * 1024u;
+    FsNtfsRawStats stats;
+    config.raw_flags = 0;
+    FsStatus serial = inventory(&stats);
+    seen = 0;
+    memset(names, 0, sizeof(names));
+    config.raw_flags = FS_NTFS_RAW_PREFETCH;
+    FsStatus prefetched = inventory(&stats);
+    engine->config.owned_memory_budget = budget;
+    check_equal(serial, FS_OK);
+    check_equal(prefetched, FS_NOMEM);
+    check_equal(engine->owned, owned);
+    check_null(pending.buffer);
+    check_equal(begun, 0u);
+    check_equal(inventory(&stats), FS_OK);
+    check_equal(seen, 3u);
     check_equal(engine->owned, owned);
   }
 }

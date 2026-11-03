@@ -14,6 +14,17 @@
 #include <psapi.h>
 
 enum { GROUPS = 100, FILES_PER_GROUP = 100, REBUILDS = 3, UPDATES = 20 };
+static bool diagnostic_profile(void) {
+  const char *setting = getenv("FSX_NTFS_TEST_PROFILE");
+  return setting && !strcmp(setting, "1");
+}
+static unsigned rebuild_samples(void) {
+  return diagnostic_profile() ? 1 : REBUILDS;
+}
+static unsigned update_samples(void) {
+  return diagnostic_profile() ? 2 : UPDATES;
+}
+static unsigned query_samples(void) { return diagnostic_profile() ? 1 : 20; }
 static char fixture[2048], root[2304], outside[2304], database[2304];
 static bool fixture_ready;
 static FsEngine *native_engine, *directory_engine, *trial_engine;
@@ -263,6 +274,25 @@ static FsStatus p_inventory(void *ctx, FsNtfsRecordFn visit, void *target,
   uint64_t start = now();
   FsStatus status = p->ops->inventory(p->context, visit, target, stats);
   p->raw_ns += now() - start;
+  fprintf(metrics, "# raw_prefetch submitted=%" PRIu64 "\n",
+          stats->prefetch_reads);
+  fflush(metrics);
+  if (stats->elapsed_ns) {
+    fprintf(metrics,
+            "# raw_stages read_ms=%.6f kernel_ms=%.6f callback_ms=%.6f "
+            "elapsed_ms=%.6f directories=%" PRIu64 "\n",
+            (double)stats->read_ns / 1e6, (double)stats->kernel_ns / 1e6,
+            (double)stats->callback_ns / 1e6, (double)stats->elapsed_ns / 1e6,
+            stats->directories);
+    fflush(metrics);
+    fprintf(stderr,
+            "raw_stages read_ms=%.3f kernel_ms=%.3f callback_ms=%.3f "
+            "elapsed_ms=%.3f directories=%" PRIu64 "\n",
+            (double)stats->read_ns / 1e6, (double)stats->kernel_ns / 1e6,
+            (double)stats->callback_ns / 1e6, (double)stats->elapsed_ns / 1e6,
+            stats->directories);
+    fflush(stderr);
+  }
   return status;
 }
 static uint32_t p_error(void *ctx) {
@@ -290,7 +320,8 @@ static void open_engine(FsEngine **out, const char *name, bool scanner) {
   check(status == FS_OK, "engine: %s %d %s", fsx_status_name(status),
         error.native_code, error.diagnostic);
 }
-static void open_source(FsEngine *engine) {
+static void open_source_config(FsEngine *engine,
+                               const FsNtfsConfig *explicit_config) {
   check_null(source);
   check_null(provider.context);
   memset(&provider, 0, sizeof(provider));
@@ -310,9 +341,14 @@ static void open_source(FsEngine *engine) {
   const char *raw = getenv("FSX_NTFS_TEST_RAW_MFT");
   if (raw && !strcmp(raw, "1"))
     config.mft_reader = FS_NTFS_MFT_RAW;
+  const char *serial = getenv("FSX_NTFS_TEST_RAW_SYNC");
+  if (serial && !strcmp(serial, "1"))
+    config.raw_flags = 0;
   config.buffer_bytes = 1048576;
   config.max_batch_records = 65536;
   FsOpenError error = {0};
+  if (explicit_config)
+    config = *explicit_config;
   config.open_error = &error;
   FsStatus status = fsx_ntfs_native_open(engine, root, &config, &provider.ops,
                                          &provider.context);
@@ -324,6 +360,7 @@ static void open_source(FsEngine *engine) {
                                   &provider, &source);
   check(status == FS_OK, "real source admission: %s", fsx_status_name(status));
 }
+static void open_source(FsEngine *engine) { open_source_config(engine, NULL); }
 static void close_source(void) {
   if (source)
     check_equal(fsx_ntfs_close(&source), FS_OK);
@@ -562,12 +599,19 @@ static void setup(void) {
           "# build=%s compiler=%s logical_processors=%lu files=%u dirs=%u "
           "rebuilds=%u updates=%u\n",
           FSX_TEST_BUILD_TYPE, __clang_version__, system.dwNumberOfProcessors,
-          GROUPS * FILES_PER_GROUP, GROUPS, REBUILDS, UPDATES);
+          GROUPS * FILES_PER_GROUP, GROUPS, rebuild_samples(),
+          update_samples());
   fprintf(metrics, "# reader=%s\n",
           getenv("FSX_NTFS_TEST_RAW_MFT") &&
                   !strcmp(getenv("FSX_NTFS_TEST_RAW_MFT"), "1")
               ? "raw"
               : "enum");
+  fprintf(metrics, "# raw_io=%s profile=%s\n",
+          getenv("FSX_NTFS_TEST_RAW_SYNC") &&
+                  !strcmp(getenv("FSX_NTFS_TEST_RAW_SYNC"), "1")
+              ? "serial"
+              : "prefetch",
+          diagnostic_profile() ? "diagnostic" : "full");
   fputs("# OS cache uncontrolled; list_ms includes directory callbacks/SQLite; "
         "peak_ws is cumulative process peak; IO bytes are process counters, "
         "not physical disk bytes.\n",
@@ -626,6 +670,19 @@ static uint64_t fixture_id(const char *path) {
   check_true(ok != 0);
   return (uint64_t)value.nFileIndexHigh << 32 | value.nFileIndexLow;
 }
+typedef struct StopRaw {
+  FsEngine **engine;
+  FsNtfsRawStats *stats;
+} StopRaw;
+static FsStatus stop_raw_prefetch(void *context, const FsNtfsRecord *record) {
+  (void)record;
+  StopRaw *stop = context;
+  if (!stop->stats->prefetch_reads)
+    return FS_OK; /* A first chunk may straddle fragmented extents. */
+  /* The source pins the engine, so close requests STOPPING and returns BUSY. */
+  check_equal(fsx_engine_close(stop->engine, 0), FS_BUSY);
+  return FS_OK;
+}
 suite("Real NTFS volume acceptance and performance") {
   before_each() { setup(); }
   after_each() { teardown(); }
@@ -650,6 +707,28 @@ suite("Real NTFS volume acceptance and performance") {
               (parents.values[1] == a && parents.values[0] == b),
           "full parent identity including sequence");
   }
+  it("drains raw prefetch before releasing buffers after real engine "
+     "STOPPING") {
+    open_engine(&native_engine, "native-0.db", false);
+    FsNtfsConfig config = fsx_ntfs_config();
+    config.mft_reader = FS_NTFS_MFT_RAW;
+    config.buffer_bytes = 4096;
+    config.raw_flags = FS_NTFS_RAW_PREFETCH;
+    open_source_config(native_engine, &config);
+    FsProgress before, after;
+    check_equal(fsx_engine_progress(native_engine, &before), FS_OK);
+    FsNtfsRawStats stats;
+    StopRaw stop = {&native_engine, &stats};
+    FsStatus status = provider.ops->inventory(provider.context,
+                                              stop_raw_prefetch, &stop, &stats);
+    check_equal(status, FS_CANCELLED);
+    check_true(stats.prefetch_reads > 0);
+    check_equal(fsx_engine_progress(native_engine, &after), FS_OK);
+    check_equal(after.owned_bytes, before.owned_bytes);
+    close_source(); /* Must not leave a kernel destination or OVERLAPPED borrow.
+                     */
+    close_engine(&native_engine);
+  }
   it("fully enumerates the real MFT and reconciles an owned subtree against "
      "directory scanning") {
     /* A denied open is a failed opt-in acceptance, never a passing fallback. */
@@ -669,7 +748,7 @@ suite("Real NTFS volume acceptance and performance") {
     put("Stra\xc3\x9f"
         "e-\xe6\x96\x87\xe4\xbb\xb6.txt",
         31);
-    for (unsigned sample = 0; sample < REBUILDS; sample++) {
+    for (unsigned sample = 0; sample < rebuild_samples(); sample++) {
       if (sample == 0)
         open_engine(&directory_engine, "directory-0.db", true);
       else {
@@ -777,7 +856,7 @@ suite("Real NTFS volume acceptance and performance") {
     sync_native("reopen_resume", 0);
     scan_reference("directory_resume_rescan", 0);
     compare(native_engine, directory_engine);
-    for (unsigned sample = 0; sample < UPDATES; sample++) {
+    for (unsigned sample = 0; sample < update_samples(); sample++) {
       path_for(a, sizeof(a), "group000/file001.txt");
       snprintf(b, sizeof(b), "%s/outside-alias.txt", outside);
       write_path(sample % 2 ? b : a, 120 + sample);
@@ -791,7 +870,7 @@ suite("Real NTFS volume acceptance and performance") {
                              "file: size:>=128"};
     for (unsigned q = 0; q < 3; q++) {
       uint64_t expected = execute(directory_engine, queries[q]).total_count;
-      for (unsigned sample = 0; sample < 20; sample++) {
+      for (unsigned sample = 0; sample < query_samples(); sample++) {
         Measurement m = begin_measurement();
         FsResultInfo got;
         FsStatus query_status = execute_status(native_engine, queries[q], &got);

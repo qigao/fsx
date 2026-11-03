@@ -25,8 +25,11 @@ typedef struct Raw {
   void *context;
   FsNtfsRawStats *stats;
   Stream data, bitmap, list;
-  unsigned char *chunk, *bounce, *record, *extension, *list_bytes, *bits;
-  void *chunk_owner, *bounce_owner;
+  unsigned char *chunk, *spare, *bounce, *record, *extension, *list_bytes,
+      *bits;
+  void *chunk_owner, *spare_owner, *bounce_owner;
+  bool pending;
+  size_t pending_bytes;
   size_t chunk_bytes;
   uint64_t base_frn;
   unsigned char name[510], bitmap_value[65536];
@@ -34,7 +37,7 @@ typedef struct Raw {
   uint64_t parent;
   uint32_t attributes;
   unsigned name_rank;
-  bool standard;
+  bool standard, profile;
 } Raw;
 static uint16_t u16(const unsigned char *p) {
   return (uint16_t)(p[0] | p[1] << 8);
@@ -198,7 +201,10 @@ static FsStatus physical(Raw *r, uint64_t offset, void *out, size_t bytes) {
   if (offset > r->g->volume_bytes || bytes > r->g->volume_bytes - offset ||
       offset % r->g->sector_bytes || bytes % r->g->sector_bytes)
     return FS_CORRUPT;
+  uint64_t started = r->profile ? fsx_engine_now_ns(r->engine) : 0;
   s = r->io->read(r->context, offset, out, bytes);
+  if (r->profile)
+    r->stats->read_ns += fsx_engine_now_ns(r->engine) - started;
   r->stats->read_calls++;
   if (s == FS_OK)
     r->stats->read_bytes += bytes;
@@ -264,7 +270,10 @@ static FsStatus kernel_record(Raw *r, uint64_t frn, unsigned char *out) {
   if (status != FS_OK)
     return status;
   size_t bytes = 0;
+  uint64_t started = r->profile ? fsx_engine_now_ns(r->engine) : 0;
   status = r->io->record(r->context, frn, out, r->g->record_bytes + 16, &bytes);
+  if (r->profile)
+    r->stats->kernel_ns += fsx_engine_now_ns(r->engine) - started;
   r->stats->kernel_records++;
   if (status != FS_OK)
     return status == FS_END ? FS_STALE : status;
@@ -483,6 +492,73 @@ static bool any_allocated(const unsigned char *bits, uint64_t from,
   }
   return false;
 }
+static FsStatus next_chunk(Raw *r, uint64_t from, uint64_t *offset,
+                           size_t *bytes) {
+  while (from < r->g->mft_bytes) {
+    if (stop(r) != FS_OK)
+      return FS_CANCELLED;
+    size_t take = r->chunk_bytes;
+    if (take > r->g->mft_bytes - from)
+      take = (size_t)(r->g->mft_bytes - from);
+    if (any_allocated(r->bits, from / r->g->record_bytes,
+                      take / r->g->record_bytes)) {
+      *offset = from;
+      *bytes = take;
+      return FS_OK;
+    }
+    from += take;
+  }
+  return FS_END;
+}
+/* Only submit a whole aligned extent interval. Boundary-spanning chunks retain
+ * the synchronous stream assembler; no partial async request is guessed. */
+static bool contiguous(Raw *r, uint64_t offset, size_t bytes,
+                       uint64_t *address) {
+  uint32_t cluster = r->g->cluster_bytes, sector = r->g->sector_bytes;
+  uint64_t vcn = offset / cluster;
+  uint32_t lo = 0, hi = r->data.count;
+  while (lo < hi) {
+    uint32_t mid = lo + (hi - lo) / 2;
+    if (r->data.runs[mid].vcn + r->data.runs[mid].count <= vcn)
+      lo = mid + 1;
+    else
+      hi = mid;
+  }
+  if (lo == r->data.count || r->data.runs[lo].vcn > vcn)
+    return false;
+  const Run *run = &r->data.runs[lo];
+  uint64_t inside = offset - run->vcn * cluster;
+  if (bytes > run->count * cluster - inside)
+    return false;
+  *address = run->lcn * cluster + inside;
+  return !(*address % sector) && !(bytes % sector) &&
+         *address <= r->g->volume_bytes &&
+         bytes <= r->g->volume_bytes - *address;
+}
+static FsStatus begin_read(Raw *r, uint64_t address, size_t bytes) {
+  uint64_t started = r->profile ? fsx_engine_now_ns(r->engine) : 0;
+  FsStatus status = r->io->begin(r->context, address, r->spare, bytes);
+  if (r->profile)
+    r->stats->read_ns += fsx_engine_now_ns(r->engine) - started;
+  r->stats->read_calls++;
+  if (status == FS_OK) {
+    r->pending = true;
+    r->pending_bytes = bytes;
+    r->stats->prefetch_reads++;
+  }
+  return status;
+}
+static FsStatus finish_read(Raw *r, bool cancel) {
+  uint64_t started = r->profile ? fsx_engine_now_ns(r->engine) : 0;
+  FsStatus status = r->io->finish(r->context, cancel);
+  if (r->profile)
+    r->stats->read_ns += fsx_engine_now_ns(r->engine) - started;
+  /* finish drains even on cancellation/error, ending the destination borrow. */
+  r->pending = false;
+  if (status == FS_OK)
+    r->stats->read_bytes += r->pending_bytes;
+  return status;
+}
 static void *aligned(FsEngine *e, size_t bytes, uint32_t alignment,
                      void **owner) {
   *owner = fsx_alloc(e, bytes + alignment - 1);
@@ -495,11 +571,17 @@ FsStatus fsx_ntfs_raw_inventory(FsEngine *e, const FsNtfsConfig *config,
                                 const FsNtfsRawGeometry *g,
                                 const FsNtfsRawIO *io, void *context,
                                 FsNtfsRecordFn visit, void *target,
-                                FsNtfsRawStats *stats) {
+                                bool profile, FsNtfsRawStats *stats) {
   if (!e || !config || !g || !io || !io->read || !io->record || !visit ||
       !stats)
     return FS_INVALID;
   memset(stats, 0, sizeof(*stats));
+  if (config->raw_flags & ~(uint64_t)FS_NTFS_RAW_PREFETCH)
+    return FS_INVALID;
+  bool prefetch = (config->raw_flags & FS_NTFS_RAW_PREFETCH) != 0;
+  if (prefetch && (!io->begin || !io->finish))
+    return FS_UNSUPPORTED;
+  uint64_t started = profile ? fsx_engine_now_ns(e) : 0;
   if (!power2(g->sector_bytes) || g->sector_bytes < 512 ||
       g->sector_bytes > 4096 || !power2(g->cluster_bytes) ||
       g->cluster_bytes < g->sector_bytes || g->cluster_bytes > 2097152 ||
@@ -526,6 +608,7 @@ FsStatus fsx_ntfs_raw_inventory(FsEngine *e, const FsNtfsConfig *config,
     return FS_NOMEM;
   memset(r, 0, sizeof(*r));
   r->engine = e;
+  r->profile = profile;
   r->config = config;
   r->g = g;
   r->io = io;
@@ -533,6 +616,8 @@ FsStatus fsx_ntfs_raw_inventory(FsEngine *e, const FsNtfsConfig *config,
   r->stats = stats;
   r->chunk_bytes = chunk;
   r->chunk = aligned(e, chunk, g->sector_bytes, &r->chunk_owner);
+  if (prefetch)
+    r->spare = aligned(e, chunk, g->sector_bytes, &r->spare_owner);
   r->bounce = aligned(e, chunk, g->sector_bytes, &r->bounce_owner);
   r->record = fsx_alloc(e, g->record_bytes + 16);
   r->extension = fsx_alloc(e, g->record_bytes + 16);
@@ -542,7 +627,7 @@ FsStatus fsx_ntfs_raw_inventory(FsEngine *e, const FsNtfsConfig *config,
   Run *saved = NULL;
   FsStatus status = FS_NOMEM;
   if (!r->chunk || !r->bounce || !r->record || !r->extension ||
-      !r->list_bytes || !r->bits)
+      !r->list_bytes || !r->bits || (prefetch && !r->spare))
     goto done;
   status = metadata(r);
   if (status != FS_OK)
@@ -561,22 +646,40 @@ FsStatus fsx_ntfs_raw_inventory(FsEngine *e, const FsNtfsConfig *config,
     goto done;
   }
   memcpy(saved, r->data.runs, (size_t)saved_count * sizeof(*saved));
-  for (uint64_t offset = 0; offset < g->mft_bytes;) {
-    size_t bytes = chunk;
-    if (bytes > g->mft_bytes - offset)
-      bytes = (size_t)(g->mft_bytes - offset);
-    if (stop(r) != FS_OK) {
-      status = FS_CANCELLED;
+  uint64_t offset;
+  size_t bytes;
+  status = next_chunk(r, 0, &offset, &bytes);
+  if (status != FS_OK) {
+    if (status == FS_END)
+      status = FS_CORRUPT;
+    goto done;
+  }
+  for (;;) {
+    if (r->pending) {
+      status = finish_read(r, false);
+      if (status != FS_OK)
+        goto done;
+      unsigned char *completed = r->spare;
+      r->spare = r->chunk;
+      r->chunk = completed;
+    } else {
+      status = stream_read(r, &r->data, offset, r->chunk, bytes);
+      if (status != FS_OK)
+        goto done;
+    }
+    uint64_t following = 0, address = 0;
+    size_t following_bytes = 0;
+    FsStatus next = next_chunk(r, offset + bytes, &following, &following_bytes);
+    if (next != FS_OK && next != FS_END) {
+      status = next;
       goto done;
     }
-    if (!any_allocated(r->bits, offset / g->record_bytes,
-                       bytes / g->record_bytes)) {
-      offset += bytes;
-      continue;
+    if (prefetch && next == FS_OK &&
+        contiguous(r, following, following_bytes, &address)) {
+      status = begin_read(r, address, following_bytes);
+      if (status != FS_OK)
+        goto done;
     }
-    status = stream_read(r, &r->data, offset, r->chunk, bytes);
-    if (status != FS_OK)
-      goto done;
     for (size_t at = 0; at < bytes; at += g->record_bytes) {
       uint64_t slot = (offset + at) / g->record_bytes;
       if (stop(r) != FS_OK) {
@@ -614,11 +717,18 @@ FsStatus fsx_ntfs_raw_inventory(FsEngine *e, const FsNtfsConfig *config,
       item.length = g->record_bytes;
       item.name = r->name;
       item.name_bytes = r->name_bytes;
+      uint64_t callback_started = profile ? fsx_engine_now_ns(e) : 0;
       status = visit(target, &item);
+      if (profile)
+        stats->callback_ns += fsx_engine_now_ns(e) - callback_started;
+      stats->directories++;
       if (status != FS_OK)
         goto done;
     }
-    offset += bytes;
+    if (next == FS_END)
+      break;
+    offset = following;
+    bytes = following_bytes;
   }
   status = metadata(r);
   if (status == FS_OK &&
@@ -626,13 +736,21 @@ FsStatus fsx_ntfs_raw_inventory(FsEngine *e, const FsNtfsConfig *config,
                     (g->mft_bytes + g->cluster_bytes - 1) / g->cluster_bytes))
     status = FS_STALE;
 done:
+  if (r->pending) {
+    FsStatus drained = finish_read(r, true);
+    if (status == FS_OK)
+      status = drained;
+  }
   fsx_free(saved);
   fsx_free(r->bits);
   fsx_free(r->list_bytes);
   fsx_free(r->extension);
   fsx_free(r->record);
   fsx_free(r->bounce_owner);
+  fsx_free(r->spare_owner);
   fsx_free(r->chunk_owner);
   fsx_free(r);
+  if (profile)
+    stats->elapsed_ns = fsx_engine_now_ns(e) - started;
   return status;
 }

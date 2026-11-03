@@ -4,6 +4,7 @@
 #endif
 #include "raw.h"
 #include <stdio.h>
+#include <stdlib.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <wchar.h>
@@ -12,7 +13,10 @@
 #include <winternl.h>
 typedef struct Native {
   FsEngine *engine;
-  HANDLE volume;
+  HANDLE volume, async_volume, raw_event;
+  OVERLAPPED raw_overlapped;
+  DWORD raw_pending_bytes;
+  bool raw_pending;
   wchar_t *root;
   FsNtfsIdentity identity;
   uint32_t error, buffer_bytes;
@@ -302,6 +306,78 @@ static FsStatus raw_read(void *context, uint64_t offset, void *out,
     return error_status(n, GetLastError());
   return returned == bytes ? FS_OK : FS_IO;
 }
+static FsStatus raw_begin(void *context, uint64_t offset, void *out,
+                          size_t bytes) {
+  Native *n = context;
+  if (n->raw_pending)
+    return FS_BUSY;
+  if (atomic_load(&n->engine->stopping))
+    return FS_CANCELLED;
+  if (n->async_volume == INVALID_HANDLE_VALUE || !n->raw_event)
+    return FS_UNSUPPORTED;
+  if (!ResetEvent(n->raw_event))
+    return error_status(n, GetLastError());
+  memset(&n->raw_overlapped, 0, sizeof(n->raw_overlapped));
+  n->raw_overlapped.Offset = (DWORD)offset;
+  n->raw_overlapped.OffsetHigh = (DWORD)(offset >> 32);
+  n->raw_overlapped.hEvent = n->raw_event;
+  BOOL ok =
+      ReadFile(n->async_volume, out, (DWORD)bytes, NULL, &n->raw_overlapped);
+  if (!ok) {
+    DWORD error = GetLastError();
+    if (error != ERROR_IO_PENDING)
+      return error_status(n, error);
+  }
+  n->raw_pending_bytes = (DWORD)bytes;
+  n->raw_pending =
+      true; /* Includes immediate completion; finish still reaps it. */
+  return FS_OK;
+}
+static FsStatus raw_finish(void *context, bool cancel) {
+  Native *n = context;
+  if (!n->raw_pending)
+    return FS_INVALID;
+  DWORD returned = 0, error = 0, wait_error = 0;
+  bool cancelled = false;
+  BOOL ok = FALSE;
+  for (;;) {
+    if (cancel || atomic_load(&n->engine->stopping)) {
+      CancelIoEx(n->async_volume, &n->raw_overlapped);
+      cancelled = true;
+      break;
+    }
+    /* Immediate completion does not require waiting on an event. */
+    ok = GetOverlappedResult(n->async_volume, &n->raw_overlapped, &returned,
+                             FALSE);
+    if (ok)
+      break;
+    error = GetLastError();
+    if (error != ERROR_IO_INCOMPLETE)
+      break;
+    DWORD waited = WaitForSingleObject(n->raw_event, 50);
+    if (waited != WAIT_OBJECT_0 && waited != WAIT_TIMEOUT) {
+      wait_error = GetLastError();
+      if (!wait_error)
+        wait_error = ERROR_GEN_FAILURE;
+      CancelIoEx(n->async_volume, &n->raw_overlapped);
+      break;
+    }
+  }
+  if (cancelled || wait_error) {
+    /* A cancel request is not completion. Drain before ending either borrow. */
+    ok = GetOverlappedResult(n->async_volume, &n->raw_overlapped, &returned,
+                             TRUE);
+    error = GetLastError();
+  }
+  n->raw_pending = false;
+  if (wait_error)
+    return error_status(n, wait_error);
+  if (cancelled)
+    return FS_CANCELLED;
+  if (!ok)
+    return error_status(n, error);
+  return returned == n->raw_pending_bytes ? FS_OK : FS_IO;
+}
 static FsStatus raw_record(void *context, uint64_t frn, void *out,
                            size_t capacity, size_t *bytes) {
   Native *n = context;
@@ -376,9 +452,11 @@ static FsStatus raw_inventory(void *context, FsNtfsRecordFn visit, void *target,
   FsStatus status = raw_geometry(n, &before);
   if (status != FS_OK)
     return status;
-  static const FsNtfsRawIO io = {raw_read, raw_record};
+  static const FsNtfsRawIO io = {raw_read, raw_record, raw_begin, raw_finish};
+  const char *setting = getenv("FSX_NTFS_RAW_PROFILE");
+  bool profile = setting && !strcmp(setting, "1");
   status = fsx_ntfs_raw_inventory(n->engine, &n->config, &before, &io, n, visit,
-                                  target, stats);
+                                  target, profile, stats);
   if (status == FS_OK)
     status = raw_geometry(n, &after);
   if (status == FS_OK && (before.volume_bytes != after.volume_bytes ||
@@ -393,6 +471,12 @@ static FsStatus raw_inventory(void *context, FsNtfsRecordFn visit, void *target,
 static uint32_t last_error(void *context) { return ((Native *)context)->error; }
 static void close_native(void *context) {
   Native *n = context;
+  if (n->raw_pending)
+    raw_finish(n, true);
+  if (n->raw_event)
+    CloseHandle(n->raw_event);
+  if (n->async_volume != INVALID_HANDLE_VALUE)
+    CloseHandle(n->async_volume);
   if (n->volume != INVALID_HANDLE_VALUE)
     CloseHandle(n->volume);
   fsx_free(n->root);
@@ -457,7 +541,7 @@ FsStatus fsx_ntfs_native_open(FsEngine *e, const char *root,
   n->buffer_bytes = config->buffer_bytes;
   n->config = *config;
   n->config.open_error = NULL;
-  n->volume = INVALID_HANDLE_VALUE;
+  n->volume = n->async_volume = INVALID_HANDLE_VALUE;
   char *canonical = NULL;
   FsStatus status = fsx_native_root(e, root, &canonical);
   if (status != FS_OK) {
@@ -567,6 +651,24 @@ FsStatus fsx_ntfs_native_open(FsEngine *e, const char *root,
   status = query(n, &journal);
   if (status != FS_OK)
     goto failed;
+  if (config->mft_reader == FS_NTFS_MFT_RAW &&
+      (config->raw_flags & FS_NTFS_RAW_PREFETCH)) {
+    phase = "raw prefetch volume";
+    n->async_volume =
+        CreateFileW(guid, GENERIC_READ,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+    if (n->async_volume == INVALID_HANDLE_VALUE) {
+      status = error_status(n, GetLastError());
+      goto failed;
+    }
+    phase = "raw prefetch completion event";
+    n->raw_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (!n->raw_event) {
+      status = error_status(n, GetLastError());
+      goto failed;
+    }
+  }
   *out_ops = &ops;
   *out = n;
   return FS_OK;

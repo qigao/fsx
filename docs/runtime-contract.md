@@ -462,3 +462,63 @@ cancellation. Old queries keep their original immutable pages. Raw read bytes,
 calls, slots, live base records and kernel-resolved records are reported as
 aggregate source-operation counters. Physical-device I/O is not inferred from
 these counters. Full rebuild remains synchronous.
+
+## Raw inventory stage profiling
+
+Optional FSX_NTFS_RAW_PROFILE=1 records elapsed nanoseconds for synchronous
+volume read calls, kernel record resolution and directory callbacks. Counters
+belong to the single raw-reader writer and are returned in its private stats;
+they add no allocations, queues, retained views or public ABI fields. Clocks are
+not read on these boundaries when profiling is disabled. The remaining elapsed
+time includes parsing, bitmap traversal, allocation, copying and scheduling; it
+is not an isolated parser CPU measurement. Timings are diagnostic and excluded
+from normal performance distributions. Failure/cancellation keeps the same
+cleanup and transaction rollback. The formal live-test diagnostic setting
+FSX_NTFS_TEST_PROFILE=1 runs one rebuild, two updates and one sample per query
+without changing the default three/twenty/twenty acceptance workload.
+
+## Raw two-buffer prefetch protocol
+
+Measured serial inventory spent 13.175 s in volume reads and 18.926 s in
+directory callbacks out of 33.250 s. The next optimization overlaps those stages
+without changing SQLite statements, row order, directory semantics or the
+single writer. RAW config flags admit FS_NTFS_RAW_PREFETCH (factory default);
+raw_flags=0 selects the serial reference. The appended 64-bit flags member
+increases FsNtfsConfig size; old layouts and unknown bits are rejected.
+
+The engine-owned reader allocates exactly two aligned chunk buffers when
+prefetch is enabled, plus its existing main-thread bounce buffer. One chunk is
+CURRENT and borrowed by parsing/callbacks; the other is SPARE or PENDING. At most
+one volume read is submitted. A whole next allocated chunk may be submitted only
+when it lies in one mapped extent and meets sector alignment. Fragmented chunks
+are assembled synchronously using the checked stream reader. Bitmap-free chunks
+still issue no read. The source operation remains synchronous to its host.
+
+The OS kernel produces PENDING bytes; the single writer consumes CURRENT bytes.
+The private begin/finish I/O contract is: successful begin pins the destination
+until exactly one finish call has drained completion; failed begin retains no
+borrow. Finish, including cancel=true, must return only after the kernel has
+stopped using the destination and OVERLAPPED state. A successful finish promotes
+PENDING to CURRENT and swaps the old current buffer to SPARE. Callbacks cannot
+retain chunk views. Stream maps and bitmap stay immutable through all in-flight
+reads and are revalidated only after completion has drained.
+
+Windows uses a separate FILE_FLAG_OVERLAPPED volume handle and one manual-reset
+event. Metadata/list reads keep the original synchronous handle and its file
+pointer, so concurrent I/O cannot redirect them. No application worker thread,
+lock-free queue, result publication or additional SQLite writer is added. Native
+begin errors and completion/short-read errors fail the transaction; there is no
+silent serial retry after an admitted asynchronous operation fails.
+
+On parser/callback failure or STOPPING, cancel the exact pending operation and
+drain it with GetOverlappedResult before freeing either chunk, the event or the
+volume handle. A cancellation request is not completion. The original failure
+is retained if draining also reports an error. Source close still follows joined
+source callers; an operation never returns with a kernel buffer borrow. A full
+pipeline applies backpressure by waiting for its one pending completion, with
+STOPPING checked during waits. No extra buffer or pending request is allocated.
+
+Extra managed memory is one chunk (at most 1 MiB plus alignment). Raw requested
+read counters include asynchronous submissions and successful completed bytes.
+Optional read_ns measures main-thread read submission/completion wait time, not
+the overlapped request's lifetime, so callback time is not double-counted.

@@ -2123,6 +2123,16 @@ suite("NTFS transaction protocol") {
                 FS_INVALID);
     check_null(native_source);
     config = fsx_ntfs_config();
+    config.struct_size = offsetof(FsNtfsConfig, raw_flags);
+    check_equal(fsx_ntfs_open(engine, root, &config, &native_source),
+                FS_INVALID);
+    check_null(native_source);
+    config = fsx_ntfs_config();
+    config.raw_flags = UINT64_C(2);
+    check_equal(fsx_ntfs_open(engine, root, &config, &native_source),
+                FS_INVALID);
+    check_null(native_source);
+    config = fsx_ntfs_config();
     config.mft_reader = FS_NTFS_MFT_RAW;
     static const FsNtfsOps no_raw = {nt_query, nt_mft,   nt_read,
                                      nt_list,  nt_stat,  nt_error,
