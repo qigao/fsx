@@ -1,9 +1,15 @@
 name: fsx native tests
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      ntfs_live:
+        description: Run privileged real-NTFS Release acceptance and comparisons
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,13 +31,13 @@ jobs:
           - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-debug, triplet: x64-linux}
           - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-asan-ubsan, triplet: x64-linux}
           - {runner: windows-2025, rid: windows-x64, preset: windows-debug, triplet: qigao-x64-windows-llvm-mingw}
-    env:
+    env: &native_environment
       VCPKG_BINARY_CACHE: ${{ github.workspace }}/build/vcpkg-binary-cache
       VCPKG_DOWNLOADS: ${{ github.workspace }}/build/vcpkg-downloads
       CCACHE_DIR: ${{ github.workspace }}/build/ccache
       CCACHE_MAXSIZE: 256MiB
       CCACHE_COMPILERCHECK: content
-    steps:
+    steps: &native_steps
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -119,12 +125,84 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { throw 'ccache extraction failed' }
           (Join-Path $env:RUNNER_TEMP $name) >> $env:GITHUB_PATH
+      - name: Stage the live source on the existing system-volume journal
+        if: matrix.live
+        id: live_source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Join-Path "$env:SystemDrive/" "fsx-ntfs-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          New-Item -ItemType Directory -Path $source | Out-Null
+          git worktree add --detach $source HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage owned live-test source' }
+          "path=$($source -replace '\\', '/')" >> $env:GITHUB_OUTPUT
       - name: Configure source-owned tests
+        working-directory: ${{ steps.live_source.outputs.path || github.workspace }}
         run: cmake --preset ${{ matrix.preset }} -DCMAKE_C_COMPILER_LAUNCHER=ccache
       - name: Build
+        working-directory: ${{ steps.live_source.outputs.path || github.workspace }}
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Run formal CTest suite
+        if: ${{ !matrix.live }}
+        working-directory: ${{ github.workspace }}
         run: ctest --preset ${{ matrix.preset }}
+      - name: Run real NTFS acceptance and same-build comparisons
+        if: matrix.live
+        working-directory: ${{ steps.live_source.outputs.path }}
+        shell: pwsh
+        env:
+          FSX_NTFS_TEST_RAW_MFT: '1'
+          FSX_NTFS_TEST_PROFILE: '0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ctest --test-dir build/${{ matrix.preset }} --output-on-failure -E '^fsx_ntfs_(live|link)_test$'
+          if ($LASTEXITCODE -ne 0) { throw 'Release regression tests failed' }
+          $variants = @(
+            @{ Name = 'serial-file'; Async = '0'; Queue = '0'; Pages = '0' },
+            @{ Name = 'job-file'; Async = '1'; Queue = '0'; Pages = '0' },
+            @{ Name = 'pipeline-file'; Async = '1'; Queue = '4'; Pages = '0' },
+            @{ Name = 'pipeline-memory'; Async = '1'; Queue = '4'; Pages = '4096' }
+          )
+          foreach ($variant in $variants) {
+            $env:FSX_NTFS_TEST_INDEX_ASYNC = $variant.Async
+            $env:FSX_NTFS_TEST_PIPELINE_BATCHES = $variant.Queue
+            $env:FSX_NTFS_TEST_WORK_MEMORY_PAGES = $variant.Pages
+            $report = "build/${{ matrix.preset }}/tests/reports/$($variant.Name)"
+            New-Item -ItemType Directory -Force -Path $report | Out-Null
+            ctest --preset ${{ matrix.preset }} --verbose --output-junit "$report/junit.xml"
+            $status = $LASTEXITCODE
+            Get-ChildItem "build/${{ matrix.preset }}/tests/ntfs-live-*.csv" | Move-Item -Destination $report
+            Copy-Item "build/${{ matrix.preset }}/Testing/Temporary/LastTest.log" "$report/LastTest.log"
+            if ($status -ne 0) { throw "Real NTFS acceptance failed: $($variant.Name)" }
+          }
+      - name: Preserve real-volume measurements and test logs
+        if: always() && matrix.live && steps.live_source.outputs.path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntfs-live-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ steps.live_source.outputs.path }}/build/${{ matrix.preset }}/tests/reports/**
+            ${{ steps.live_source.outputs.path }}/build/${{ matrix.preset }}/Testing/Temporary/LastTest.log
+          if-no-files-found: error
+          retention-days: 30
       - name: Compiler cache statistics
         if: always() && steps.sdks.outcome == 'success'
         run: ccache --show-stats
+      - name: Remove the owned live source worktree
+        if: always() && matrix.live && steps.live_source.outputs.path != ''
+        shell: pwsh
+        env:
+          FSX_LIVE_SOURCE: ${{ steps.live_source.outputs.path }}
+        run: git worktree remove --force "$env:FSX_LIVE_SOURCE"
+
+  ntfs-live:
+    name: NTFS live Release
+    if: contains(github.event.pull_request.labels.*.name, 'ci/ntfs-live') || inputs.ntfs_live == true
+    runs-on: windows-2025
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        include:
+          - {runner: windows-2025, rid: windows-x64, preset: windows-native-release, triplet: qigao-x64-windows-llvm-mingw, live: true}
+    env: *native_environment
+    steps: *native_steps

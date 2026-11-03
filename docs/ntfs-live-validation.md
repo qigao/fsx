@@ -53,6 +53,46 @@ Set FSX_NTFS_TEST_RAW_MFT=1 for its opt-in run; see
 [raw-mft-reader.md](raw-mft-reader.md) for implementation, limits and results.
 The original measurements below remain an ENUM baseline.
 
+## Asynchronous pipeline comparison
+
+The live test defaults to the asynchronous index API. Set
+`FSX_NTFS_TEST_INDEX_ASYNC=0` to call the synchronous API instead. Both execute
+the same complete namespace/identity/metadata comparisons, real mutations,
+retained-result checks and durable close/reopen continuation. Every asynchronous
+operation waits for finalization before the provider/session is inspected or
+closed; failed test cleanup cancels and joins any retained job first.
+
+Two additional controls select `FSX_NTFS_TEST_PIPELINE_BATCHES` (0..16, default 4)
+and `FSX_NTFS_TEST_WORK_MEMORY_PAGES` (0..262144, default 4096). Zero selects the
+serial callback path or spillable work database respectively. CSV headers record
+all three controls, with published-batch/peak occupancy comments per operation.
+The test asserts that occupancy never exceeds configured capacity.
+
+The optional `ci/ntfs-live` PR label, or the workflow's `ntfs_live` manual input,
+runs the existing `windows-native-release` preset on Windows 2025 with
+LLVM-MinGW. It first executes the ordinary source-owned Release tests, then the
+full live suite in these four modes on the same runner and build:
+
+| Mode | Index API | Native queue slots | Work database |
+|---|---|---:|---|
+| `serial-file` | Synchronous | 0 | Spillable |
+| `job-file` | Asynchronous | 0 | Spillable |
+| `pipeline-file` | Asynchronous | 4 | Spillable |
+| `pipeline-memory` | Asynchronous | 4 | 4096 pages / 16 MiB of database pages |
+
+All modes use raw MFT inventory, the existing raw I/O prefetch and directory
+staging settings, three complete rebuild samples and twenty metadata updates.
+These are sequential comparisons, not randomized experiments or cold-cache
+measurements. Mode order, changing volume contents and OS caches limit causal
+speedup claims. Query-visible uncommitted deltas are outside this acceptance.
+
+The job stages an exclusively owned Git worktree on the existing system volume
+so its build-tree fixture uses that volume's journal. It never creates or resets
+a journal, elevates a token, or substitutes a mock/RDC backend. Denied native
+admission fails the opt-in job. CSV, JUnit and CTest logs are preserved per mode
+before the worktree is removed. Ordinary unlabelled Debug/sanitizer jobs retain
+their existing scope and do not request volume access.
+
 ## Measurements
 
 The test creates CSV artifacts in `build/windows-native-release/tests/` and
