@@ -482,8 +482,10 @@ without changing the default three/twenty/twenty acceptance workload.
 Measured serial inventory spent 13.175 s in volume reads and 18.926 s in
 directory callbacks out of 33.250 s. The next optimization overlaps those stages
 without changing SQLite statements, row order, directory semantics or the
-single writer. RAW config flags admit FS_NTFS_RAW_PREFETCH (factory default);
-raw_flags=0 selects the serial reference. The appended 64-bit flags member
+single writer. RAW config flags admit FS_NTFS_RAW_PREFETCH and
+FS_NTFS_RAW_BATCH_DIRS (both enabled by the factory). Clearing PREFETCH selects
+serial reads independently of graph ingestion. raw_flags=0 selects direct,
+serial ingestion. The appended 64-bit flags member
 increases FsNtfsConfig size; old layouts and unknown bits are rejected.
 
 The engine-owned reader allocates exactly two aligned chunk buffers when
@@ -522,3 +524,31 @@ Extra managed memory is one chunk (at most 1 MiB plus alignment). Raw requested
 read counters include asynchronous submissions and successful completed bytes.
 Optional read_ns measures main-thread read submission/completion wait time, not
 the overlapped request's lifetime, so callback time is not double-counted.
+
+## Raw directory staging and writer SQL cancellation
+
+A RAW rebuild with FS_NTFS_RAW_BATCH_DIRS appends directory records to the
+writer's TEMP nt_inventory table, capped independently at max_mft_records.
+The callback copies borrowed name bytes into SQLite, then releases its managed
+UTF-8 allocation. SQLite TEMP storage is file-backed; its page cache and sorter
+memory belong to SQLite rather than the managed FsEngine allocation budget.
+
+After raw I/O drains, one ordered INSERT SELECT merges into fsx_ntfs_dirs in
+(source_id,frn,rowid) order. The rowid preserves last-emission-wins for duplicate
+FRNs. The TEMP rows are deleted before reconciliation continues; all journal,
+alias, graph and snapshot work remains in the original transaction. No
+persistent schema migration or index removal is involved. Failures roll back
+the committed graph, source cursor and revision together. Live directory
+verification and alias completion remain required.
+
+The writer connection owns one SQLite progress handler, checking STOPPING
+every 2,048 VM instructions. SQLITE_INTERRUPT maps to FS_CANCELLED. A private
+observer can be configured with a quiescent writer for diagnostics; it must not
+change the SQLite connection and must not replace the stop handler. Query
+reader connections retain their separate query cancellation handlers.
+This interval is measured in VM work, not a wall-clock bound on sorting or I/O.
+
+The formal live test can clear only BATCH_DIRS with
+FSX_NTFS_TEST_DIRECT_GRAPH=1 for a same-build direct-write control. The
+FSX_NTFS_TEST_RAW_SYNC setting now clears only PREFETCH, so I/O and directory
+ingestion can be controlled independently. Full workload counts are unchanged.

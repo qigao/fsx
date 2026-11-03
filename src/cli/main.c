@@ -122,7 +122,7 @@ static FsStatus ntfs_command(FsEngine *engine, const char *command,
   FsNtfsConfig config = fsx_ntfs_config();
   config.mft_reader = raw_mft ? FS_NTFS_MFT_RAW : FS_NTFS_MFT_ENUM;
   if (raw_sync)
-    config.raw_flags = 0;
+    config.raw_flags &= ~(uint64_t)FS_NTFS_RAW_PREFETCH;
   FsOpenError diagnostic = {0};
   config.open_error = &diagnostic;
   FsNtfs *source = NULL;

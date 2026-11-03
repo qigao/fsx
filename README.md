@@ -192,8 +192,12 @@ assistance for metadata/extension records. ENUM remains the default. Raw errors
 are reported without changing mode. Existing directory alias completion and USN
 handoff still run. See the [raw reader protocol and validation](docs/raw-mft-reader.md).
 The C API sets `FsNtfsConfig.mft_reader = FS_NTFS_MFT_RAW` after the factory call.
-Raw uses two buffers and at most one overlapped read; --raw-mft-sync or C API
-raw_flags=0 selects serial reads. See the
+Raw uses two buffers and at most one overlapped read. The factory enables
+FS_NTFS_RAW_PREFETCH | FS_NTFS_RAW_BATCH_DIRS: directory inventory is staged
+in SQLite TEMP storage, then merged in FRN order within the same transaction.
+--raw-mft-sync clears only PREFETCH. C API raw_flags=0 selects direct, serial
+ingestion; the flags are independent and the config layout is unchanged by
+BATCH_DIRS. See the
 [prefetch protocol and measurements](docs/performance/raw-prefetch-2026-11-03.md).
 Rebuild hosts against the updated FsNtfsConfig/FsNtfsInfo header.
 

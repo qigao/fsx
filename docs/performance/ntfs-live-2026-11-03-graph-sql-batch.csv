@@ -1,0 +1,1290 @@
+# build=Release compiler=23.1.4 (https://github.com/llvm/llvm-project.git 7a941dfb2877a0b8cf30323fefa85ad019e0b0f5) logical_processors=32 files=10000 dirs=100 rebuilds=1 updates=2
+# reader=raw
+# raw_io=prefetch profile=diagnostic
+# OS cache uncontrolled; list_ms includes directory callbacks/SQLite; peak_ws is cumulative process peak; IO bytes are process counters, not physical disk bytes.
+phase,sample,wall_ms,cpu_ms,entries,mft_records,journal_records,ws_before,ws_after,process_peak_ws,owned_bytes,io_read_bytes,io_write_bytes,mft_calls,read_calls,list_calls,mft_ms,read_ms,list_callback_ms,stat_ms
+directory_initial,0,2917.515700,2906.250000,10101,0,0,6963200,18284544,18284544,5331175,17245568,326262620,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=69 scans=18 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=BEGIN IMMEDIATE;
+# SQL profile runs=1 ms=0.000 vm=31 scans=0 sql=CREATE TABLE fsx_ntfs_sources(source_id INTEGER PRIMARY KEY REFERENCES sources(source_id),profile INTEGER NOT NULL,volume_guid TEXT NOT NULL,serial BLOB NOT NULL,root BLOB NOT NULL,volume_root BLOB NOT NULL,journal BLOB NOT
+# SQL profile runs=1 ms=0.000 vm=42 scans=0 sql=CREATE TABLE fsx_ntfs_dirs(source_id INTEGER NOT NULL REFERENCES sources(source_id),frn BLOB NOT NULL,parent BLOB NOT NULL,name TEXT,raw BLOB NOT NULL,attributes INTEGER NOT NULL,PRIMARY KEY(source_id,frn));
+# SQL profile runs=1 ms=0.000 vm=28 scans=0 sql=CREATE INDEX fsx_ntfs_dirs_parent ON fsx_ntfs_dirs(source_id,parent);
+# SQL profile runs=1 ms=1.000 vm=42 scans=0 sql=CREATE TABLE fsx_ntfs_scopes(source_id INTEGER NOT NULL REFERENCES sources(source_id),frn BLOB NOT NULL,PRIMARY KEY(source_id,frn));
+# SQL profile runs=1 ms=0.000 vm=42 scans=0 sql=CREATE TABLE fsx_ntfs_names(source_id INTEGER NOT NULL REFERENCES sources(source_id),parent BLOB NOT NULL,raw BLOB NOT NULL,frn BLOB NOT NULL,name TEXT NOT NULL,object_key INTEGER NOT NULL REFERENCES objects(object_key),ent
+# SQL profile runs=1 ms=0.000 vm=28 scans=0 sql=CREATE INDEX fsx_ntfs_names_file ON fsx_ntfs_names(source_id,frn);
+# SQL profile runs=1 ms=1.000 vm=3 scans=0 sql=COMMIT;
+# SQL profile runs=1 ms=0.000 vm=13 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# raw_prefetch submitted=6986
+# raw_stages read_ms=6144.489700 kernel_ms=736.791500 callback_ms=3092.520800 elapsed_ms=10578.708900 directories=729861
+# SQL progress: INSERT INTO fsx_ntfs_dirs SELECT source_id,frn,parent,name,raw,attributes FROM nt_inventory WHERE true ORDER BY source_id,frn,rowid ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excl
+# SQL progress: INSERT INTO fsx_ntfs_dirs SELECT source_id,frn,parent,name,raw,attributes FROM nt_inventory WHERE true ORDER BY source_id,frn,rowid ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excl
+# SQL progress: INSERT INTO fsx_ntfs_dirs SELECT source_id,frn,parent,name,raw,attributes FROM nt_inventory WHERE true ORDER BY source_id,frn,rowid ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excl
+# SQL progress: INSERT INTO fsx_ntfs_dirs SELECT source_id,frn,parent,name,raw,attributes FROM nt_inventory WHERE true ORDER BY source_id,frn,rowid ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excl
+# SQL progress: INSERT INTO fsx_ntfs_dirs SELECT source_id,frn,parent,name,raw,attributes FROM nt_inventory WHERE true ORDER BY source_id,frn,rowid ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excl
+# MFT progress calls=1 bytes=4096
+# SQL progress: DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL progress: UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL progress: INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL progress: SELECT e.entry_key,e.source_id,o.file_id,e.name,e.path,e.name_fold,e.path_fold,o.size,o.mtime,o.flags FROM entries e JOIN objects o ON e.object_key=o.object_key AND e.source_id=o.source_id ORDER BY e.entry_key
+mft_initial,0,27293.533000,20609.375000,10101,4579837,131,18309120,33079296,33079296,6380986,8567997634,1311229281,104,1,202,36.266600,0.118300,1242.242300,1496.142500
+# raw sample=0 slots=7799808 bytes=7368273408 calls=7218 kernel_records=5325 inventory_callback_ms=10578.735800
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=2 ms=0.000 vm=26 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=2 ms=0.000 vm=20 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=1 ms=0.000 vm=12 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=1 ms=0.000 vm=9 scans=0 sql=SELECT count(*) FROM sources
+# SQL profile runs=1 ms=0.000 vm=54 scans=0 sql=INSERT INTO sources(root,volume,complete,skipped,unsupported) VALUES(?1,?2,0,0,0)
+# SQL profile runs=1 ms=1.000 vm=32 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=1 ms=0.000 vm=26 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=1 ms=0.000 vm=17 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=1 ms=0.000 vm=16 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=DELETE FROM fsx_ntfs_dirs WHERE source_id=1;
+# SQL profile runs=729861 ms=1933.000 vm=10218054 scans=0 sql=INSERT INTO nt_inventory VALUES(?1,?2,?3,?4,?5,?6)
+# SQL profile runs=1 ms=9162.000 vm=40872238 scans=729860 sql=INSERT INTO fsx_ntfs_dirs SELECT source_id,frn,parent,name,raw,attributes FROM nt_inventory WHERE true ORDER BY source_id,frn,rowid ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excl
+# SQL profile runs=1 ms=63.000 vm=5 scans=0 sql=DELETE FROM nt_inventory
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=2 ms=0.000 vm=48 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=4 ms=5.000 vm=9332 scans=200 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=2 ms=1.000 vm=10278 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=2 ms=0.000 vm=16 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=2 ms=0.000 vm=3157 scans=200 sql=INSERT OR IGNORE INTO nt_dirty SELECT frn FROM nt_scope
+# SQL profile runs=204 ms=15.000 vm=187078 scans=10300 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=198 ms=1.000 vm=2988 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=301 ms=9.000 vm=16856 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=101 ms=1.000 vm=1818 scans=0 sql=INSERT OR IGNORE INTO nt_verified VALUES(?1)
+# SQL profile runs=202 ms=66.000 vm=246463 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=30303 ms=1126.000 vm=2676765 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=20202 ms=516.000 vm=1535352 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=20333 ms=89.000 vm=335328 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=202 ms=17.000 vm=105352 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=202 ms=1.000 vm=3838 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=2 ms=18.000 vm=161658 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=131 ms=1.000 vm=3760 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=6 ms=0.000 vm=96 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=3 ms=0.000 vm=48 scans=0 sql=DELETE FROM fsx_ntfs_dirs WHERE source_id=?1 AND frn=?2
+# SQL profile runs=1 ms=1.000 vm=151 scans=35 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=2 ms=0.000 vm=42 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=1 ms=0.000 vm=13 scans=1 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=1 ms=0.000 vm=625 scans=35 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=1 ms=0.000 vm=1514 scans=106 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=1 ms=10.000 vm=60623 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=10101 ms=237.000 vm=192419 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=1 ms=2970.000 vm=202781 scans=10147 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=1 ms=187.000 vm=2189594 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+mixed_increment,0,1254.408300,1234.375000,10004,0,90,33067008,39047168,40493056,11661990,77283328,17501824,6,1,3,0.740200,0.123700,11.299900,19.083700
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=2 ms=0.000 vm=54 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=1 ms=0.000 vm=539 scans=104 sql=SELECT entry_key FROM entries WHERE path LIKE '%'||?1
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=2 ms=0.000 vm=20 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=1 ms=2.000 vm=6 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=1 ms=3.000 vm=7 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=1 ms=39.000 vm=242440 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=51 ms=0.000 vm=786 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=294 ms=0.000 vm=5049 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=90 ms=0.000 vm=2652 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=5 ms=0.000 vm=81 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=2 ms=0.000 vm=32 scans=0 sql=DELETE FROM fsx_ntfs_dirs WHERE source_id=?1 AND frn=?2
+# SQL profile runs=104 ms=3.000 vm=5846 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=3.000 vm=83 scans=18 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=2 ms=0.000 vm=74 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=1 ms=0.000 vm=13 scans=1 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=1 ms=0.000 vm=24 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=2 ms=1.000 vm=4666 scans=100 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=1 ms=0.000 vm=5139 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=1 ms=0.000 vm=8 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=3845 scans=153 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=3 ms=0.000 vm=4884 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=407 ms=8.000 vm=39401 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=204 ms=6.000 vm=16098 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=3 ms=0.000 vm=1086 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=3 ms=0.000 vm=57 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=1 ms=0.000 vm=18 scans=0 sql=INSERT OR IGNORE INTO nt_verified VALUES(?1)
+# SQL profile runs=1 ms=10.000 vm=83053 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=1 ms=0.000 vm=318 scans=18 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=1 ms=0.000 vm=111 scans=6 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=1 ms=9.000 vm=60132 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=203 ms=7.000 vm=4357 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=1 ms=40.000 vm=4437 scans=225 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=1 ms=133.000 vm=2189597 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10004 ms=96.000 vm=420258 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=247.000 vm=140070 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=17.000 vm=270106 scans=10003 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=109 ms=0.000 vm=61266 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=303 ms=0.000 vm=3636 scans=0 sql=DELETE FROM 'main'.'name_fts_docsize' WHERE id=?
+# SQL profile runs=1 ms=22.000 vm=205652 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=351 ms=3.000 vm=480165 scans=0 sql=REPLACE INTO 'main'.'name_fts_data'(id, block) VALUES(?,?)
+directory_mixed_rescan,0,2736.746900,2687.500000,10004,0,0,39047168,40812544,45469696,5280505,23322240,12161228,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=2 ms=0.000 vm=54 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=1 ms=0.000 vm=539 scans=104 sql=SELECT entry_key FROM entries WHERE path LIKE '%'||?1
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=2 ms=0.000 vm=20 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=1 ms=2.000 vm=6 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=1 ms=3.000 vm=7 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=1 ms=39.000 vm=242440 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=51 ms=0.000 vm=786 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=294 ms=0.000 vm=5049 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=90 ms=0.000 vm=2652 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=5 ms=0.000 vm=81 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=2 ms=0.000 vm=32 scans=0 sql=DELETE FROM fsx_ntfs_dirs WHERE source_id=?1 AND frn=?2
+# SQL profile runs=104 ms=3.000 vm=5846 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=3.000 vm=83 scans=18 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=2 ms=0.000 vm=74 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=1 ms=0.000 vm=13 scans=1 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=1 ms=0.000 vm=24 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=2 ms=1.000 vm=4666 scans=100 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=1 ms=0.000 vm=5139 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=1 ms=0.000 vm=8 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=3845 scans=153 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=3 ms=0.000 vm=4884 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=407 ms=8.000 vm=39401 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=204 ms=6.000 vm=16098 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=3 ms=0.000 vm=1086 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=3 ms=0.000 vm=57 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=1 ms=0.000 vm=18 scans=0 sql=INSERT OR IGNORE INTO nt_verified VALUES(?1)
+# SQL profile runs=1 ms=10.000 vm=83053 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=1 ms=0.000 vm=318 scans=18 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=1 ms=0.000 vm=111 scans=6 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=1 ms=9.000 vm=60132 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=203 ms=7.000 vm=4357 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=1 ms=40.000 vm=4437 scans=225 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=1 ms=133.000 vm=2189597 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10004 ms=96.000 vm=420258 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=247.000 vm=140070 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=17.000 vm=270106 scans=10003 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=109 ms=0.000 vm=61266 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=303 ms=0.000 vm=3636 scans=0 sql=DELETE FROM 'main'.'name_fts_docsize' WHERE id=?
+# SQL profile runs=1 ms=22.000 vm=205652 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=351 ms=3.000 vm=480165 scans=0 sql=REPLACE INTO 'main'.'name_fts_data'(id, block) VALUES(?,?)
+# SQL progress: SELECT e.path,e.name,o.file_id,o.size,o.mtime,o.flags FROM entries e JOIN objects o USING(object_key) ORDER BY e.path
+# MFT progress calls=7 bytes=28368
+return_delete,0,835.411100,828.125000,10103,0,39,41431040,42340352,47853568,11715470,78020608,11479357,2,1,3,0.740600,0.046700,23.850900,24.254000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=3 ms=0.000 vm=81 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=2 ms=10.000 vm=50068 scans=10006 sql=SELECT entry_key FROM entries WHERE path LIKE '%'||?1
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=2 ms=0.000 vm=30 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=2 ms=1.000 vm=12 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=2 ms=2.000 vm=12 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=2 ms=1.000 vm=12 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=2 ms=7.000 vm=14 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=2 ms=94.000 vm=482552 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=89 ms=0.000 vm=1374 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=635 ms=1.000 vm=11091 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=129 ms=0.000 vm=3732 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=6 ms=0.000 vm=99 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=2 ms=0.000 vm=32 scans=0 sql=DELETE FROM fsx_ntfs_dirs WHERE source_id=?1 AND frn=?2
+# SQL profile runs=207 ms=8.000 vm=11626 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=2 ms=5.000 vm=146 scans=31 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=3 ms=0.000 vm=127 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=2 ms=1.000 vm=23 scans=1 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=2 ms=0.000 vm=48 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=4 ms=7.000 vm=9378 scans=201 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=2 ms=1.000 vm=10329 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=2 ms=0.000 vm=16 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=8 ms=3.000 vm=7362 scans=290 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=6 ms=0.000 vm=9816 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=1011 ms=35.000 vm=95363 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=506 ms=10.000 vm=39653 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=6 ms=0.000 vm=2662 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=6 ms=0.000 vm=114 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=2 ms=0.000 vm=36 scans=0 sql=INSERT OR IGNORE INTO nt_verified VALUES(?1)
+# SQL profile runs=2 ms=22.000 vm=163898 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=2 ms=0.000 vm=563 scans=31 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=2 ms=0.000 vm=208 scans=11 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=2 ms=17.000 vm=120793 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=505 ms=12.000 vm=10600 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=2 ms=94.000 vm=10790 scans=545 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=2 ms=257.000 vm=4379194 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=20107 ms=194.000 vm=846099 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=2 ms=486.000 vm=281526 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=2 ms=33.000 vm=542600 scans=20105 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=212 ms=0.000 vm=61884 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=305 ms=0.000 vm=3660 scans=0 sql=DELETE FROM 'main'.'name_fts_docsize' WHERE id=?
+# SQL profile runs=2 ms=40.000 vm=405829 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=671 ms=4.000 vm=484965 scans=0 sql=REPLACE INTO 'main'.'name_fts_data'(id, block) VALUES(?,?)
+directory_return_rescan,0,2072.055300,2046.875000,10103,0,0,42340352,40894464,47853568,5333985,23383320,13132344,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=3 ms=0.000 vm=81 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=2 ms=10.000 vm=50068 scans=10006 sql=SELECT entry_key FROM entries WHERE path LIKE '%'||?1
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=2 ms=0.000 vm=30 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=2 ms=1.000 vm=12 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=2 ms=2.000 vm=12 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=2 ms=1.000 vm=12 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=2 ms=7.000 vm=14 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=2 ms=94.000 vm=482552 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=89 ms=0.000 vm=1374 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=635 ms=1.000 vm=11091 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=129 ms=0.000 vm=3732 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=6 ms=0.000 vm=99 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=2 ms=0.000 vm=32 scans=0 sql=DELETE FROM fsx_ntfs_dirs WHERE source_id=?1 AND frn=?2
+# SQL profile runs=207 ms=8.000 vm=11626 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=2 ms=5.000 vm=146 scans=31 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=3 ms=0.000 vm=127 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=2 ms=1.000 vm=23 scans=1 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=2 ms=0.000 vm=48 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=4 ms=7.000 vm=9378 scans=201 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=2 ms=1.000 vm=10329 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=2 ms=0.000 vm=16 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=8 ms=3.000 vm=7362 scans=290 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=6 ms=0.000 vm=9816 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=1011 ms=35.000 vm=95363 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=506 ms=10.000 vm=39653 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=6 ms=0.000 vm=2662 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=6 ms=0.000 vm=114 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=2 ms=0.000 vm=36 scans=0 sql=INSERT OR IGNORE INTO nt_verified VALUES(?1)
+# SQL profile runs=2 ms=22.000 vm=163898 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=2 ms=0.000 vm=563 scans=31 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=2 ms=0.000 vm=208 scans=11 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=2 ms=17.000 vm=120793 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=505 ms=12.000 vm=10600 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=2 ms=94.000 vm=10790 scans=545 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=2 ms=257.000 vm=4379194 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=20107 ms=194.000 vm=846099 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=2 ms=486.000 vm=281526 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=2 ms=33.000 vm=542600 scans=20105 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=212 ms=0.000 vm=61884 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=305 ms=0.000 vm=3660 scans=0 sql=DELETE FROM 'main'.'name_fts_docsize' WHERE id=?
+# SQL profile runs=2 ms=40.000 vm=405829 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=671 ms=4.000 vm=484965 scans=0 sql=REPLACE INTO 'main'.'name_fts_data'(id, block) VALUES(?,?)
+# SQL progress: SELECT e.path,e.name,o.file_id,o.size,o.mtime,o.flags FROM entries e JOIN objects o USING(object_key) ORDER BY e.path
+reopen_resume,0,723.009100,671.875000,10104,0,37,29704192,34553856,47853568,6384338,70103040,5650144,0,1,1,0.000000,0.178300,9.101800,7.551500
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=2 ms=0.000 vm=54 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=2 ms=0.000 vm=20 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=1 ms=2.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=1 ms=0.000 vm=26 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=1 ms=43.000 vm=242488 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=142 ms=3.000 vm=2463 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=37 ms=1.000 vm=1004 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=34 ms=0.000 vm=525 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=6 ms=0.000 vm=96 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=1 ms=0.000 vm=67 scans=14 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=2 ms=0.000 vm=42 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=1 ms=0.000 vm=13 scans=1 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=1 ms=0.000 vm=24 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=2 ms=3.000 vm=4712 scans=101 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=1 ms=1.000 vm=5190 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=1 ms=0.000 vm=8 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=2 ms=0.000 vm=2850 scans=115 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=210 ms=7.000 vm=20344 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=1 ms=8.000 vm=80853 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=1 ms=0.000 vm=265 scans=14 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=1 ms=0.000 vm=83 scans=4 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=1 ms=8.000 vm=60654 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=105 ms=2.000 vm=2500 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=1 ms=16.000 vm=2429 scans=124 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=1 ms=117.000 vm=2189597 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+directory_resume_rescan,0,2221.250500,2203.125000,10104,0,0,34553856,34783232,47853568,5334527,23608480,10987856,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=2 ms=0.000 vm=54 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=2 ms=0.000 vm=20 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=1 ms=0.000 vm=5 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=1 ms=2.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=1 ms=0.000 vm=41 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=1 ms=0.000 vm=26 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=1 ms=43.000 vm=242488 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=142 ms=3.000 vm=2463 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=37 ms=1.000 vm=1004 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=34 ms=0.000 vm=525 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=6 ms=0.000 vm=96 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=1 ms=0.000 vm=67 scans=14 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=2 ms=0.000 vm=42 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=1 ms=0.000 vm=13 scans=1 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=1 ms=0.000 vm=6 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=1 ms=0.000 vm=24 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=2 ms=3.000 vm=4712 scans=101 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=1 ms=1.000 vm=5190 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=1 ms=0.000 vm=8 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=2 ms=0.000 vm=2850 scans=115 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=210 ms=7.000 vm=20344 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=1 ms=8.000 vm=80853 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=1 ms=0.000 vm=265 scans=14 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=1 ms=0.000 vm=83 scans=4 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=1 ms=8.000 vm=60654 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=105 ms=2.000 vm=2500 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=1 ms=16.000 vm=2429 scans=124 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=1 ms=117.000 vm=2189597 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+# SQL progress: SELECT e.path,e.name,o.file_id,o.size,o.mtime,o.flags FROM entries e JOIN objects o USING(object_key) ORDER BY e.path
+single_metadata_increment,0,213.027900,203.125000,10104,0,37,35606528,36118528,47853568,6384338,22478848,1989112,0,1,0,0.000000,0.022500,0.000000,0.289600
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=3 ms=0.000 vm=81 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=3 ms=0.000 vm=30 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=2 ms=0.000 vm=30 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=2 ms=0.000 vm=37 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=2 ms=2.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=2 ms=1.000 vm=12 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=2 ms=3.000 vm=13 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=2 ms=0.000 vm=31 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=2 ms=86.000 vm=485000 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=179 ms=4.000 vm=3030 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=74 ms=1.000 vm=2080 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=68 ms=0.000 vm=1044 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=6 ms=0.000 vm=96 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=2 ms=0.000 vm=110 scans=22 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=2 ms=0.000 vm=42 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=2 ms=0.000 vm=20 scans=1 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=2 ms=0.000 vm=48 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=4 ms=5.000 vm=9424 scans=202 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=2 ms=1.000 vm=10380 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=2 ms=0.000 vm=16 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=5311 scans=216 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=212 ms=8.000 vm=20538 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=2 ms=16.000 vm=161706 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=2 ms=0.000 vm=431 scans=22 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=2 ms=0.000 vm=138 scans=6 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=2 ms=14.000 vm=121308 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=107 ms=2.000 vm=2543 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=2 ms=17.000 vm=2654 scans=136 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=2 ms=257.000 vm=4379194 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+directory_metadata_rescan,0,2587.016300,2468.750000,10104,0,0,36118528,36274176,47853568,5334527,26607304,11181472,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=3 ms=0.000 vm=81 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=3 ms=0.000 vm=30 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=2 ms=0.000 vm=30 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=2 ms=0.000 vm=37 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=2 ms=0.000 vm=10 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=2 ms=2.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=2 ms=0.000 vm=46 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=2 ms=1.000 vm=12 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=2 ms=3.000 vm=13 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=2 ms=0.000 vm=31 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=2 ms=86.000 vm=485000 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=179 ms=4.000 vm=3030 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=74 ms=1.000 vm=2080 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=68 ms=0.000 vm=1044 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=6 ms=0.000 vm=96 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=2 ms=0.000 vm=110 scans=22 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=2 ms=0.000 vm=42 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=2 ms=0.000 vm=20 scans=1 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=2 ms=0.000 vm=48 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=4 ms=5.000 vm=9424 scans=202 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=2 ms=1.000 vm=10380 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=2 ms=0.000 vm=16 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=5311 scans=216 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=212 ms=8.000 vm=20538 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=2 ms=16.000 vm=161706 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=2 ms=0.000 vm=431 scans=22 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=2 ms=0.000 vm=138 scans=6 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=2 ms=14.000 vm=121308 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=107 ms=2.000 vm=2543 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=2 ms=17.000 vm=2654 scans=136 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=2 ms=257.000 vm=4379194 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+# SQL progress: SELECT e.path,e.name,o.file_id,o.size,o.mtime,o.flags FROM entries e JOIN objects o USING(object_key) ORDER BY e.path
+single_metadata_increment,1,215.252100,203.125000,10104,0,493,36392960,36388864,47853568,6384338,17190912,1960392,0,1,0,0.000000,0.026900,0.000000,0.218200
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=4 ms=0.000 vm=108 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=3 ms=0.000 vm=45 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=3 ms=0.000 vm=42 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=3 ms=2.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=3 ms=3.000 vm=18 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=3 ms=3.000 vm=20 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=3 ms=0.000 vm=36 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=3 ms=129.000 vm=727512 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=672 ms=5.000 vm=10446 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=567 ms=4.000 vm=16656 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=550 ms=0.000 vm=8289 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=18 ms=0.000 vm=288 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=3 ms=0.000 vm=517 scans=121 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=6 ms=0.000 vm=126 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=3 ms=2.000 vm=39 scans=4 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=72 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=6 ms=8.000 vm=14136 scans=303 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=3 ms=2.000 vm=15570 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=3 ms=0.000 vm=24 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=7772 scans=317 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=214 ms=8.000 vm=20732 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=3 ms=23.000 vm=242559 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=3 ms=0.000 vm=2144 scans=121 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=221 scans=10 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=3 ms=21.000 vm=181962 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=109 ms=3.000 vm=2586 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=3 ms=18.000 vm=4383 scans=242 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=3 ms=393.000 vm=6568791 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+directory_metadata_rescan,1,2342.853500,2234.375000,10104,0,0,36388864,36380672,47853568,5334527,22637680,10971376,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=4 ms=0.000 vm=108 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=3 ms=0.000 vm=45 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=3 ms=0.000 vm=42 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=3 ms=2.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=3 ms=3.000 vm=18 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=3 ms=3.000 vm=20 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=3 ms=0.000 vm=36 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=3 ms=129.000 vm=727512 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=672 ms=5.000 vm=10446 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=567 ms=4.000 vm=16656 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=550 ms=0.000 vm=8289 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=18 ms=0.000 vm=288 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=3 ms=0.000 vm=517 scans=121 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=6 ms=0.000 vm=126 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=3 ms=2.000 vm=39 scans=4 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=72 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=6 ms=8.000 vm=14136 scans=303 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=3 ms=2.000 vm=15570 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=3 ms=0.000 vm=24 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=7772 scans=317 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=214 ms=8.000 vm=20732 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=3 ms=23.000 vm=242559 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=3 ms=0.000 vm=2144 scans=121 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=221 scans=10 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=3 ms=21.000 vm=181962 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=109 ms=3.000 vm=2586 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=3 ms=18.000 vm=4383 scans=242 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=3 ms=393.000 vm=6568791 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+# SQL progress: SELECT e.path,e.name,o.file_id,o.size,o.mtime,o.flags FROM entries e JOIN objects o USING(object_key) ORDER BY e.path
+query_auto,0,0.548400,0.000000,10104,0,0,36876288,36876288,47853568,6385378,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=4 ms=0.000 vm=108 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=3 ms=0.000 vm=45 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=3 ms=0.000 vm=42 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=3 ms=2.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=3 ms=3.000 vm=18 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=3 ms=3.000 vm=20 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=3 ms=0.000 vm=36 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=3 ms=129.000 vm=727512 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=672 ms=5.000 vm=10446 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=567 ms=4.000 vm=16656 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=550 ms=0.000 vm=8289 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=18 ms=0.000 vm=288 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=3 ms=0.000 vm=517 scans=121 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=6 ms=0.000 vm=126 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=3 ms=2.000 vm=39 scans=4 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=72 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=6 ms=8.000 vm=14136 scans=303 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=3 ms=2.000 vm=15570 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=3 ms=0.000 vm=24 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=7772 scans=317 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=214 ms=8.000 vm=20732 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=3 ms=23.000 vm=242559 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=3 ms=0.000 vm=2144 scans=121 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=221 scans=10 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=3 ms=21.000 vm=181962 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=109 ms=3.000 vm=2586 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=3 ms=18.000 vm=4383 scans=242 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=3 ms=393.000 vm=6568791 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+query_force_fts,0,8.254900,0.000000,10104,0,0,36876288,36966400,47853568,6385378,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=4 ms=0.000 vm=108 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=3 ms=0.000 vm=45 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=3 ms=0.000 vm=42 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=3 ms=2.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=3 ms=3.000 vm=18 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=3 ms=3.000 vm=20 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=3 ms=0.000 vm=36 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=3 ms=129.000 vm=727512 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=672 ms=5.000 vm=10446 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=567 ms=4.000 vm=16656 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=550 ms=0.000 vm=8289 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=18 ms=0.000 vm=288 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=3 ms=0.000 vm=517 scans=121 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=6 ms=0.000 vm=126 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=3 ms=2.000 vm=39 scans=4 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=72 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=6 ms=8.000 vm=14136 scans=303 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=3 ms=2.000 vm=15570 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=3 ms=0.000 vm=24 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=7772 scans=317 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=214 ms=8.000 vm=20732 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=3 ms=23.000 vm=242559 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=3 ms=0.000 vm=2144 scans=121 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=221 scans=10 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=3 ms=21.000 vm=181962 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=109 ms=3.000 vm=2586 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=3 ms=18.000 vm=4383 scans=242 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=3 ms=393.000 vm=6568791 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+query_scan,0,0.667500,0.000000,10104,0,0,36966400,36966400,47853568,5335567,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=4 ms=0.000 vm=108 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=3 ms=0.000 vm=45 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=3 ms=0.000 vm=42 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=3 ms=2.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=3 ms=3.000 vm=18 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=3 ms=3.000 vm=20 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=3 ms=0.000 vm=36 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=3 ms=129.000 vm=727512 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=672 ms=5.000 vm=10446 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=567 ms=4.000 vm=16656 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=550 ms=0.000 vm=8289 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=18 ms=0.000 vm=288 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=3 ms=0.000 vm=517 scans=121 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=6 ms=0.000 vm=126 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=3 ms=2.000 vm=39 scans=4 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=72 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=6 ms=8.000 vm=14136 scans=303 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=3 ms=2.000 vm=15570 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=3 ms=0.000 vm=24 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=7772 scans=317 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=214 ms=8.000 vm=20732 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=3 ms=23.000 vm=242559 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=3 ms=0.000 vm=2144 scans=121 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=221 scans=10 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=3 ms=21.000 vm=181962 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=109 ms=3.000 vm=2586 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=3 ms=18.000 vm=4383 scans=242 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=3 ms=393.000 vm=6568791 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+query_unicode_auto,0,0.332900,0.000000,10104,0,0,36966400,36966400,47853568,6385378,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=4 ms=0.000 vm=108 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=3 ms=0.000 vm=45 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=3 ms=0.000 vm=42 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=3 ms=2.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=3 ms=3.000 vm=18 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=3 ms=3.000 vm=20 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=3 ms=0.000 vm=36 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=3 ms=129.000 vm=727512 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=672 ms=5.000 vm=10446 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=567 ms=4.000 vm=16656 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=550 ms=0.000 vm=8289 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=18 ms=0.000 vm=288 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=3 ms=0.000 vm=517 scans=121 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=6 ms=0.000 vm=126 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=3 ms=2.000 vm=39 scans=4 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=72 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=6 ms=8.000 vm=14136 scans=303 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=3 ms=2.000 vm=15570 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=3 ms=0.000 vm=24 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=7772 scans=317 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=214 ms=8.000 vm=20732 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=3 ms=23.000 vm=242559 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=3 ms=0.000 vm=2144 scans=121 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=221 scans=10 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=3 ms=21.000 vm=181962 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=109 ms=3.000 vm=2586 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=3 ms=18.000 vm=4383 scans=242 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=3 ms=393.000 vm=6568791 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+query_unicode_force_fts,0,1.571600,0.000000,10104,0,0,36966400,36966400,47853568,6385378,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=4 ms=0.000 vm=108 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=3 ms=0.000 vm=45 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=3 ms=0.000 vm=42 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=3 ms=2.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=3 ms=3.000 vm=18 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=3 ms=3.000 vm=20 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=3 ms=0.000 vm=36 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=3 ms=129.000 vm=727512 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=672 ms=5.000 vm=10446 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=567 ms=4.000 vm=16656 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=550 ms=0.000 vm=8289 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=18 ms=0.000 vm=288 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=3 ms=0.000 vm=517 scans=121 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=6 ms=0.000 vm=126 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=3 ms=2.000 vm=39 scans=4 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=72 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=6 ms=8.000 vm=14136 scans=303 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=3 ms=2.000 vm=15570 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=3 ms=0.000 vm=24 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=7772 scans=317 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=214 ms=8.000 vm=20732 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=3 ms=23.000 vm=242559 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=3 ms=0.000 vm=2144 scans=121 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=221 scans=10 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=3 ms=21.000 vm=181962 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=109 ms=3.000 vm=2586 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=3 ms=18.000 vm=4383 scans=242 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=3 ms=393.000 vm=6568791 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+query_unicode_scan,0,0.342700,0.000000,10104,0,0,36966400,36966400,47853568,5335567,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=4 ms=0.000 vm=108 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=3 ms=0.000 vm=45 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=3 ms=0.000 vm=42 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=3 ms=2.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=3 ms=3.000 vm=18 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=3 ms=3.000 vm=20 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=3 ms=0.000 vm=36 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=3 ms=129.000 vm=727512 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=672 ms=5.000 vm=10446 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=567 ms=4.000 vm=16656 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=550 ms=0.000 vm=8289 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=18 ms=0.000 vm=288 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=3 ms=0.000 vm=517 scans=121 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=6 ms=0.000 vm=126 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=3 ms=2.000 vm=39 scans=4 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=72 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=6 ms=8.000 vm=14136 scans=303 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=3 ms=2.000 vm=15570 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=3 ms=0.000 vm=24 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=7772 scans=317 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=214 ms=8.000 vm=20732 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=3 ms=23.000 vm=242559 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=3 ms=0.000 vm=2144 scans=121 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=221 scans=10 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=3 ms=21.000 vm=181962 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=109 ms=3.000 vm=2586 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=3 ms=18.000 vm=4383 scans=242 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=3 ms=393.000 vm=6568791 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+query_size,0,0.255700,0.000000,10104,0,0,36966400,36966400,47853568,6385387,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=4 ms=0.000 vm=108 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=3 ms=0.000 vm=45 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=3 ms=0.000 vm=42 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=3 ms=2.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=3 ms=3.000 vm=18 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=3 ms=3.000 vm=20 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=3 ms=0.000 vm=36 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=3 ms=129.000 vm=727512 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=672 ms=5.000 vm=10446 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=567 ms=4.000 vm=16656 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=550 ms=0.000 vm=8289 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=18 ms=0.000 vm=288 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=3 ms=0.000 vm=517 scans=121 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=6 ms=0.000 vm=126 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=3 ms=2.000 vm=39 scans=4 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=72 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=6 ms=8.000 vm=14136 scans=303 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=3 ms=2.000 vm=15570 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=3 ms=0.000 vm=24 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=7772 scans=317 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=214 ms=8.000 vm=20732 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=3 ms=23.000 vm=242559 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=3 ms=0.000 vm=2144 scans=121 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=221 scans=10 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=3 ms=21.000 vm=181962 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=109 ms=3.000 vm=2586 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=3 ms=18.000 vm=4383 scans=242 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=3 ms=393.000 vm=6568791 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+query_size_scan,0,0.207500,0.000000,10104,0,0,36966400,36966400,47853568,5335576,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# SQL profile runs=1 ms=0.000 vm=98 scans=27 sql=SELECT count(*) FROM sqlite_schema WHERE name='fsx_ntfs_sources'
+# SQL profile runs=4 ms=0.000 vm=108 scans=0 sql=SELECT s.source_id,n.profile,n.volume_guid,n.serial,n.root,n.volume_root,n.journal,n.next_usn,n.valid FROM sources s LEFT JOIN fsx_ntfs_sources n USING(source_id) WHERE s.root=?1
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=BEGIN IMMEDIATE
+# SQL profile runs=4 ms=0.000 vm=40 scans=0 sql=SELECT revision FROM fsx_meta WHERE id=1
+# SQL profile runs=3 ms=0.000 vm=45 scans=0 sql=SELECT source_id,volume FROM sources WHERE root=?1
+# SQL profile runs=3 ms=0.000 vm=42 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,parent BLOB,name TEXT,raw BLOB,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=15 scans=0 sql=DELETE FROM nt_inventory;
+# SQL profile runs=3 ms=2.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path TEXT NOT NULL,depth INTEGER NOT NULL);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY KEY,attributes INTEGER);
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=51 scans=0 sql=CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw BLOB,entry_key INTEGER,name TEXT,path TEXT,name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY KEY(parent,raw));
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_verified;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_dirty;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_refresh;
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_relinks;
+# SQL profile runs=3 ms=3.000 vm=18 scans=0 sql=DELETE FROM nt_old_keys;
+# SQL profile runs=3 ms=3.000 vm=20 scans=0 sql=DELETE FROM nt_projection;
+# SQL profile runs=3 ms=0.000 vm=36 scans=0 sql=CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON nt_projection(entry_key);
+# SQL profile runs=3 ms=129.000 vm=727512 scans=0 sql=INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM fsx_ntfs_names WHERE source_id=1;
+# SQL profile runs=672 ms=5.000 vm=10446 scans=0 sql=INSERT OR IGNORE INTO nt_refresh VALUES(?1)
+# SQL profile runs=567 ms=4.000 vm=16656 scans=0 sql=INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn) DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes
+# SQL profile runs=550 ms=0.000 vm=8289 scans=0 sql=INSERT OR IGNORE INTO nt_dirty VALUES(?1)
+# SQL profile runs=18 ms=0.000 vm=288 scans=0 sql=INSERT OR IGNORE INTO nt_relinks VALUES(?1)
+# SQL profile runs=3 ms=0.000 vm=517 scans=121 sql=SELECT frn,attributes FROM nt_changes
+# SQL profile runs=6 ms=0.000 vm=126 scans=0 sql=INSERT OR IGNORE INTO nt_dirty SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2
+# SQL profile runs=3 ms=2.000 vm=39 scans=4 sql=SELECT frn FROM nt_relinks
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_processed
+# SQL profile runs=3 ms=0.000 vm=18 scans=0 sql=DELETE FROM nt_scope
+# SQL profile runs=3 ms=0.000 vm=72 scans=0 sql=INSERT INTO nt_scope VALUES(?1,?2,0)
+# SQL profile runs=6 ms=8.000 vm=14136 scans=303 sql=SELECT count(*),coalesce(sum(d.name IS NULL),0),coalesce(max(length(CAST(p.path AS BLOB))+length(CAST(d.name AS BLOB))+1),0) FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AN
+# SQL profile runs=3 ms=2.000 vm=15570 scans=0 sql=INSERT INTO nt_scope SELECT d.frn,p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||d.name,?2+1 FROM nt_scope p CROSS JOIN fsx_ntfs_dirs d INDEXED BY fsx_ntfs_dirs_parent WHERE d.parent=p.frn AND d.source_id=?1
+# SQL profile runs=3 ms=0.000 vm=24 scans=0 sql=SELECT count(*) FROM nt_scope
+# SQL profile runs=4 ms=0.000 vm=7772 scans=317 sql=SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND old.frn=s.frn) FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn WHERE p.frn IS NU
+# SQL profile runs=1 ms=1.000 vm=2516 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2
+# SQL profile runs=214 ms=8.000 vm=20732 scans=0 sql=INSERT INTO objects(source_id,file_id,size,mtime,flags) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,file_id) DO UPDATE SET size=excluded.size,mtime=excluded.mtime,flags=excluded.flags RETURNING object_key
+# SQL profile runs=105 ms=1.000 vm=8292 scans=0 sql=INSERT INTO fsx_ntfs_names VALUES(?1,?2,?3,?4,?5,?6,(SELECT entry_key FROM nt_old_keys WHERE parent=?2 AND raw=?3),?7) ON CONFLICT(source_id,parent,raw) DO UPDATE SET frn=excluded.frn,name=excluded.name,object_key=excluded.
+# SQL profile runs=101 ms=0.000 vm=5656 scans=0 sql=INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(source_id,frn) DO UPDATE SET parent=excluded.parent,name=excluded.name,raw=excluded.raw,attributes=excluded.attributes WHERE fsx_ntfs_dirs.parent IS NOT exclud
+# SQL profile runs=1 ms=0.000 vm=547 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=?1 AND parent=?2 AND seen!=?3
+# SQL profile runs=1 ms=0.000 vm=19 scans=0 sql=INSERT INTO nt_processed VALUES(?1)
+# SQL profile runs=3 ms=23.000 vm=242559 scans=0 sql=DELETE FROM fsx_ntfs_names WHERE source_id=1 AND parent NOT IN(SELECT frn FROM nt_scope);
+# SQL profile runs=3 ms=0.000 vm=2144 scans=121 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;
+# SQL profile runs=3 ms=0.000 vm=221 scans=10 sql=INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;
+# SQL profile runs=3 ms=21.000 vm=181962 scans=0 sql=INSERT OR IGNORE INTO nt_refresh SELECT n.parent FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE n.source_id=1
+# SQL profile runs=109 ms=3.000 vm=2586 scans=0 sql=UPDATE fsx_ntfs_dirs SET attributes=?3 WHERE source_id=?1 AND frn=?2 AND (attributes&1040)!=?3
+# SQL profile runs=3 ms=18.000 vm=4383 scans=242 sql=SELECT r.frn FROM nt_refresh r WHERE EXISTS(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)
+# SQL profile runs=3 ms=393.000 vm=6568791 scans=0 sql=SELECT count(*) FROM fsx_ntfs_dirs WHERE source_id=1
+# SQL profile runs=10104 ms=90.000 vm=424383 scans=0 sql=INSERT INTO nt_projection VALUES(?1,?2,coalesce(?3,(SELECT entry_key FROM entries e WHERE source_id=?9 AND path=?5 AND NOT EXISTS(SELECT 1 FROM fsx_ntfs_names x WHERE x.source_id=?9 AND x.entry_key=e.entry_key))),?4,?5,?6,?
+# SQL profile runs=1 ms=248.000 vm=141470 scans=0 sql=SELECT n.parent,n.raw,n.entry_key,n.name,s.path,n.object_key FROM fsx_ntfs_names n JOIN nt_scope s ON s.frn=n.parent WHERE n.source_id=?1
+# SQL profile runs=1 ms=21.000 vm=272821 scans=10103 sql=SELECT count(*) FROM nt_projection p LEFT JOIN entries e ON p.entry_key=e.entry_key LEFT JOIN objects o ON p.object_key=o.object_key WHERE o.object_key IS NULL OR o.source_id!=1 OR (p.entry_key IS NOT NULL AND (e.entry_key
+# SQL profile runs=2 ms=0.000 vm=24 scans=0 sql=SELECT k, v FROM 'main'.'name_fts_config'
+# SQL profile runs=2 ms=0.000 vm=12 scans=0 sql=PRAGMA 'main'.data_version
+# SQL profile runs=1 ms=19.000 vm=202087 scans=0 sql=DELETE FROM entries WHERE source_id=1 AND entry_key NOT IN(SELECT entry_key FROM nt_projection WHERE entry_key IS NOT NULL);
+# SQL profile runs=1 ms=45.000 vm=181869 scans=0 sql=UPDATE entries SET path=char(0)||hex(entry_key) WHERE source_id=1 AND EXISTS(SELECT 1 FROM nt_projection p WHERE p.entry_key=entries.entry_key AND p.path!=entries.path);
+# SQL profile runs=1 ms=0.000 vm=15 scans=0 sql=REPLACE INTO 'main'.'name_fts_docsize' VALUES(?,?)
+# SQL profile runs=1 ms=0.000 vm=124 scans=0 sql=INSERT INTO entries(entry_key,source_id,object_key,name,path,name_fold,path_fold,raw_name,seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(entry_key) DO UPDATE SET object_key=excluded.object_key,name=excluded.name,path=
+# SQL profile runs=1 ms=0.000 vm=32 scans=0 sql=UPDATE fsx_ntfs_names SET entry_key=?1 WHERE source_id=?2 AND parent=?3 AND raw=?4
+# acceptance=passed

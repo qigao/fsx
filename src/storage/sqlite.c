@@ -8,6 +8,8 @@ FsStatus fsx_db_status(int rc) {
   case SQLITE_DONE:
   case SQLITE_ROW:
     return FS_OK;
+  case SQLITE_INTERRUPT:
+    return FS_CANCELLED;
   case SQLITE_NOMEM:
     return FS_NOMEM;
   case SQLITE_BUSY:
@@ -100,6 +102,12 @@ static FsStatus database_identity(FsEngine *e) {
   }
   return FS_OK;
 }
+static int writer_progress(void *context) {
+  FsEngine *e = context;
+  if (atomic_load(&e->stopping))
+    return 1;
+  return e->sql_observer ? e->sql_observer(e->sql_observer_context) : 0;
+}
 FsStatus fsx_db_open(FsEngine *e) {
   int rc = sqlite3_open_v2(e->database_path, &e->db,
                            SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX |
@@ -109,6 +117,7 @@ FsStatus fsx_db_open(FsEngine *e) {
                            NULL);
   if (rc != SQLITE_OK)
     return fsx_db_status(rc);
+  sqlite3_progress_handler(e->db, 2048, writer_progress, e);
   sqlite3_extended_result_codes(e->db, 1);
   sqlite3_busy_timeout(e->db, 1000);
   sqlite3_limit(e->db, SQLITE_LIMIT_LENGTH, 1024 * 1024);

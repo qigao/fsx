@@ -16,14 +16,15 @@ typedef struct FsOpenError {
   char diagnostic[192];
 } FsOpenError;
 enum { FS_NTFS_MFT_ENUM = 0, FS_NTFS_MFT_RAW = 1 };
-enum { FS_NTFS_RAW_PREFETCH = 1u };
+enum { FS_NTFS_RAW_PREFETCH = 1u, FS_NTFS_RAW_BATCH_DIRS = 2u };
 typedef struct FsNtfsConfig {
   uint32_t struct_size, api_version, buffer_bytes;
   uint32_t max_mft_records, max_batch_records;
   FsOpenError *open_error; /* Optional diagnostic, borrowed only during open. */
   /* ENUM by default; RAW is explicit and never downgraded. */
   uint32_t mft_reader;
-  uint64_t raw_flags; /* PREFETCH by default; 0 selects serial raw reads. */
+  uint64_t raw_flags; /* PREFETCH | BATCH_DIRS by default; 0 selects direct
+                         serial ingestion. */
 } FsNtfsConfig;
 typedef struct FsNtfsInfo {
   FsNtfsState state;

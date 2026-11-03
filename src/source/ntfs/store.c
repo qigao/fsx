@@ -164,8 +164,9 @@ typedef struct Tx {
   uint32_t source;
   uint64_t revision, parent, enumerated, mft_records, journal_records,
       directories, dirty_parents;
-  bool all, topology_changed, structural, raw_bootstrap;
-  sqlite3_stmt *statements[10];
+  bool all, topology_changed, structural, raw_bootstrap, stage_graph;
+  uint64_t staged;
+  sqlite3_stmt *statements[11];
 } Tx;
 static int prepare(Tx *t, unsigned slot, const char *text, sqlite3_stmt **out) {
   *out = t->statements[slot];
@@ -179,7 +180,7 @@ static int prepare(Tx *t, unsigned slot, const char *text, sqlite3_stmt **out) {
   return rc;
 }
 static void finish(Tx *t) {
-  for (unsigned i = 0; i < 10; i++)
+  for (unsigned i = 0; i < 11; i++)
     sqlite3_finalize(t->statements[i]);
 }
 static FsStatus source(Tx *t, const FsNtfsIdentity *id) {
@@ -234,21 +235,25 @@ static FsStatus source(Tx *t, const FsNtfsIdentity *id) {
 static FsStatus directory(Tx *t, const FsNtfsRecord *r) {
   if (atomic_load(&t->e->stopping))
     return FS_CANCELLED;
+  if (t->stage_graph && t->staged >= t->n->config.max_mft_records)
+    return FS_LIMIT;
   char *name = NULL;
   FsStatus status = fsx_ntfs_text(t->e, r->name, r->name_bytes, &name);
   if (status != FS_OK && status != FS_UNSUPPORTED)
     return status;
   sqlite3_stmt *s;
-  int rc = prepare(t, 0,
-                   "INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6)"
-                   " ON CONFLICT(source_id,frn) DO UPDATE SET "
-                   "parent=excluded.parent,name=excluded.name,"
-                   "raw=excluded.raw,attributes=excluded.attributes WHERE "
-                   "fsx_ntfs_dirs.parent IS NOT excluded.parent OR "
-                   "fsx_ntfs_dirs.name IS NOT excluded.name OR "
-                   "fsx_ntfs_dirs.raw IS NOT excluded.raw OR "
-                   "(fsx_ntfs_dirs.attributes&1040)!=excluded.attributes",
-                   &s);
+  int rc = prepare(
+      t, t->stage_graph ? 10 : 0,
+      t->stage_graph ? "INSERT INTO nt_inventory VALUES(?1,?2,?3,?4,?5,?6)"
+                     : "INSERT INTO fsx_ntfs_dirs VALUES(?1,?2,?3,?4,?5,?6)"
+                       " ON CONFLICT(source_id,frn) DO UPDATE SET "
+                       "parent=excluded.parent,name=excluded.name,"
+                       "raw=excluded.raw,attributes=excluded.attributes WHERE "
+                       "fsx_ntfs_dirs.parent IS NOT excluded.parent OR "
+                       "fsx_ntfs_dirs.name IS NOT excluded.name OR "
+                       "fsx_ntfs_dirs.raw IS NOT excluded.raw OR "
+                       "(fsx_ntfs_dirs.attributes&1040)!=excluded.attributes",
+      &s);
   if (rc == SQLITE_OK) {
     sqlite3_bind_int64(s, 1, t->source);
     bind_id(s, 2, r->frn);
@@ -261,10 +266,37 @@ static FsStatus directory(Tx *t, const FsNtfsRecord *r) {
     sqlite3_bind_int64(s, 6, r->attributes & (FSX_NTFS_DIR | FSX_NTFS_REPARSE));
     rc = sqlite3_step(s);
   }
-  if (rc == SQLITE_DONE && sqlite3_changes(t->e->db))
-    t->topology_changed = t->structural = true;
+  if (rc == SQLITE_DONE) {
+    if (t->stage_graph)
+      t->staged++;
+    else if (sqlite3_changes(t->e->db))
+      t->topology_changed = t->structural = true;
+  }
   fsx_free(name);
   return fsx_db_status(rc);
+}
+static FsStatus merge_inventory(Tx *t) {
+  if (!t->stage_graph)
+    return FS_OK;
+  sqlite3_finalize(t->statements[10]);
+  t->statements[10] = NULL;
+  FsStatus status = sql(
+      t->e, "INSERT INTO fsx_ntfs_dirs "
+            "SELECT source_id,frn,parent,name,raw,attributes FROM nt_inventory "
+            "WHERE true ORDER BY source_id,frn,rowid "
+            "ON CONFLICT(source_id,frn) DO UPDATE SET "
+            "parent=excluded.parent,name=excluded.name,raw=excluded.raw,"
+            "attributes=excluded.attributes WHERE "
+            "fsx_ntfs_dirs.parent IS NOT excluded.parent OR "
+            "fsx_ntfs_dirs.name IS NOT excluded.name OR "
+            "fsx_ntfs_dirs.raw IS NOT excluded.raw OR "
+            "(fsx_ntfs_dirs.attributes&1040)!=excluded.attributes");
+  if (status == FS_OK && sqlite3_changes(t->e->db))
+    t->topology_changed = t->structural = true;
+  if (status == FS_OK)
+    status = sql(t->e, "DELETE FROM nt_inventory");
+  t->stage_graph = false;
+  return status;
 }
 static FsStatus raw_directory(void *context, const FsNtfsRecord *r) {
   return directory(context, r);
@@ -428,30 +460,33 @@ static FsStatus event(void *context, const FsNtfsRecord *r) {
   return fsx_db_status(rc);
 }
 static FsStatus temp_tables(Tx *t, bool rebuild) {
-  FsStatus status =
-      sql(t->e,
-          "CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path "
-          "TEXT NOT NULL,depth INTEGER NOT NULL);"
-          "CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);"
-          "CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);"
-          "CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);"
-          "CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);"
-          "CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);"
-          "CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY "
-          "KEY,attributes INTEGER);"
-          "CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw "
-          "BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));"
-          "CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw "
-          "BLOB,entry_key INTEGER,name TEXT,path TEXT,"
-          "name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY "
-          "KEY(parent,raw));"
-          "DELETE FROM nt_verified;DELETE FROM nt_scope;DELETE FROM "
-          "nt_processed;DELETE FROM "
-          "nt_dirty;DELETE FROM nt_changes;DELETE FROM nt_refresh;DELETE FROM "
-          "nt_relinks;"
-          "DELETE FROM nt_old_keys;DELETE FROM nt_projection;"
-          "CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON "
-          "nt_projection(entry_key);");
+  FsStatus status = sql(
+      t->e,
+      "CREATE TEMP TABLE IF NOT EXISTS nt_inventory(source_id INTEGER,frn BLOB,"
+      "parent BLOB,name TEXT,raw BLOB,attributes INTEGER);"
+      "DELETE FROM nt_inventory;"
+      "CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path "
+      "TEXT NOT NULL,depth INTEGER NOT NULL);"
+      "CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);"
+      "CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);"
+      "CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);"
+      "CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);"
+      "CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);"
+      "CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY "
+      "KEY,attributes INTEGER);"
+      "CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw "
+      "BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));"
+      "CREATE TEMP TABLE IF NOT EXISTS nt_projection(parent BLOB,raw "
+      "BLOB,entry_key INTEGER,name TEXT,path TEXT,"
+      "name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY "
+      "KEY(parent,raw));"
+      "DELETE FROM nt_verified;DELETE FROM nt_scope;DELETE FROM "
+      "nt_processed;DELETE FROM "
+      "nt_dirty;DELETE FROM nt_changes;DELETE FROM nt_refresh;DELETE FROM "
+      "nt_relinks;"
+      "DELETE FROM nt_old_keys;DELETE FROM nt_projection;"
+      "CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON "
+      "nt_projection(entry_key);");
   if (status != FS_OK)
     return status;
   char command[384];
@@ -1284,11 +1319,15 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
     status = temp_tables(&t, rebuild);
   FsNtfsRawStats raw = {0};
   t.raw_bootstrap = rebuild && n->config.mft_reader == FS_NTFS_MFT_RAW;
+  t.stage_graph =
+      t.raw_bootstrap && (n->config.raw_flags & FS_NTFS_RAW_BATCH_DIRS);
   if (status == FS_OK && t.raw_bootstrap) {
     status = n->ops->inventory
                  ? n->ops->inventory(n->provider, raw_directory, &t, &raw)
                  : FS_UNSUPPORTED;
     t.mft_records = raw.records;
+    if (status == FS_OK)
+      status = merge_inventory(&t);
   }
   if (status == FS_OK && rebuild) {
     uint64_t from = 0;

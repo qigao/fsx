@@ -1,8 +1,13 @@
 #include "ntfs.h"
 FsNtfsConfig fsx_ntfs_config(void) {
-  FsNtfsConfig config = {
-      sizeof(config),   FSX_API_VERSION,     65536, 16000000, 4096, NULL,
-      FS_NTFS_MFT_ENUM, FS_NTFS_RAW_PREFETCH};
+  FsNtfsConfig config = {sizeof(config),
+                         FSX_API_VERSION,
+                         65536,
+                         16000000,
+                         4096,
+                         NULL,
+                         FS_NTFS_MFT_ENUM,
+                         FS_NTFS_RAW_PREFETCH | FS_NTFS_RAW_BATCH_DIRS};
   return config;
 }
 bool fsx_ntfs_same_identity(const FsNtfsIdentity *a, const FsNtfsIdentity *b) {
@@ -18,7 +23,8 @@ static bool valid(const FsNtfsConfig *c) {
          c->max_mft_records && c->max_mft_records <= 64000000 &&
          c->max_batch_records && c->max_batch_records <= 65536 &&
          c->mft_reader <= FS_NTFS_MFT_RAW &&
-         !(c->raw_flags & ~(uint64_t)FS_NTFS_RAW_PREFETCH);
+         !(c->raw_flags &
+           ~(uint64_t)(FS_NTFS_RAW_PREFETCH | FS_NTFS_RAW_BATCH_DIRS));
 }
 static void set_dirty(FsNtfs *n, bool value) {
   if (n->dirty != value) {

@@ -182,3 +182,12 @@ not indexed, and Linux/sanitizer profiles were not run. Those baseline findings 
 [query/incremental optimizations](performance/ntfs-optimization-2026-11-03.md).
 Whole-volume initialization and conservative work caused by unrelated directory
 events remain performance work.
+
+## Raw directory batch follow-up
+
+The [directory staging report](performance/raw-directory-batch-2026-11-03.md)
+preserves a same-build raw-prefetch batch/direct comparison and two SQL
+diagnostics. Each full mode passed three cases / 52,866 assertions. Initial
+median elapsed time was 26.253 / 27.051 s (overlapping ranges); median CPU
+was 19.531 / 23.891 s. Process write I/O fell about 18%, with no claim about
+physical device writes. There is no intentional warmup or isolated cache state.

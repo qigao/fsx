@@ -1754,6 +1754,7 @@ static struct {
   int read_fault;
   FsStatus list_failure, link_status, inventory_failure;
   bool stale_inventory;
+  unsigned inventory_repeat;
 } nt;
 static FsNtfs *native_source, *other_native_source;
 #define NT_FRN(index) (UINT64_C(0x8123000000000000) | (index))
@@ -1981,9 +1982,11 @@ static FsStatus nt_inventory(void *context, FsNtfsRecordFn visit, void *target,
       item.parent = NT_FRN(10); /* A moved-out directory still on disk. */
     if (nt.stale_inventory && node->frn == NT_FRN(60))
       item.parent = NT_FRN(40); /* Must be checked when 40 later enters. */
-    FsStatus status = visit(target, &item);
-    if (status != FS_OK)
-      return status;
+    for (unsigned repeat = 0; repeat <= nt.inventory_repeat; repeat++) {
+      FsStatus status = visit(target, &item);
+      if (status != FS_OK)
+        return status;
+    }
     if (nt.inventory_failure != FS_OK)
       return nt.inventory_failure;
   }
@@ -2053,6 +2056,38 @@ static FsStatus capture_parent(void *context, uint64_t parent) {
     return FS_LIMIT;
   ids->ids[ids->count++] = parent;
   return FS_OK;
+}
+typedef struct MergeStop {
+  bool armed, interrupted;
+} MergeStop;
+static int arm_merge_stop(unsigned event, void *context, void *statement,
+                          void *duration) {
+  (void)duration;
+  MergeStop *stop = context;
+  if (event == SQLITE_TRACE_STMT) {
+    const char *text = sqlite3_sql(statement);
+    stop->armed =
+        text && strstr(text, "SELECT source_id,frn,parent,name,raw,attributes "
+                             "FROM nt_inventory");
+  }
+  return 0;
+}
+static int stop_merge(void *context) {
+  MergeStop *stop = context;
+  if (!stop->armed)
+    return 0;
+  stop->interrupted = true;
+  atomic_store(&engine->stopping, true);
+  return 1;
+}
+static void nt_raw_open(uint64_t flags, uint32_t cap) {
+  FsNtfsConfig config = fsx_ntfs_config();
+  config.mft_reader = FS_NTFS_MFT_RAW;
+  config.raw_flags = flags;
+  config.max_mft_records = cap;
+  check_equal(fsx_ntfs_open_provider(engine, root, &config, &nt_ops, &nt,
+                                     &native_source),
+              FS_OK);
 }
 suite("NTFS transaction protocol") {
   before_each() { nt_setup(); }
@@ -2128,7 +2163,7 @@ suite("NTFS transaction protocol") {
                 FS_INVALID);
     check_null(native_source);
     config = fsx_ntfs_config();
-    config.raw_flags = UINT64_C(2);
+    config.raw_flags = UINT64_C(4);
     check_equal(fsx_ntfs_open(engine, root, &config, &native_source),
                 FS_INVALID);
     check_null(native_source);
@@ -2161,6 +2196,107 @@ suite("NTFS transaction protocol") {
     check_equal(count("alpha"), (uint64_t)1);
     nt.inventory_failure = FS_OK;
     check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+  }
+  it("keeps direct and staged raw graphs equivalent with ordered duplicate "
+     "FRNs") {
+    nt_add(40, 90, "first", true);
+    nt_add(40, 91, "last", true);
+    FsNtfsInfo info;
+    for (uint64_t flags = 0; flags < 4; flags++) {
+      nt_raw_open(flags, 100);
+      check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+      check_equal(count("alpha"), (uint64_t)1);
+      check_equal(
+          nt_scalar("SELECT count(*) FROM fsx_ntfs_dirs WHERE name='last'"),
+          (int64_t)1);
+      check_equal(
+          nt_scalar("SELECT count(*) FROM fsx_ntfs_dirs WHERE name='first'"),
+          (int64_t)0);
+      check_equal(nt_scalar("SELECT count(*) FROM temp.nt_inventory"),
+                  (int64_t)0);
+      check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    }
+  }
+  it("rolls back a directory merge failure and preserves unrelated sources on "
+     "retry") {
+    FsNtfsInfo before = nt_build();
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    subdir("other");
+    put("other/independent.txt", "x");
+    char other_root[2048];
+    snprintf(other_root, sizeof(other_root), "%s/other", root);
+    FsScanInfo scanned;
+    check_equal(fsx_engine_scan(engine, other_root, &scanned), FS_OK);
+    int64_t revision = nt_scalar("SELECT revision FROM fsx_meta");
+    nt_raw_open(FS_NTFS_RAW_PREFETCH | FS_NTFS_RAW_BATCH_DIRS, 100);
+    edit_database("CREATE TRIGGER refuse_graph BEFORE INSERT ON fsx_ntfs_dirs "
+                  "BEGIN SELECT RAISE(ABORT,'injected merge failure'); END;");
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_CORRUPT);
+    check_equal(nt_scalar("SELECT revision FROM fsx_meta"), revision);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(count("independent"), (uint64_t)1);
+    check_equal(nt_scalar("SELECT count(*) FROM temp.nt_inventory"),
+                (int64_t)0);
+    edit_database("DROP TRIGGER refuse_graph");
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(count("independent"), (uint64_t)1);
+    open_oracle();
+    equivalent("independent", fsx_query_options());
+  }
+  it("bounds staged callbacks independently of provider inventory counters") {
+    FsNtfsInfo before = nt_build();
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    nt.inventory_repeat =
+        4; /* Provider reports three records, emits ten dirs. */
+    nt_raw_open(FS_NTFS_RAW_BATCH_DIRS, 4);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_LIMIT);
+    check_equal(nt_scalar("SELECT revision FROM fsx_meta"),
+                (int64_t)before.snapshot_epoch);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(nt_scalar("SELECT count(*) FROM temp.nt_inventory"),
+                (int64_t)0);
+    nt.inventory_repeat = 0;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+  }
+  it("interrupts the bulk merge on STOPPING without publishing or advancing "
+     "the checkpoint") {
+    FsNtfsInfo before = nt_build();
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    check_equal(count("alpha"),
+                (uint64_t)1); /* Pin prior result through cancellation. */
+    nt.inventory_repeat = 4095;
+    nt_raw_open(FS_NTFS_RAW_BATCH_DIRS, 10000);
+    MergeStop stop = {0};
+    engine->sql_observer = stop_merge;
+    engine->sql_observer_context = &stop;
+    sqlite3_trace_v2(engine->db, SQLITE_TRACE_STMT, arm_merge_stop, &stop);
+    FsNtfsInfo info;
+    FsStatus status = fsx_ntfs_rebuild(native_source, &info);
+    engine->sql_observer = NULL;
+    engine->sql_observer_context = NULL;
+    sqlite3_trace_v2(engine->db, 0, NULL, NULL);
+    check_equal(status, FS_CANCELLED);
+    check_true(stop.interrupted);
+    check_equal(info.next_usn, before.next_usn);
+    check_true(sqlite3_get_autocommit(engine->db) != 0);
+    FsEntryView pinned = entry(0, NULL);
+    check_equal(pinned.name, "alpha.txt");
+    open_oracle();
+    FsEngine *stopping = engine;
+    engine = oracle_engine;
+    oracle_engine = stopping;
+    check_equal(nt_scalar("SELECT revision FROM fsx_meta"),
+                (int64_t)before.snapshot_epoch);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
     check_equal(count("alpha"), (uint64_t)1);
   }
   it("builds subtree topology and all hardlink aliases with full unsigned "

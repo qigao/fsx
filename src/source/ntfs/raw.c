@@ -576,7 +576,8 @@ FsStatus fsx_ntfs_raw_inventory(FsEngine *e, const FsNtfsConfig *config,
       !stats)
     return FS_INVALID;
   memset(stats, 0, sizeof(*stats));
-  if (config->raw_flags & ~(uint64_t)FS_NTFS_RAW_PREFETCH)
+  if (config->raw_flags &
+      ~(uint64_t)(FS_NTFS_RAW_PREFETCH | FS_NTFS_RAW_BATCH_DIRS))
     return FS_INVALID;
   bool prefetch = (config->raw_flags & FS_NTFS_RAW_PREFETCH) != 0;
   if (prefetch && (!io->begin || !io->finish))

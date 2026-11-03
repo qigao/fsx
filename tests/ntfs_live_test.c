@@ -335,7 +335,8 @@ static void open_source_config(FsEngine *engine,
         timeout ? now() + (uint64_t)strtoul(timeout, NULL, 10) * 1000000 : 0;
     sqlite3_trace_v2(engine->db, SQLITE_TRACE_STMT | SQLITE_TRACE_PROFILE,
                      trace_sql, NULL);
-    sqlite3_progress_handler(engine->db, 100000, sql_progress, NULL);
+    engine->sql_observer = sql_progress;
+    engine->sql_observer_context = NULL;
   }
   FsNtfsConfig config = fsx_ntfs_config();
   const char *raw = getenv("FSX_NTFS_TEST_RAW_MFT");
@@ -343,7 +344,10 @@ static void open_source_config(FsEngine *engine,
     config.mft_reader = FS_NTFS_MFT_RAW;
   const char *serial = getenv("FSX_NTFS_TEST_RAW_SYNC");
   if (serial && !strcmp(serial, "1"))
-    config.raw_flags = 0;
+    config.raw_flags &= ~(uint64_t)FS_NTFS_RAW_PREFETCH;
+  const char *direct = getenv("FSX_NTFS_TEST_DIRECT_GRAPH");
+  if (direct && !strcmp(direct, "1"))
+    config.raw_flags &= ~(uint64_t)FS_NTFS_RAW_BATCH_DIRS;
   config.buffer_bytes = 1048576;
   config.max_batch_records = 65536;
   FsOpenError error = {0};

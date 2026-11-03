@@ -16,7 +16,7 @@ static struct {
   unsigned seen_before;
 } pending;
 static unsigned begun, finished, cancelled, callbacks_overlapped;
-static bool complete_inline;
+static bool complete_inline, fault_on_cancel_only;
 static uint64_t parents[3], identities[3];
 static char names[3][32];
 static void put16(unsigned char *p, unsigned value) {
@@ -167,7 +167,7 @@ static FsStatus finish_read(void *ctx, bool cancel) {
   finished++;
   if (cancel)
     cancelled++;
-  if (cancel || finish_fault != FS_OK) {
+  if (cancel || (finish_fault != FS_OK && !fault_on_cancel_only)) {
     /* A late completion is allowed to write until finish has drained. */
     memset(buffer, 0xcc, bytes);
     return finish_fault != FS_OK ? finish_fault : FS_CANCELLED;
@@ -226,7 +226,7 @@ static void setup(void) {
   pending.buffer = NULL;
   begun = finished = cancelled = callbacks_overlapped = 0;
   begin_fault = finish_fault = FS_OK;
-  complete_inline = false;
+  complete_inline = fault_on_cancel_only = false;
   fail_read = relocate = cancel_visit = bad_extension = false;
   callback_status = FS_OK;
   memset(records, 0, sizeof(records));
@@ -478,6 +478,110 @@ suite("Raw NTFS MFT reader") {
     check_equal(cancelled, 1u);
   }
 
+  it("matches serial inventory while bounding prefetch and overlapping "
+     "callbacks") {
+    FsNtfsRawStats serial, prefetched;
+    config.raw_flags = 0;
+    check_equal(inventory(&serial), FS_OK);
+    check_equal(begun, 0u);
+    char saved_names[sizeof(names)];
+    memcpy(saved_names, names, sizeof(names));
+    uint64_t saved_parents[3], saved_ids[3];
+    memcpy(saved_parents, parents, sizeof(parents));
+    memcpy(saved_ids, identities, sizeof(identities));
+    seen = 0;
+    memset(names, 0, sizeof(names));
+    config.raw_flags = FS_NTFS_RAW_PREFETCH | FS_NTFS_RAW_BATCH_DIRS;
+    uint64_t owned = engine->owned;
+    check_equal(inventory(&prefetched), FS_OK);
+    check_equal(seen, 3u);
+    check_equal(memcmp(saved_names, names, sizeof(names)), 0);
+    check_equal(memcmp(saved_parents, parents, sizeof(parents)), 0);
+    check_equal(memcmp(saved_ids, identities, sizeof(identities)), 0);
+    check_equal(serial.slots, prefetched.slots);
+    check_equal(serial.records, prefetched.records);
+    check_equal(serial.read_bytes, prefetched.read_bytes);
+    check_equal(serial.read_calls, prefetched.read_calls);
+    check_equal(serial.kernel_records, prefetched.kernel_records);
+    check_true(begun > 0);
+    check_equal(begun, finished);
+    check_equal(cancelled, 0u);
+    check_true(callbacks_overlapped > 0);
+    check_equal(engine->owned, owned);
+  }
+  it("reaps immediate completions exactly once before releasing their buffer") {
+    complete_inline = true;
+    uint64_t owned = engine->owned;
+    FsNtfsRawStats stats;
+    check_equal(inventory(&stats), FS_OK);
+    check_equal(seen, 3u);
+    check_true(begun > 0);
+    check_equal(begun, finished);
+    check_equal(cancelled, 0u);
+    check_equal(engine->owned, owned);
+    check_null(pending.buffer);
+  }
+  it("rejects missing asynchronous capabilities and unknown flags without "
+     "fallback") {
+    FsNtfsRawStats stats;
+    FsNtfsRawIO incomplete = io;
+    incomplete.finish = NULL;
+    check_equal(fsx_ntfs_raw_inventory(engine, &config, &geometry, &incomplete,
+                                       NULL, directory, NULL, false, &stats),
+                FS_UNSUPPORTED);
+    incomplete = io;
+    incomplete.begin = NULL;
+    check_equal(fsx_ntfs_raw_inventory(engine, &config, &geometry, &incomplete,
+                                       NULL, directory, NULL, false, &stats),
+                FS_UNSUPPORTED);
+    config.raw_flags = UINT64_C(4);
+    check_equal(inventory(&stats), FS_INVALID);
+    check_equal(begun, 0u);
+    check_equal(seen, 0u);
+    config.raw_flags = 0;
+    check_equal(fsx_ntfs_raw_inventory(engine, &config, &geometry, &incomplete,
+                                       NULL, directory, NULL, false, &stats),
+                FS_OK);
+    check_equal(seen, 3u);
+  }
+  it("returns a submission failure without creating a pending borrow or "
+     "retrying") {
+    begin_fault = FS_DENIED;
+    uint64_t owned = engine->owned;
+    FsNtfsRawStats stats;
+    check_equal(inventory(&stats), FS_DENIED);
+    check_equal(seen, 0u);
+    check_equal(begun, 0u);
+    check_equal(finished, 0u);
+    check_null(pending.buffer);
+    check_equal(engine->owned, owned);
+  }
+  it("drains a failed completion including its late write before freeing "
+     "buffers") {
+    finish_fault = FS_IO;
+    uint64_t owned = engine->owned;
+    FsNtfsRawStats stats;
+    check_equal(inventory(&stats), FS_IO);
+    check_true(begun > 0);
+    check_equal(begun, finished);
+    check_equal(cancelled, 0u);
+    check_equal(seen, 0u);
+    check_null(pending.buffer);
+    check_equal(engine->owned, owned);
+  }
+  it("preserves the callback error when cancellation drain also fails") {
+    callback_status = FS_DENIED;
+    finish_fault = FS_IO;
+    fault_on_cancel_only = true;
+    uint64_t owned = engine->owned;
+    FsNtfsRawStats stats;
+    check_equal(inventory(&stats), FS_DENIED);
+    check_true(begun > 0);
+    check_equal(begun, finished);
+    check_equal(cancelled, 1u);
+    check_null(pending.buffer);
+    check_equal(engine->owned, owned);
+  }
   it("charges the spare chunk to the budget and allows serial recovery") {
     config.buffer_bytes = 1048576;
     uint64_t owned = engine->owned, budget = engine->config.owned_memory_budget;

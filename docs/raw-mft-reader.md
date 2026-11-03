@@ -94,11 +94,11 @@ is in [runtime-contract.md](runtime-contract.md#raw-mft-inventory-protocol).
 
 ## Formal validation
 
-The Release build passes 88 engine cases, 25 dedicated raw-reader cases and
+The Release build passes 92 engine cases, 25 dedicated raw-reader cases and
 10 CLI cases, across three ordinary CTest entries. Raw cases cover fragmented
 and negatively encoded runlists, a FILE record crossing discontiguous extents,
 512-byte USA on 4096-byte sectors, resident/nonresident bitmap and attribute-list
-streams, long names, full unsigned FRNs, extension ownership/sequence,
+streams, full unsigned FRNs, extension ownership/sequence,
 incomplete mapping, torn USA, malformed bounds, empty-chunk skipping, record and
 memory capacity, relocated mapping, failed reads/callbacks and STOPPING cleanup.
 
@@ -204,3 +204,35 @@ The implementation follows Microsoft's
 and [kernel record lookup](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_get_ntfs_file_record).
 UFFS informed the raw ingestion direction; no third-party implementation was
 copied or added as a dependency.
+
+## Directory batch protocol
+
+The single NTFS writer may stage a RAW rebuild's directory records in an
+append-only SQLite TEMP table. Each callback copies the borrowed UTF-16 bytes
+and converted UTF-8 name into SQLite before returning; no callback view is
+retained. The row cap is max_mft_records, independently checked at ingestion.
+SQLite uses file-backed TEMP storage and its existing bounded page cache;
+there is no new C heap queue or worker. TEMP storage is proportional to the
+configured record cap and admitted name lengths, and disk exhaustion fails
+with FS_LIMIT rather than dropping records.
+
+After raw I/O has completed and drained, the writer merges staged rows in
+(source, FRN, emission order) order in the same transaction. Duplicate FRNs
+retain last-emission-wins behavior. Live verification, reconciliation, USN
+coverage and snapshot preparation still precede COMMIT/publication. The
+staging table is emptied before commit; any inventory, merge, cancellation or
+later failure rolls back both graph and checkpoint. Other sources and indexes
+remain present throughout. Incremental and ENUM writes retain direct upserts.
+
+The engine owns its writer-connection SQLite progress handler. It checks
+STOPPING every 2,048 VM instructions and can chain a private diagnostic observer
+configured only with a quiescent writer. Observers must not change the SQLite
+connection. Interruptions map to FS_CANCELLED. Raw completion drains before
+merge; SQLite cancellation rolls back before source/engine handles release.
+Sorting and filesystem operations have their own blocking intervals; the VM
+instruction interval is not a wall-clock cancellation deadline.
+
+FS_NTFS_RAW_BATCH_DIRS controls staging independently of raw read prefetch.
+The direct path remains available for same-build comparisons and rollback
+validation. See the [same-build report and raw measurements](performance/raw-directory-batch-2026-11-03.md)
+for measured behavior and limits.

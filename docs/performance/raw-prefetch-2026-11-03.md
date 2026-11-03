@@ -23,7 +23,8 @@ or changing the persistent graph schema.
 
 ## Implementation and limits
 
-FsNtfsConfig.raw_flags defaults to FS_NTFS_RAW_PREFETCH. Setting it to 0 uses
+At this revision FsNtfsConfig.raw_flags defaulted to FS_NTFS_RAW_PREFETCH.
+Setting it to 0 used
 the serial reference. The 64-bit field increases config size, so hosts must
 rebuild and initialize through fsx_ntfs_config(); old layouts and unknown flags
 are rejected. ENUM remains the default inventory reader and is unaffected by
@@ -63,11 +64,14 @@ contracts.
 
 ## Verification
 
-The ordinary Release suites passed: 88 engine cases, 25 raw-reader cases and
-10 CLI cases. Added cases cover bounded scheduling, the serial reference,
-immediate completion, missing capabilities, begin/completion failure, late
-completion during drain, spare-buffer budget exhaustion with serial recovery, preservation of the original callback error, STOPPING
-and old config-layout/unknown-flag admission.
+The ordinary Release suites passed: 88 engine cases, 19 raw-reader cases and
+10 CLI cases. The original report incorrectly counted 25 raw cases and
+overstated explicit failure-path coverage. The actual original file contained 19 cases. The later
+[directory staging revision](raw-directory-batch-2026-11-03.md) adds six
+dedicated cases for serial/prefetch parity, immediate completion, missing
+capabilities, submission/completion failure and callback failure during drain.
+The original suite covered STOPPING, the spare-buffer budget and config
+admission alongside parser checks.
 
 The live suite additionally starts real raw prefetch, requests engine STOPPING
 from a directory callback, verifies that the operation returns CANCELLED with

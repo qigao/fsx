@@ -40,6 +40,9 @@ struct FsEngine {
   cmeta_cond_t changed;
   cmeta_threadpool_t *pool;
   sqlite3 *db;
+  /* Set only with a quiescent writer; callback must not mutate db. */
+  int (*sql_observer)(void *);
+  void *sql_observer_context;
   FsSnapshot *current;
   FsQuery *jobs;
   FsWatch *watches;
