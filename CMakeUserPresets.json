@@ -162,6 +162,9 @@
       },
       "execution": {
         "noTestsAction": "error"
+      },
+      "environment": {
+        "PATH": "${sourceDir}/build/windows-native-release/bin;$env{SALTSCORE_ROOT}/bin;$env{CMETA_ROOT}/bin;${sourceDir}/build/windows-native-release/vcpkg_installed/$env{FSX_VCPKG_TARGET_TRIPLET}/debug/bin;${sourceDir}/build/windows-native-release/vcpkg_installed/$env{FSX_VCPKG_TARGET_TRIPLET}/bin;$penv{PATH}"
       }
     },
     {
