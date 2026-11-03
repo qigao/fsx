@@ -3,7 +3,7 @@
  * namespace fixture. All filesystem mutations stay inside that fixture. */
 #define _WIN32_WINNT 0x0602
 #define WIN32_LEAN_AND_MEAN
-#include "../src/source/ntfs/ntfs.h"
+#include "ntfs_measure.h"
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,7 +34,10 @@ static FsResult *result, *old_result;
 static FsIndexJob *index_job;
 static bool async_index;
 static uint32_t pipeline_batches, work_memory_pages;
-static FILE *metrics;
+static FILE *metrics, *query_metrics;
+static FsNtfsMetrics native_timing, native_totals;
+static FsTestQueries *concurrent_queries;
+static bool vfs_started, queries_running;
 static uint64_t frequency;
 static FsNtfsInfo info;
 static uint32_t setting(const char *name, uint32_t fallback, uint32_t maximum) {
@@ -46,7 +49,7 @@ static uint32_t setting(const char *name, uint32_t fallback, uint32_t maximum) {
   check(end != text && !*end && value <= maximum, "invalid %s=%s", name, text);
   return (uint32_t)value;
 }
-static FsStatus index_native(bool rebuild) {
+static FsStatus index_native_impl(bool rebuild) {
   info = (FsNtfsInfo){0};
   if (!async_index)
     return rebuild ? fsx_ntfs_rebuild(source, &info)
@@ -64,6 +67,11 @@ static FsStatus index_native(bool rebuild) {
   index_job = NULL;
   check_equal(polled, status);
   check(done.state >= FS_INDEX_READY, "native job finalized before returning");
+  return status;
+}
+static FsStatus index_native(bool rebuild) {
+  FsStatus status = index_native_impl(rebuild);
+  fsx_test_metrics_add(&native_totals, &native_timing);
   return status;
 }
 typedef struct Provider {
@@ -397,6 +405,7 @@ static void open_source_config(FsEngine *engine,
   status = fsx_ntfs_open_provider(engine, root, &config, &profiling_ops,
                                   &provider, &source);
   check(status == FS_OK, "real source admission: %s", fsx_status_name(status));
+  source->metrics = &native_timing;
 }
 static void open_source(FsEngine *engine) { open_source_config(engine, NULL); }
 static void close_source(void) {
@@ -413,9 +422,14 @@ typedef struct Measurement {
   uint64_t wall, cpu;
   IO_COUNTERS io;
   PROCESS_MEMORY_COUNTERS memory;
+  FsNtfsMetrics timing;
+  FsTestIo work_io;
 } Measurement;
 static Measurement begin_measurement(void) {
   Measurement m = {0};
+  m.timing = native_totals;
+  if (source)
+    m.work_io = fsx_test_work_io(source->engine);
   m.cpu = cpu();
   m.memory.cb = sizeof(m.memory);
   check_true(GetProcessIoCounters(GetCurrentProcess(), &m.io) != 0);
@@ -469,6 +483,17 @@ static void record(const char *phase, unsigned sample, Measurement before,
   fprintf(metrics, "# pipeline sample=%u batches=%" PRIu64 " peak=%u\n", sample,
           native ? native->pipeline_batches : 0,
           native ? native->pipeline_peak_batches : 0);
+
+  if (native) {
+    FsTestIo work = fsx_test_work_io(engine);
+    fprintf(metrics,
+            "# stages phase=%s sample=%u work_pages=%" PRId64
+            " work_write_calls=%" PRIu64 " work_write_bytes=%" PRIu64,
+            phase, sample, fsx_test_work_pages(engine),
+            work.writes - before.work_io.writes,
+            work.bytes - before.work_io.bytes);
+    fsx_test_metrics_report(metrics, &native_totals, &before.timing);
+  }
 
   sql_report();
   fflush(metrics);
@@ -620,7 +645,13 @@ static void setup(void) {
   index_job = NULL;
   query = NULL;
   result = old_result = NULL;
-  metrics = NULL;
+  metrics = query_metrics = NULL;
+  queries_running = false;
+  native_totals = (FsNtfsMetrics){0};
+  check_equal(fsx_test_vfs_start(), SQLITE_OK);
+  vfs_started = true;
+  concurrent_queries = calloc(1, sizeof(*concurrent_queries));
+  check_not_null(concurrent_queries);
   async_index = setting("FSX_NTFS_TEST_INDEX_ASYNC", 1, 1) != 0;
   pipeline_batches = setting("FSX_NTFS_TEST_PIPELINE_BATCHES", 4, 16);
   work_memory_pages = setting("FSX_NTFS_TEST_WORK_MEMORY_PAGES", 4096, 262144);
@@ -646,6 +677,13 @@ static void setup(void) {
            GetCurrentProcessId(), (unsigned long long)GetTickCount64());
   metrics = fopen(report, "wb");
   check_not_null(metrics);
+  snprintf(report, sizeof(report), "ntfs-live-%lu-%llu-queries.csv",
+           GetCurrentProcessId(), (unsigned long long)GetTickCount64());
+  query_metrics = fopen(report, "wb");
+  check_not_null(query_metrics);
+  fputs("phase,sample,index_start_ns,index_end_ns,query_start_ns,query_end_ns,"
+        "epoch,matches,status\n",
+        query_metrics);
   SYSTEM_INFO system;
   GetSystemInfo(&system);
   fprintf(metrics,
@@ -681,6 +719,10 @@ static void setup(void) {
   fflush(stderr);
 }
 static void teardown(void) {
+  if (queries_running) {
+    fsx_test_queries_stop(concurrent_queries);
+    queries_running = false;
+  }
   if (index_job) {
     fsx_index_cancel(index_job);
     FsStatus status = fsx_index_wait(index_job, FSX_DEADLINE_INFINITE);
@@ -701,6 +743,16 @@ static void teardown(void) {
   if (metrics) {
     fclose(metrics);
     metrics = NULL;
+  }
+  if (query_metrics) {
+    fclose(query_metrics);
+    query_metrics = NULL;
+  }
+  free(concurrent_queries);
+  concurrent_queries = NULL;
+  if (vfs_started) {
+    check_equal(fsx_test_vfs_stop(), SQLITE_OK);
+    vfs_started = false;
   }
   if (fixture_ready)
     cleanup(fixture);
@@ -866,6 +918,29 @@ suite("Real NTFS volume acceptance and performance") {
         close_engine(&trial_engine);
     }
     open_source(native_engine);
+    check_equal(fsx_test_queries_start(concurrent_queries, native_engine), 0);
+    queries_running = true;
+    Provider concurrent_before = provider;
+    Measurement concurrent_measurement = begin_measurement();
+    uint64_t concurrent_start = cmeta_hrtime();
+    FsStatus concurrent_status = index_native(true);
+    uint64_t concurrent_end = cmeta_hrtime();
+    record("concurrent_rebuild", 0, concurrent_measurement, native_engine,
+           &info, &concurrent_before);
+    fsx_test_queries_stop(concurrent_queries);
+    queries_running = false;
+    fsx_test_queries_report(concurrent_queries, query_metrics, "rebuild", 0,
+                            concurrent_start, concurrent_end);
+    fprintf(metrics, "# concurrent samples=%u capacity=%u interval_ms=1\n",
+            concurrent_queries->count, FSX_TEST_QUERY_CAPACITY);
+    check_equal(concurrent_status, FS_OK);
+    check_true(concurrent_queries->count > 0);
+    for (unsigned i = 0; i < concurrent_queries->count; i++) {
+      check_equal(concurrent_queries->samples[i].status, FS_OK);
+      check_equal(concurrent_queries->samples[i].matches,
+                  (uint64_t)GROUPS * FILES_PER_GROUP);
+    }
+    compare(native_engine, directory_engine);
     uint64_t descendant = file_entry_key("/group001/file001.txt");
     FsResultInfo prior = execute(native_engine, "Stra\xc3\x9f"
                                                 "e");

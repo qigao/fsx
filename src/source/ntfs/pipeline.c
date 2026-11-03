@@ -37,7 +37,12 @@ static FsStatus emit(void *context, const FsNtfsRecord *record) {
       return status;
     }
     if (p->count == p->capacity) {
+      uint64_t start = p->source->metrics ? cmeta_hrtime() : 0;
       cmeta_cond_timedwait(&p->changed, &p->mutex, 10000000);
+      if (p->source->metrics) {
+        p->source->metrics->producer_waits++;
+        p->source->metrics->producer_wait_ns += cmeta_hrtime() - start;
+      }
       continue;
     }
     Batch *batch = &p->batches[p->tail];
@@ -175,8 +180,14 @@ FsStatus fsx_ntfs_collect(FsNtfs *n, bool inventory, int64_t *cursor,
     goto cleanup;
   for (;;) {
     cmeta_mutex_lock(&p.mutex);
-    while (!p.count && !p.done && p.status == FS_OK && !stopping(&p))
+    while (!p.count && !p.done && p.status == FS_OK && !stopping(&p)) {
+      uint64_t start = n->metrics ? cmeta_hrtime() : 0;
       cmeta_cond_timedwait(&p.changed, &p.mutex, 10000000);
+      if (n->metrics) {
+        n->metrics->consumer_waits++;
+        n->metrics->consumer_wait_ns += cmeta_hrtime() - start;
+      }
+    }
     status = p.status;
     if (status == FS_OK && stopping(&p))
       status = FS_CANCELLED;
@@ -189,6 +200,7 @@ FsStatus fsx_ntfs_collect(FsNtfs *n, bool inventory, int64_t *cursor,
     }
     Batch *batch = &p.batches[p.head];
     cmeta_mutex_unlock(&p.mutex);
+    uint64_t start = n->metrics ? cmeta_hrtime() : 0;
     for (size_t at = 0; at < batch->used;) {
       FsNtfsRecord record;
       memcpy(&record, batch->data + at, sizeof(record));
@@ -198,6 +210,8 @@ FsStatus fsx_ntfs_collect(FsNtfs *n, bool inventory, int64_t *cursor,
         break;
       at += sizeof(record) + record.name_bytes;
     }
+    if (n->metrics)
+      n->metrics->consumer_callback_ns += cmeta_hrtime() - start;
     cmeta_mutex_lock(&p.mutex);
     batch->used = 0;
     p.head = (p.head + 1) % p.capacity;

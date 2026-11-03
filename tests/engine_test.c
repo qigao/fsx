@@ -1947,6 +1947,7 @@ static struct {
   unsigned inventory_repeat;
 } nt;
 static FsNtfs *native_source, *other_native_source;
+static FsNtfsMetrics nt_metrics;
 #define NT_FRN(index) (UINT64_C(0x8123000000000000) | (index))
 static void nt16(unsigned char *p, uint16_t n) {
   p[0] = (unsigned char)n;
@@ -2302,6 +2303,7 @@ suite("NTFS transaction protocol") {
       check_equal(fsx_ntfs_open_provider(engine, root, &config, &nt_ops, &nt,
                                          &native_source),
                   FS_OK);
+      native_source->metrics = &nt_metrics;
       FsNtfsInfo info;
       check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
       check_true(info.caught_up);
@@ -2312,6 +2314,17 @@ suite("NTFS transaction protocol") {
         check_true(info.pipeline_batches > 1);
       else
         check_equal(info.pipeline_batches, (uint64_t)0);
+      if (batches == 1) {
+        check_true(nt_metrics.producer_waits > 0);
+        check_true(nt_metrics.producer_wait_ns > 0);
+        check_true(nt_metrics.consumer_callback_ns > 0);
+      }
+      check_true(nt_metrics.total_ns > 0);
+      check_true(nt_metrics.inventory_ns > 0);
+      check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+      check_equal(nt_metrics.inventory_ns, UINT64_C(0));
+      check_equal(nt_metrics.producer_waits, UINT64_C(0));
+      check_equal(nt_metrics.consumer_waits, UINT64_C(0));
       check_equal(fsx_ntfs_close(&native_source), FS_OK);
     }
   }

@@ -54,13 +54,16 @@ Update P95 uses nearest rank over twenty samples.
 The first serial rebuild took 20.537 seconds; its later two samples took about
 12.3 seconds. OS caches were neither flushed nor explicitly warmed. Removing
 that first sample, changing mode order or treating the later modes as cold would
-misrepresent this run. Queue occupancy reached its configured four-slot bound;
-that demonstrates backpressure was exercised, not a throughput advantage.
+misrepresent this run. Queue occupancy reached its configured four-slot bound.
+Occupancy alone does not show whether the producer blocked; this run did not
+measure queue waits or establish a throughput advantage.
 
 With the four-slot queue unchanged, memory work pages reduced update median by
 about 1% relative to spillable work storage, while P95 increased from 130.887 to
 617.216 ms. The memory-mode median was within 0.1% of the serial control. This
-sample supports functional parity, not a reliable memory-storage speedup.
+sample supports functional parity, not a reliable memory-storage speedup or a
+reliable ordering of tail latency. A second hosted-runner repeat reversed the
+P95 ordering; the two hosts' timings must not be pooled.
 
 ## CPU, writes and outliers
 
@@ -80,6 +83,11 @@ journal records and performed no directory-list calls, with larger CPU/write
 counts. The CSV does not identify which SQL stage caused them. Different
 journal work is a confound; attributing the tails to memory storage or thread
 scheduling requires further stage profiling and controlled replay.
+
+The spillable control attaches SQLite's empty-name temporary database. SQLite
+can retain its pages in the pager cache without writing them out. These CSVs
+do not measure work-schema pages or writes, so they do not establish that the
+control exercised storage I/O. See SQLite's [temporary database semantics](https://sqlite.org/inmemorydb.html).
 
 Cumulative process peak working set stayed below 48.28 MiB. It covers the test
 process, reference engine and retained snapshots, and is not a per-phase peak

@@ -157,6 +157,18 @@ jobs:
           $ErrorActionPreference = 'Stop'
           ctest --preset windows-native-regression
           if ($LASTEXITCODE -ne 0) { throw 'Release regression tests failed' }
+          $regression = "build/${{ matrix.preset }}/tests/reports/regression"
+          New-Item -ItemType Directory -Force -Path $regression | Out-Null
+          Get-ChildItem "build/${{ matrix.preset }}/tests/ntfs-replay-*.csv" | Move-Item -Destination $regression
+          $replay = "build/${{ matrix.preset }}/tests/reports/replay"
+          New-Item -ItemType Directory -Force -Path $replay | Out-Null
+          $env:FSX_NTFS_BENCHMARK = '1'
+          ctest --preset windows-native-regression -R '^fsx_ntfs_benchmark_test$' --verbose --output-junit "$replay/junit.xml"
+          $status = $LASTEXITCODE
+          Get-ChildItem "build/${{ matrix.preset }}/tests/ntfs-replay-*.csv" | Move-Item -Destination $replay
+          Copy-Item "build/${{ matrix.preset }}/Testing/Temporary/LastTest.log" "$replay/LastTest.log"
+          if ($status -ne 0) { throw 'Controlled NTFS replay failed' }
+          Remove-Item Env:FSX_NTFS_BENCHMARK
           $variants = @(
             @{ Name = 'serial-file'; Async = '0'; Queue = '0'; Pages = '0' },
             @{ Name = 'job-file'; Async = '1'; Queue = '0'; Pages = '0' },

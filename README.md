@@ -236,7 +236,8 @@ before allocating. Engine limits bound indexed aliases and depth.
 
 Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native tools,
 CLI and formal tests. The current suite has 103 engine cases, 25 dedicated raw
-reader cases and 10 CLI cases, run through three ordinary CTest entries.
+reader cases, two controlled-replay/measurement cases and 10 CLI cases, run
+through four ordinary CTest entries.
 Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.
@@ -263,6 +264,12 @@ Linux ASan/UBSan and Windows LLVM-MinGW Debug using the published Core 0.1.2 and
 CMeta 0.1.3 SDKs. Linux compiles 90 engine cases; Windows-only cases are excluded.
 The independent sanitizer runner keeps default leak detection enabled. See
 [CI validation](https://github.com/qigao/fsx/actions/runs/41598912885).
+
+The added [controlled benchmark](docs/ntfs-live-validation.md#controlled-replay-and-diagnostic-counters)
+compares identical modeled snapshots/USN batches in balanced mode order and
+measures stage timing, actual work-pager VFS writes, queue waits and concurrent
+query latency. The live job preserves these results separately from native
+volume acceptance; the original four-mode timings retain their historical scope.
 
 Repeated runs in the local sandbox observed fixture files reappearing after
 successful deletion, confirmed by direct filesystem metadata reads before

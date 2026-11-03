@@ -1225,7 +1225,18 @@ static FsStatus save(Tx *t, const FsNtfsIdentity *id, int64_t cursor) {
            t->source, (unsigned long long)t->revision, t->source, t->source);
   return sql(t->e, command);
 }
-FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
+static void stage(FsNtfsMetrics *metrics, uint64_t *started,
+                  uint64_t *elapsed) {
+  if (metrics) {
+    uint64_t end = cmeta_hrtime();
+    *elapsed += end - *started;
+    *started = end;
+  }
+}
+/* Use a local accumulator even when diagnostics are disabled, so stage
+ * boundaries never dereference an absent optional metrics pointer. */
+static FsStatus store(FsNtfs *n, bool rebuild, FsNtfsMetrics *timing,
+                      uint64_t started) {
   FsEngine *e = n->engine;
   FsStatus status = sql(e, "BEGIN IMMEDIATE");
   if (status != FS_OK)
@@ -1258,10 +1269,13 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   if (status == FS_OK && !rebuild && cursor == start.next_usn) {
     /* Another admitted database writer may already have advanced the durable
      * source. Never acknowledge its cursor while retaining an older mirror. */
+    stage(n->metrics, &started, &timing->initialize_ns);
     if (e->current->epoch != (uint64_t)revision)
       status = fsx_snapshot_load(e, &snapshot);
+    stage(n->metrics, &started, &timing->snapshot_ns);
     if (status == FS_OK)
       status = fsx_writer_stopping(e) ? FS_CANCELLED : sql(e, "COMMIT");
+    stage(n->metrics, &started, &timing->commit_ns);
     if (status != FS_OK) {
       sql(e, "ROLLBACK");
       fsx_snapshot_release(snapshot);
@@ -1289,6 +1303,7 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
     n->info.mft_records = 0;
     n->info.journal_records = 0;
     n->info.directories_reconciled = 0;
+    stage(n->metrics, &started, &timing->publish_ns);
     return FS_OK;
   }
   if (status == FS_OK) {
@@ -1298,6 +1313,7 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   t.revision = (uint64_t)revision + 1;
   if (status == FS_OK)
     status = temp_tables(&t, rebuild);
+  stage(n->metrics, &started, &timing->initialize_ns);
   FsNtfsRawStats raw = {0};
   t.raw_bootstrap = rebuild && n->config.mft_reader == FS_NTFS_MFT_RAW;
   t.stage_graph =
@@ -1307,6 +1323,7 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   if (status == FS_OK && rebuild) {
     status = fsx_ntfs_collect(n, true, NULL, 0, true, raw_directory, &t, &raw,
                               &pipeline_batches, &pipeline_peak);
+    stage(n->metrics, &started, &timing->inventory_ns);
     t.mft_records = raw.records;
     if (status == FS_OK)
       status = merge_inventory(&t);
@@ -1314,6 +1331,7 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
       t.all = true;
       status = reconcile(&t);
     }
+    stage(n->metrics, &started, &timing->reconcile_ns);
   }
   head = start;
   if (status == FS_OK && rebuild)
@@ -1324,6 +1342,7 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   if (status == FS_OK)
     status = fsx_ntfs_collect(n, false, &cursor, head.next_usn, rebuild, event,
                               &t, &raw, &pipeline_batches, &pipeline_peak);
+  stage(n->metrics, &started, &timing->journal_ns);
   if (status == FS_OK)
     status = changes(&t);
   if (status == FS_OK)
@@ -1345,6 +1364,7 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   }
   if (status == FS_OK && (uint64_t)dirs > n->config.max_mft_records)
     status = FS_LIMIT;
+  stage(n->metrics, &started, &timing->reconcile_ns);
   bool metadata_only = !rebuild && e->current->epoch == (uint64_t)revision &&
                        !e->current->incomplete && !e->current->unsupported &&
                        !t.structural && !t.directories;
@@ -1358,12 +1378,15 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
     status = FS_STALE;
   if (status == FS_OK)
     status = save(&t, &head, cursor);
+  stage(n->metrics, &started, &timing->projection_ns);
   if (status == FS_OK)
     status = metadata_only ? patch_metadata(&t, &snapshot)
                            : fsx_snapshot_load(e, &snapshot);
+  stage(n->metrics, &started, &timing->snapshot_ns);
   finish(&t);
   if (status == FS_OK)
     status = fsx_writer_stopping(e) ? FS_CANCELLED : sql(e, "COMMIT");
+  stage(n->metrics, &started, &timing->commit_ns);
   if (status != FS_OK) {
     sql(e, "ROLLBACK");
     fsx_snapshot_release(snapshot);
@@ -1392,5 +1415,16 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   n->info.native_error = 0;
   n->info.caught_up = cursor == head.next_usn;
   n->info.needs_rebuild = false;
+  stage(n->metrics, &started, &timing->publish_ns);
   return FS_OK;
+}
+FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
+  FsNtfsMetrics unused = {0};
+  FsNtfsMetrics *timing = n->metrics ? n->metrics : &unused;
+  *timing = (FsNtfsMetrics){0};
+  uint64_t started = n->metrics ? cmeta_hrtime() : 0;
+  FsStatus status = store(n, rebuild, timing, started);
+  if (n->metrics)
+    timing->total_ns = cmeta_hrtime() - started;
+  return status;
 }
