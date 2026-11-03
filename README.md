@@ -258,18 +258,18 @@ Regressions also cover a 65,001-byte nested modifier request, the accepted depth
 boundary, failures retained across independent root scans, conservative validation
 after an unidentified failure, and a deterministic directory-to-junction swap
 during observation. Stable junctions remain searchable without traversing targets.
-The asynchronous-index revision also builds with the published Core 0.1.2 and
-CMeta 0.1.3 Linux SDKs. Linux Debug passed all three CTest entries (90 engine
-cases; Windows-only cases are excluded). ASan/UBSan passed the full suite with local leak
-detection disabled because this sandbox denies LeakSanitizer process inspection.
-Repeated runs exposed intermittent fixture files reappearing after successful
-deletion, confirmed by direct filesystem metadata reads before rescanning; the
-4096/4097 assertions remain intact. The CI matrix checks Linux Debug, full
-ASan/UBSan and Windows LLVM-MinGW using the same versioned presets. Its initial
-run stopped before compiling fsx: the shared package feed returned 404 for an
-exact ABI archive and its version index with the job's GitHub token. Package
-publication and Actions read access must be verified before CI acceptance;
-this response is not treated as an ordinary cache miss or silently rebuilt.
+The asynchronous-index runtime passed all three CTest entries on Linux Debug,
+Linux ASan/UBSan and Windows LLVM-MinGW Debug using the published Core 0.1.2 and
+CMeta 0.1.3 SDKs. Linux compiles 90 engine cases; Windows-only cases are excluded.
+The independent sanitizer runner keeps default leak detection enabled. See
+[CI validation](https://github.com/qigao/fsx/actions/runs/41598912885).
+
+Repeated runs in the local sandbox observed fixture files reappearing after
+successful deletion, confirmed by direct filesystem metadata reads before
+rescanning. The unchanged 4096/4097 assertions pass on the independent runners;
+no boundary assertion or sanitizer check was disabled for CI. Normal product
+builds use the pinned manifest/source and local files cache. Strict remote ABI
+restoration remains a separate mode requiring exact published packages.
 
 NTFS protocol tests use the real SQLite/FTS/snapshot coordinator with a
 deterministic native-operation provider. They cover U0/U1 changes and gaps,
