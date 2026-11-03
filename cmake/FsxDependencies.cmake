@@ -1,11 +1,6 @@
 # Product dependencies, kept outside the generic sanitizer helper.
 find_package(Threads REQUIRED)
 
-# An old CMake cache must not redirect explicit SDK roots to another install.
-unset(SaltsCore_DIR CACHE)
-unset(SaltsCore_DIR)
-unset(CMeta_DIR CACHE)
-unset(CMeta_DIR)
 find_package(SaltsCore CONFIG REQUIRED PATHS "$ENV{SALTSCORE_ROOT}"
   NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 find_package(CMeta CONFIG REQUIRED PATHS "$ENV{CMETA_ROOT}"

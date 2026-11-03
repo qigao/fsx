@@ -4,3 +4,4 @@ install/
 .codegraph/
 __pycache__/
 *.py[cod]
+/.openidea/
