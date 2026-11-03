@@ -58,6 +58,14 @@ jobs:
           target: x64
           build-type: toolchain-only
           obfuscator: "false"
+      - name: Select LLVM for manifest ABI resolution and builds
+        shell: pwsh
+        run: |
+          $compiler = if ($IsWindows) { $env:LLVM_MINGW_CC } else { $env:LLVM_NATIVE_CC }
+          $cppCompiler = if ($IsWindows) { $env:LLVM_MINGW_CXX } else { $env:LLVM_NATIVE_CXX }
+          if (-not $compiler -or -not $cppCompiler) { throw 'LLVM setup did not select both compilers' }
+          "CC=$compiler" >> $env:GITHUB_ENV
+          "CXX=$cppCompiler" >> $env:GITHUB_ENV
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@v0.1.0
         id: dependencies
         with:
