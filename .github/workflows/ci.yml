@@ -44,6 +44,9 @@ jobs:
           key: fsx-${{ runner.os }}-${{ matrix.preset }}-v0.1.0-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json', 'CMakeUserPresets.json', '.github/workflows/ci.yml') }}-${{ github.sha }}
           restore-keys: |
             fsx-${{ runner.os }}-${{ matrix.preset }}-v0.1.0-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json', 'CMakeUserPresets.json', '.github/workflows/ci.yml') }}-
+      - name: Prepare cache directories
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path $env:VCPKG_BINARY_CACHE, $env:VCPKG_DOWNLOADS, $env:CCACHE_DIR | Out-Null
       - uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@v0.1.0
         if: runner.os != 'Windows'
         with:
@@ -68,6 +71,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Restore exact first-party SDKs and ccache using curl
+        id: sdks
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -113,5 +117,5 @@ jobs:
       - name: Run formal CTest suite
         run: ctest --preset ${{ matrix.preset }}
       - name: Compiler cache statistics
-        if: always()
+        if: always() && steps.sdks.outcome == 'success'
         run: ccache --show-stats
