@@ -150,6 +150,21 @@
       }
     },
     {
+      "name": "windows-native-regression",
+      "configurePreset": "windows-native-release",
+      "filter": {
+        "exclude": {
+          "name": "^fsx_ntfs_(live|link)_test$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
       "name": "windows-native-release",
       "configurePreset": "windows-native-release",
       "filter": {

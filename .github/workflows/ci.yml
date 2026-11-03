@@ -155,7 +155,7 @@ jobs:
           FSX_NTFS_TEST_PROFILE: '0'
         run: |
           $ErrorActionPreference = 'Stop'
-          ctest --test-dir build/${{ matrix.preset }} --output-on-failure -E '^fsx_ntfs_(live|link)_test$'
+          ctest --preset windows-native-regression
           if ($LASTEXITCODE -ne 0) { throw 'Release regression tests failed' }
           $variants = @(
             @{ Name = 'serial-file'; Async = '0'; Queue = '0'; Pages = '0' },
