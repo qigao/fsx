@@ -53,6 +53,7 @@ struct FsNtfs {
   FsNtfsIdentity identity;
   FsNtfsInfo info;
   bool dirty;
+  bool async_pending; /* engine mutex; held until job finalization */
 };
 static inline uint64_t fsx_ntfs_get64(const unsigned char *p) {
   uint64_t value = 0;
@@ -77,5 +78,9 @@ FsStatus fsx_ntfs_native_open(FsEngine *, const char *, const FsNtfsConfig *,
 FsStatus fsx_ntfs_schema(FsEngine *);
 FsStatus fsx_ntfs_checkpoint(FsNtfs *);
 FsStatus fsx_ntfs_store(FsNtfs *, bool rebuild);
+FsStatus fsx_ntfs_run_admitted(FsNtfs *, bool rebuild, FsNtfsInfo *);
+FsStatus fsx_ntfs_collect(FsNtfs *, bool inventory, int64_t *cursor,
+                          int64_t target, bool rebuild, FsNtfsRecordFn, void *,
+                          FsNtfsRawStats *, uint64_t *, uint32_t *);
 bool fsx_ntfs_same_identity(const FsNtfsIdentity *, const FsNtfsIdentity *);
 #endif

@@ -7,7 +7,8 @@ FsNtfsConfig fsx_ntfs_config(void) {
                          4096,
                          NULL,
                          FS_NTFS_MFT_ENUM,
-                         FS_NTFS_RAW_PREFETCH | FS_NTFS_RAW_BATCH_DIRS};
+                         FS_NTFS_RAW_PREFETCH | FS_NTFS_RAW_BATCH_DIRS,
+                         4};
   return config;
 }
 bool fsx_ntfs_same_identity(const FsNtfsIdentity *a, const FsNtfsIdentity *b) {
@@ -22,7 +23,7 @@ static bool valid(const FsNtfsConfig *c) {
          c->buffer_bytes <= 1048576 && c->buffer_bytes % 8 == 0 &&
          c->max_mft_records && c->max_mft_records <= 64000000 &&
          c->max_batch_records && c->max_batch_records <= 65536 &&
-         c->mft_reader <= FS_NTFS_MFT_RAW &&
+         c->mft_reader <= FS_NTFS_MFT_RAW && c->pipeline_batches <= 16 &&
          !(c->raw_flags &
            ~(uint64_t)(FS_NTFS_RAW_PREFETCH | FS_NTFS_RAW_BATCH_DIRS));
 }
@@ -83,8 +84,10 @@ FsStatus fsx_ntfs_open_provider(FsEngine *e, const char *root,
   for (FsNtfs *other = e->ntfs; status == FS_OK && other; other = other->next)
     if (!strcmp(other->root, n->root))
       status = FS_BUSY;
-  if (status == FS_OK)
+  if (status == FS_OK) {
     e->writer = true;
+    atomic_store(&e->writer_cancelled, false);
+  }
   cmeta_mutex_unlock(&e->mutex);
   if (status != FS_OK) {
     dispose(n);
@@ -153,6 +156,11 @@ static FsStatus run(FsNtfs *n, bool rebuild, FsNtfsInfo *out) {
     return FS_INVALID;
   FsEngine *e = n->engine;
   cmeta_mutex_lock(&e->mutex);
+  if (n->async_pending) {
+    cmeta_mutex_unlock(&e->mutex);
+    *out = (FsNtfsInfo){0};
+    return FS_BUSY;
+  }
   if (atomic_load(&e->stopping) || e->writer) {
     FsStatus status = atomic_load(&e->stopping) ? FS_CANCELLED : FS_BUSY;
     if (status == FS_CANCELLED) {
@@ -160,15 +168,24 @@ static FsStatus run(FsNtfs *n, bool rebuild, FsNtfsInfo *out) {
       n->info.state = FS_NTFS_STOPPED;
       n->info.caught_up = false;
     }
-    cmeta_mutex_unlock(&e->mutex);
     *out = n->info;
+    cmeta_mutex_unlock(&e->mutex);
     return status;
   }
   e->writer = true;
+  atomic_store(&e->writer_cancelled, false);
+  cmeta_mutex_unlock(&e->mutex);
+  return fsx_ntfs_run_admitted(n, rebuild, out);
+}
+FsStatus fsx_ntfs_run_admitted(FsNtfs *n, bool rebuild, FsNtfsInfo *out) {
+  FsEngine *e = n->engine;
+  cmeta_mutex_lock(&e->mutex);
   set_dirty(n, true);
   cmeta_mutex_unlock(&e->mutex);
-  FsStatus status =
-      !rebuild && n->info.needs_rebuild ? FS_STALE : fsx_ntfs_store(n, rebuild);
+  FsStatus status = fsx_writer_stopping(e) ? FS_CANCELLED
+                    : !rebuild && n->info.needs_rebuild
+                        ? FS_STALE
+                        : fsx_ntfs_store(n, rebuild);
   n->info.status = status;
   if (status == FS_STALE || status == FS_UNSUPPORTED || status == FS_CORRUPT)
     n->info.needs_rebuild = true;
@@ -187,9 +204,10 @@ static FsStatus run(FsNtfs *n, bool rebuild, FsNtfsInfo *out) {
     fsx_health_invalidate(e, n->root);
   set_dirty(n, status != FS_OK || !n->info.caught_up);
   e->writer = false;
+  atomic_store(&e->index_job, NULL);
+  *out = n->info;
   cmeta_cond_broadcast(&e->changed);
   cmeta_mutex_unlock(&e->mutex);
-  *out = n->info;
   return status;
 }
 FsStatus fsx_ntfs_rebuild(FsNtfs *n, FsNtfsInfo *out) {
@@ -209,6 +227,10 @@ FsStatus fsx_ntfs_close(FsNtfs **owner) {
   FsNtfs *n = *owner;
   FsEngine *e = n->engine;
   cmeta_mutex_lock(&e->mutex);
+  if (n->async_pending) {
+    cmeta_mutex_unlock(&e->mutex);
+    return FS_BUSY;
+  }
   FsNtfs **slot = &e->ntfs;
   while (*slot != n)
     slot = &(*slot)->next;

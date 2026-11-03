@@ -1,14 +1,14 @@
 #ifndef FSX_INTERNAL_H
 #define FSX_INTERNAL_H
+#include <clock.h>
 #include <fsx/api.h>
 #include <limits.h>
-#include <salts/clock.h>
-#include <salts/thread.h>
-#include <salts/thread_pool.h>
-#include <salts_unicode.h>
 #include <sqlite3.h>
 #include <stdatomic.h>
 #include <string.h>
+#include <thread.h>
+#include <thread_pool.h>
+#include <unicode.h>
 
 typedef struct FsEntry {
   FsFileKey key;
@@ -39,6 +39,9 @@ struct FsEngine {
   cmeta_mutex_t mutex, budget_mutex;
   cmeta_cond_t changed;
   cmeta_threadpool_t *pool;
+  cmeta_threadpool_t *index_pool;
+  _Atomic(FsIndexJob *) index_job;
+  atomic_bool writer_cancelled;
   sqlite3 *db;
   /* Set only with a quiescent writer; callback must not mutate db. */
   int (*sql_observer)(void *);
@@ -127,6 +130,9 @@ FsStatus fsx_candidates_open(FsQuery *, const char *, FsCandidates *);
 FsStatus fsx_candidates_next(FsCandidates *, uint32_t *);
 void fsx_candidates_close(FsCandidates *);
 FsStatus fsx_db_scan(FsEngine *, const char *, FsScanInfo *);
+/* Caller owns the writer admission, including an optional joined producer. */
+bool fsx_writer_stopping(FsEngine *);
+FsStatus fsx_engine_scan_admitted(FsEngine *, const char *, FsScanInfo *);
 FsStatus fsx_db_status(int);
 FsStatus fsx_native_root(FsEngine *, const char *, char **);
 FsStatus fsx_walk(FsWalk *, const char *);

@@ -1,0 +1,117 @@
+name: fsx native tests
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: fsx-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.preset }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-debug, triplet: x64-linux}
+          - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-asan-ubsan, triplet: x64-linux}
+          - {runner: windows-2025, rid: windows-x64, preset: windows-debug, triplet: qigao-x64-windows-llvm-mingw}
+    env:
+      VCPKG_BINARY_CACHE: ${{ github.workspace }}/build/vcpkg-binary-cache
+      VCPKG_DOWNLOADS: ${{ github.workspace }}/build/vcpkg-downloads
+      CCACHE_DIR: ${{ github.workspace }}/build/ccache
+      CCACHE_MAXSIZE: 256MiB
+      CCACHE_COMPILERCHECK: content
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.VCPKG_BINARY_CACHE }}
+            ${{ env.VCPKG_DOWNLOADS }}
+            ${{ env.CCACHE_DIR }}
+          key: fsx-${{ runner.os }}-${{ matrix.preset }}-v0.1.0-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json', 'CMakeUserPresets.json', '.github/workflows/ci.yml') }}-${{ github.sha }}
+          restore-keys: |
+            fsx-${{ runner.os }}-${{ matrix.preset }}-v0.1.0-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json', 'CMakeUserPresets.json', '.github/workflows/ci.yml') }}-
+      - uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@v0.1.0
+        if: runner.os != 'Windows'
+        with:
+          build-type: toolchain-only
+          obfuscator: "false"
+      - uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@v0.1.0
+        if: runner.os == 'Windows'
+        with:
+          target: x64
+          build-type: toolchain-only
+          obfuscator: "false"
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@v0.1.0
+        id: dependencies
+        with:
+          triplet: ${{ matrix.triplet }}
+          host-triplet: ${{ matrix.triplet }}
+          token: ${{ github.token }}
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@v0.1.0
+        with:
+          token: ${{ github.token }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore exact first-party SDKs and ccache using curl
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $curl = if ($IsWindows) { 'curl.exe' } else { 'curl' }
+          $sdkPackages = @(
+            @('salts-core', 'v0.1.002', 'SaltsCore.Native.0.1.2.nupkg', '8f3407de65ed73d5aca4bd7bc1274d71a828f81875f2671f86396b997e5ed693', 'SALTSCORE_ROOT'),
+            @('cmeta', 'v0.1.003', 'CMeta.Native.0.1.3.nupkg', 'da102797fb4183351af54b450f89055d35d9a25c3631c8111a33105c2e74e2fd', 'CMETA_ROOT')
+          )
+          foreach ($package in $sdkPackages) {
+            $archive = Join-Path $env:RUNNER_TEMP $package[2]
+            & $curl --fail --location --silent --show-error --retry 3 `
+              "https://github.com/qigao/$($package[0])/releases/download/$($package[1])/$($package[2])" --output $archive
+            if ($LASTEXITCODE -ne 0) { throw "SDK download failed: $($package[2])" }
+            if ((Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant() -ne $package[3]) { throw 'SDK SHA256 mismatch' }
+            $destination = Join-Path $env:RUNNER_TEMP $package[0]
+            python -m zipfile -e $archive $destination
+            if ($LASTEXITCODE -ne 0) { throw 'SDK extraction failed' }
+            $prefix = (Join-Path $destination 'sdk/${{ matrix.rid }}') -replace '\\', '/'
+            "$($package[4])=$prefix" >> $env:GITHUB_ENV
+          }
+          $platform, $digest, $extension = if ($IsWindows) {
+            'windows-x86_64', '6993ce645e53192cec592ee23186200b574ac4c59097ecde8d9cfd681b47ae84', 'zip'
+          } else {
+            'linux-x86_64-glibc', 'b1f7fbb60ee24b80a6abae09ec4fcc6554fbf98c933c9bd25a3f53ab685fc00b', 'tar.gz'
+          }
+          $name = "ccache-4.14.2-$platform"
+          $archive = Join-Path $env:RUNNER_TEMP "$name.$extension"
+          & $curl --fail --location --silent --show-error --retry 3 `
+            "https://github.com/ccache/ccache/releases/download/v4.14.2/$name.$extension" --output $archive
+          if ($LASTEXITCODE -ne 0) { throw 'ccache download failed' }
+          if ((Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant() -ne $digest) { throw 'ccache SHA256 mismatch' }
+          if ($IsWindows) {
+            python -m zipfile -e $archive $env:RUNNER_TEMP
+          } else {
+            tar -xf $archive -C $env:RUNNER_TEMP
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'ccache extraction failed' }
+          (Join-Path $env:RUNNER_TEMP $name) >> $env:GITHUB_PATH
+      - name: Configure source-owned tests
+        run: cmake --preset ${{ matrix.preset }} -DCMAKE_C_COMPILER_LAUNCHER=ccache
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Run formal CTest suite
+        run: ctest --preset ${{ matrix.preset }}
+      - name: Compiler cache statistics
+        if: always()
+        run: ccache --show-stats

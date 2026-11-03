@@ -104,6 +104,31 @@ static FsStatus watch_directory(FsEngine *engine, const char *root,
   return status == FS_OK ? closed : status;
 }
 
+static FsStatus index_wait(FsEngine *engine, FsIndexJob *job,
+                           FsIndexInfo *out) {
+  FsStatus status;
+  do {
+    status =
+        fsx_index_wait(job, fsx_engine_now_ns(engine) + UINT64_C(250000000));
+    if (status == FS_TIMEOUT && interrupted)
+      fsx_index_cancel(job);
+  } while (status == FS_TIMEOUT);
+  fsx_index_poll(job, out);
+  fsx_index_release(job);
+  return status;
+}
+static FsStatus index_ntfs(FsEngine *engine, FsNtfs *source, bool rebuild,
+                           FsNtfsInfo *out) {
+  FsIndexJob *job = NULL;
+  FsStatus status = rebuild ? fsx_ntfs_rebuild_async(source, &job)
+                            : fsx_ntfs_sync_async(source, &job);
+  if (status != FS_OK)
+    return status;
+  FsIndexInfo info;
+  status = index_wait(engine, job, &info);
+  *out = info.ntfs;
+  return status;
+}
 static void print_ntfs(const FsNtfsInfo *info) {
   printf("revision=%" PRIu64 " source=%u next_usn=%" PRId64
          " target_usn=%" PRId64 " caught_up=%s mft=%" PRIu64 " journal=%" PRIu64
@@ -147,9 +172,9 @@ static FsStatus ntfs_command(FsEngine *engine, const char *command,
   uint32_t completed = 0;
   FsNtfsInfo info = {0};
   if (!strcmp(command, "ntfs-sync"))
-    status = fsx_ntfs_sync(source, &info);
+    status = index_ntfs(engine, source, false, &info);
   else
-    status = fsx_ntfs_rebuild(source, &info);
+    status = index_ntfs(engine, source, true, &info);
   while (status == FS_OK) {
     print_ntfs(&info);
     completed++;
@@ -174,7 +199,7 @@ static FsStatus ntfs_command(FsEngine *engine, const char *command,
     }
     if (interrupted)
       break;
-    status = fsx_ntfs_sync(source, &info);
+    status = index_ntfs(engine, source, false, &info);
   }
   if (status != FS_OK)
     fprintf(stderr,
@@ -319,8 +344,14 @@ static int run(int argc, char **argv) {
     status = watch_directory(engine, argv[3], watch_duration, watch_updates,
                              &exit_code);
   } else if (!strcmp(argv[1], "index") && argc == 4) {
-    FsScanInfo info;
-    status = fsx_engine_scan(engine, argv[3], &info);
+    FsIndexJob *job = NULL;
+    FsScanInfo info = {0};
+    status = fsx_engine_scan_async(engine, argv[3], &job);
+    if (status == FS_OK) {
+      FsIndexInfo indexed;
+      status = index_wait(engine, job, &indexed);
+      info = indexed.scan;
+    }
     if (status == FS_OK) {
       printf("revision=%" PRIu64 " entries=%" PRIu64
              " complete=%s skipped=%" PRIu64 "\n",

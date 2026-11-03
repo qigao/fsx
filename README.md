@@ -12,6 +12,8 @@ milestones remain on the roadmap.
   descent uses verified handles and relative child opens to resist replacement.
 - SQLite transactions for sources, shared objects, entries and FTS5 trigram rows.
   Immutable query snapshots are prepared before commit and published afterward.
+- Asynchronous directory/NTFS indexing on a dedicated single-writer worker,
+  bounded owned NTFS batches, and page-limited SQLite memory work sets.
 - Asynchronous queries on SaltsCore's bounded thread pool, retained results,
   cancellation, deadlines, STOPPING/close and allocation/admission limits.
 - Unicode 17 full-fold substring search, scalar-aware glob matching, scoped
@@ -33,7 +35,7 @@ milestones remain on the roadmap.
   aliases, U0/U1 journal handoff, bounded USN batches, durable cursor recovery,
   subtree moves and atomic facts/FTS/checkpoint publication.
 
-Dedicated asynchronous source queues,
+Query-visible unflushed deltas, full SQLite memory mirrors,
 raw-unit queries for invalid Unicode names and Everything import are later work.
 The current collector explicitly marks skipped/unrepresentable names as partial
 coverage. RDC watches reconcile whole roots and have no durable change cursor;
@@ -229,7 +231,7 @@ before allocating. Engine limits bound indexed aliases and depth.
 ## Validation
 
 Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 88 engine cases, 25 dedicated raw
+CLI and formal tests. The current suite has 103 engine cases, 25 dedicated raw
 reader cases and 10 CLI cases, run through three ordinary CTest entries.
 Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
@@ -252,7 +254,14 @@ Regressions also cover a 65,001-byte nested modifier request, the accepted depth
 boundary, failures retained across independent root scans, conservative validation
 after an unidentified failure, and a deterministic directory-to-junction swap
 during observation. Stable junctions remain searchable without traversing targets.
-Linux and sanitizer runs have not been performed in this environment.
+The asynchronous-index revision also builds with the published Core 0.1.2 and
+CMeta 0.1.3 Linux SDKs. Linux Debug passed all three CTest entries (90 engine
+cases; Windows-only cases are excluded). ASan/UBSan passed once with local leak
+detection disabled because this sandbox denies LeakSanitizer process inspection.
+Repeated runs exposed intermittent fixture files reappearing after successful
+deletion, confirmed by direct filesystem metadata reads before rescanning; the
+4096/4097 assertions remain intact. The CI matrix checks Linux Debug, full
+ASan/UBSan and Windows LLVM-MinGW using the same versioned presets.
 
 NTFS protocol tests use the real SQLite/FTS/snapshot coordinator with a
 deterministic native-operation provider. They cover U0/U1 changes and gaps,
@@ -265,10 +274,32 @@ subtree/USN parity: approximately 4.55 million MFT records and 10,000 fixture fi
 The [measurement report](docs/ntfs-live-validation.md) includes results and fixes.
 Full initialization is slower for this small subtree. See the
 [optimization report](docs/performance/ntfs-optimization-2026-11-03.md) for the
-measured query and incremental changes. Linux/sanitizer profiles were not run.
+measured query and incremental changes. Those measurements predate the new
+asynchronous pipeline; its real-volume performance has not yet been measured.
 
 Opt-in real-volume acceptance and measurement uses the Release
 `windows-native-release` configure/build/test presets. It requires authorized
 native volume access and is separate from ordinary CI tests; denied admission
 fails the live test rather than skipping it. See the
 [real NTFS procedure and measurements](docs/ntfs-live-validation.md).
+
+
+## Asynchronous indexing
+
+Embedded callers can submit `fsx_engine_scan_async` or
+`fsx_ntfs_rebuild_async/fsx_ntfs_sync_async`, poll/wait through
+`fsx_index_poll/fsx_index_wait`, request cooperative cancellation, and release
+the independent job handle. Only one writer is admitted; a separate query pool
+continues serving the committed snapshot. An NTFS session cannot close while
+its job is pending. A timed wait does not cancel the job. Terminal publication
+follows source unpinning and native/SQL cleanup. Engine close joins released
+background jobs and remains BUSY/TIMEOUT while external job handles are held.
+
+NTFS `pipeline_batches` defaults to four bounded, owned `buffer_bytes` slots;
+zero is the serial control. The native reader and SQL writer overlap, with
+backpressure and joined cancellation. `work_memory_pages` defaults to 4096
+4-KiB pages for small identity work tables; zero selects spillable storage.
+Large MFT inventory, scope paths and projection staging remain file-backed.
+Main facts/FTS/USN commit together before a new query snapshot is published.
+These are execution/storage choices, not a measured speedup. See the
+[ownership, limits and cancellation contract](docs/runtime-contract.md#asynchronous-indexing-and-bounded-ntfs-batches).

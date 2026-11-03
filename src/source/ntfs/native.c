@@ -192,7 +192,7 @@ static FsStatus list(void *context, uint64_t frn, FsObserve visit,
     status = FS_NOMEM;
   bool first = true;
   while (status == FS_OK) {
-    if (atomic_load(&n->engine->stopping)) {
+    if (fsx_writer_stopping(n->engine)) {
       status = FS_CANCELLED;
       break;
     }
@@ -262,7 +262,7 @@ static FsStatus list(void *context, uint64_t frn, FsObserve visit,
 static FsStatus link_parents(void *context, uint64_t frn, FsNtfsParentFn visit,
                              void *target) {
   Native *n = context;
-  if (atomic_load(&n->engine->stopping))
+  if (fsx_writer_stopping(n->engine))
     return FS_CANCELLED;
   HANDLE file = by_id(n, frn, FILE_READ_ATTRIBUTES);
   if (file == INVALID_HANDLE_VALUE)
@@ -311,7 +311,7 @@ static FsStatus raw_begin(void *context, uint64_t offset, void *out,
   Native *n = context;
   if (n->raw_pending)
     return FS_BUSY;
-  if (atomic_load(&n->engine->stopping))
+  if (fsx_writer_stopping(n->engine))
     return FS_CANCELLED;
   if (n->async_volume == INVALID_HANDLE_VALUE || !n->raw_event)
     return FS_UNSUPPORTED;
@@ -341,7 +341,7 @@ static FsStatus raw_finish(void *context, bool cancel) {
   bool cancelled = false;
   BOOL ok = FALSE;
   for (;;) {
-    if (cancel || atomic_load(&n->engine->stopping)) {
+    if (cancel || fsx_writer_stopping(n->engine)) {
       CancelIoEx(n->async_volume, &n->raw_overlapped);
       cancelled = true;
       break;

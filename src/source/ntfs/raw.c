@@ -48,7 +48,7 @@ static uint32_t u32(const unsigned char *p) {
 }
 static bool power2(uint32_t n) { return n && !(n & (n - 1)); }
 static FsStatus stop(Raw *r) {
-  return atomic_load(&r->engine->stopping) ? FS_CANCELLED : FS_OK;
+  return fsx_writer_stopping(r->engine) ? FS_CANCELLED : FS_OK;
 }
 /* Validate all trailers before changing any byte. NTFS USA stride is 512,
  * including on media whose logical/physical sector is larger. */
