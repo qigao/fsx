@@ -283,7 +283,9 @@ The [measurement report](docs/ntfs-live-validation.md) includes results and fixe
 Full initialization is slower for this small subtree. See the
 [optimization report](docs/performance/ntfs-optimization-2026-11-03.md) for the
 measured query and incremental changes. Those measurements predate the new
-asynchronous pipeline; its real-volume performance has not yet been measured.
+asynchronous pipeline. The [four-mode live report](docs/performance/async-index-2026-11-03.md)
+now verifies serial/asynchronous and spillable/memory parity on a real NTFS
+volume; its sample does not establish a material latency improvement.
 
 Opt-in real-volume acceptance and measurement uses the Release
 `windows-native-release` configure/build/test presets. It requires authorized

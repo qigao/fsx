@@ -39,6 +39,7 @@ Run from an authorized administrator developer shell with the same SDK roots and
 runtime environment:
 
 ```powershell
+ctest --preset windows-native-regression
 ctest --preset windows-native-release --verbose
 ```
 
@@ -92,6 +93,14 @@ a journal, elevates a token, or substitutes a mock/RDC backend. Denied native
 admission fails the opt-in job. CSV, JUnit and CTest logs are preserved per mode
 before the worktree is removed. Ordinary unlabelled Debug/sanitizer jobs retain
 their existing scope and do not request volume access.
+
+## Asynchronous pipeline results
+
+The [2026-11-03 four-mode report](performance/async-index-2026-11-03.md) preserves
+real-volume correctness, all four original CSVs and the source/CI/artifact
+identities. All modes passed; the sampled memory-work-table and pipeline changes
+did not establish a material end-to-end latency improvement. The prior local
+hardware measurements below remain separate baselines.
 
 ## Measurements
 

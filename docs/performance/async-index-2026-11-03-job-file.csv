@@ -1,0 +1,656 @@
+# build=Release compiler=23.1.4 (https://github.com/llvm/llvm-project.git 7a941dfb2877a0b8cf30323fefa85ad019e0b0f5) logical_processors=4 files=10000 dirs=100 rebuilds=3 updates=20
+# reader=raw
+# index_async=1 pipeline_capacity=0 work_memory_pages=0
+# raw_io=prefetch profile=full
+# OS cache uncontrolled; list_ms includes directory callbacks/SQLite; peak_ws is cumulative process peak; IO bytes are process counters, not physical disk bytes.
+phase,sample,wall_ms,cpu_ms,entries,mft_records,journal_records,ws_before,ws_after,process_peak_ws,owned_bytes,io_read_bytes,io_write_bytes,mft_calls,read_calls,list_calls,mft_ms,read_ms,list_callback_ms,stat_ms
+directory_initial,0,2832.847000,2718.750000,10101,0,0,7630848,17948672,17948672,4421950,13001280,289556696,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+# raw_prefetch submitted=1332
+# MFT progress calls=1 bytes=4048
+mft_initial,0,12196.591500,9015.625000,10101,1355371,9,17973248,32067584,32067584,5471650,1569732786,282169411,101,1,202,14.383700,0.161400,1302.100600,506.476200
+# raw sample=0 slots=1371648 bytes=1404739072 calls=1388 kernel_records=270 inventory_callback_ms=3414.514000
+# pipeline sample=0 batches=0 peak=0
+directory_initial,1,2728.504100,2625.000000,10101,0,0,31924224,41086976,41086976,4421950,13001280,289556696,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=1 batches=0 peak=0
+# raw_prefetch submitted=1332
+# MFT progress calls=1 bytes=4048
+mft_initial,1,12141.128900,8953.125000,10101,1355376,8,31584256,44896256,44896256,5471650,1569732786,282169411,101,1,202,11.542900,0.188600,1294.057400,506.162500
+# raw sample=1 slots=1371648 bytes=1404739072 calls=1388 kernel_records=270 inventory_callback_ms=3470.126700
+# pipeline sample=1 batches=0 peak=0
+directory_initial,2,2736.965300,2640.625000,10101,0,0,31989760,41164800,49786880,4421950,13001280,289556696,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=2 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=2 batches=0 peak=0
+# raw_prefetch submitted=1332
+# MFT progress calls=1 bytes=4048
+mft_initial,2,12296.775500,8968.750000,10101,1355378,30,31420416,45236224,49786880,5471650,1569732786,282169411,101,1,202,12.006000,0.174800,1299.849100,507.042400
+# raw sample=2 slots=1371648 bytes=1404739072 calls=1388 kernel_records=270 inventory_callback_ms=3432.792400
+# pipeline sample=2 batches=0 peak=0
+mixed_increment,0,1363.259200,1312.500000,10004,0,172,31494144,37892096,49999872,9852294,49070080,17306656,4,1,3,0.350700,0.162400,12.539900,9.978900
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+directory_mixed_rescan,0,3146.396900,2515.625000,10004,0,0,37892096,39436288,49999872,4380010,17246400,9761656,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+# MFT progress calls=5 bytes=12688
+return_delete,0,804.473300,750.000000,10103,0,18,39751680,38936576,49999872,9896864,54181888,9470341,2,1,3,0.160300,0.026800,17.225600,15.038400
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+directory_return_rescan,0,3735.070600,2468.750000,10103,0,0,38936576,39153664,49999872,4424580,18040280,8997824,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+reopen_resume,0,671.283500,656.250000,10104,0,15,28299264,33234944,49999872,5474732,46813184,4609760,0,1,1,0.000000,0.161700,7.690900,5.156900
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+directory_resume_rescan,0,2977.294100,2406.250000,10104,0,0,33234944,33746944,49999872,4425032,18294088,8936096,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+single_metadata_increment,0,128.256700,125.000000,10104,0,7,34443264,34537472,49999872,5474732,10641408,1866112,0,1,0,0.000000,0.044200,0.000000,0.171600
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+directory_metadata_rescan,0,3118.930200,2500.000000,10104,0,0,34537472,34770944,49999872,4425032,20576232,9158624,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+single_metadata_increment,1,129.944500,125.000000,10104,0,21,34910208,34967552,49999872,5474732,6344704,1677328,0,1,0,0.000000,0.045900,0.000000,0.212600
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=1 batches=0 peak=0
+directory_metadata_rescan,1,2992.182100,2437.500000,10104,0,0,34967552,35053568,49999872,4425032,16515248,8520048,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=1 batches=0 peak=0
+single_metadata_increment,2,127.048900,109.375000,10104,0,29,35581952,35581952,49999872,5474732,6344704,1779928,0,1,0,0.000000,0.029300,0.000000,0.191300
+# raw sample=2 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=2 batches=0 peak=0
+directory_metadata_rescan,2,3472.810100,2484.375000,10104,0,0,35581952,35577856,49999872,4425032,19060880,9216304,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=2 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=2 batches=0 peak=0
+single_metadata_increment,3,125.031700,109.375000,10104,0,3,36077568,36077568,49999872,5474732,6307840,1804552,0,1,0,0.000000,0.029100,0.000000,0.188800
+# raw sample=3 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=3 batches=0 peak=0
+directory_metadata_rescan,3,3066.150800,2421.875000,10104,0,0,36077568,36073472,49999872,4425032,18818568,9002016,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=3 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=3 batches=0 peak=0
+single_metadata_increment,4,128.543900,125.000000,10104,0,3,36077568,36081664,49999872,5474732,6316032,1808656,0,1,0,0.000000,0.026200,0.000000,0.210500
+# raw sample=4 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=4 batches=0 peak=0
+directory_metadata_rescan,4,3493.161900,2484.375000,10104,0,0,36081664,36073472,49999872,4425032,22546600,9232736,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=4 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=4 batches=0 peak=0
+single_metadata_increment,5,124.818000,125.000000,10104,0,8,36077568,36077568,49999872,5474732,6332416,1808656,0,1,0,0.000000,0.025400,0.000000,0.178700
+# raw sample=5 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=5 batches=0 peak=0
+directory_metadata_rescan,5,3301.872900,2468.750000,10104,0,0,36077568,36081664,49999872,4425032,18754088,9360480,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=5 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=5 batches=0 peak=0
+# MFT progress calls=1 bytes=112
+single_metadata_increment,6,620.236600,609.375000,10104,0,293,36085760,36085760,49999872,5474732,46690304,5274121,3,1,0,0.222300,0.035300,0.000000,0.151500
+# raw sample=6 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=6 batches=0 peak=0
+directory_metadata_rescan,6,3474.919000,2671.875000,10104,0,0,36085760,36110336,49999872,4425032,17401496,9055552,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=6 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=6 batches=0 peak=0
+# MFT progress calls=4 bytes=4304
+single_metadata_increment,7,682.823900,671.875000,10104,0,134,36638720,36642816,49999872,5474732,52666368,8819643,4,1,0,0.771100,0.029200,0.000000,0.152000
+# raw sample=7 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=7 batches=0 peak=0
+directory_metadata_rescan,7,2582.260800,2500.000000,10104,0,0,36642816,35610624,49999872,4425032,10668384,3965648,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=7 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=7 batches=0 peak=0
+# MFT progress calls=8 bytes=11736
+single_metadata_increment,8,642.090500,625.000000,10104,0,91,36110336,36122624,49999872,5474732,53624832,8913901,4,1,0,0.262500,0.033200,0.000000,0.163000
+# raw sample=8 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=8 batches=0 peak=0
+directory_metadata_rescan,8,3506.464900,2593.750000,10104,0,0,36122624,36126720,49999872,4425032,22786400,9994928,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=8 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=8 batches=0 peak=0
+# MFT progress calls=12 bytes=18144
+single_metadata_increment,9,134.138700,125.000000,10104,0,12,36155392,36155392,49999872,5474732,10297344,1866183,1,1,0,3.318000,0.026700,0.000000,0.173700
+# raw sample=9 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=9 batches=0 peak=0
+directory_metadata_rescan,9,3518.757100,2500.000000,10104,0,0,36155392,36155392,49999872,4425032,18909304,9212160,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=9 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=9 batches=0 peak=0
+# MFT progress calls=13 bytes=22056
+single_metadata_increment,10,691.658500,703.125000,10104,0,86,36683776,36704256,49999872,5474732,46698496,5286535,4,1,0,0.505400,0.028300,0.000000,0.171000
+# raw sample=10 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=10 batches=0 peak=0
+directory_metadata_rescan,10,3125.315200,2531.250000,10104,0,0,36704256,36700160,49999872,4425032,18457928,8932000,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=10 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=10 batches=0 peak=0
+# MFT progress calls=17 bytes=35888
+single_metadata_increment,11,649.654500,625.000000,10104,0,27,36700160,36700160,49999872,5474732,53264384,8893303,1,1,0,0.549200,0.028900,0.000000,0.163800
+# raw sample=11 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=11 batches=0 peak=0
+directory_metadata_rescan,11,4642.693400,2734.375000,10104,0,0,36700160,36696064,49999872,4425032,21195112,9290464,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=11 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=11 batches=0 peak=0
+single_metadata_increment,12,161.811400,156.250000,10104,0,3,36704256,36704256,49999872,5474732,10358784,1866112,0,1,0,0.000000,0.025300,0.000000,0.178700
+# raw sample=12 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=12 batches=0 peak=0
+directory_metadata_rescan,12,3334.191500,2750.000000,10104,0,0,36704256,36700160,49999872,4425032,16798112,8614736,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=12 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=12 batches=0 peak=0
+single_metadata_increment,13,157.186500,156.250000,10104,0,3,36700160,36700160,49999872,5474732,6316032,1825072,0,1,0,0.000000,0.028800,0.000000,0.207700
+# raw sample=13 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=13 batches=0 peak=0
+directory_metadata_rescan,13,3434.325200,2750.000000,10104,0,0,36700160,36708352,49999872,4425032,18856344,9311040,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=13 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=13 batches=0 peak=0
+single_metadata_increment,14,140.588200,140.625000,10104,0,5,36712448,36716544,49999872,5474732,6324224,1849696,0,1,0,0.000000,0.023900,0.000000,0.212400
+# raw sample=14 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=14 batches=0 peak=0
+directory_metadata_rescan,14,3482.784200,2703.125000,10104,0,0,36716544,36716544,49999872,4425032,19659064,9282176,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=14 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=14 batches=0 peak=0
+single_metadata_increment,15,124.612900,109.375000,10104,0,10,36716544,36716544,49999872,5474732,6328320,1857904,0,1,0,0.000000,0.026800,0.000000,0.179700
+# raw sample=15 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=15 batches=0 peak=0
+directory_metadata_rescan,15,3577.940000,2671.875000,10104,0,0,36716544,36716544,49999872,4425032,22534360,9245120,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=15 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=15 batches=0 peak=0
+single_metadata_increment,16,131.604500,125.000000,10104,0,3,36716544,36716544,49999872,5474732,6311936,1853800,0,1,0,0.000000,0.026200,0.000000,0.184100
+# raw sample=16 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=16 batches=0 peak=0
+directory_metadata_rescan,16,3370.606200,2656.250000,10104,0,0,36716544,36687872,49999872,4425032,18494888,8964960,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=16 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=16 batches=0 peak=0
+single_metadata_increment,17,160.126200,156.250000,10104,0,3,36687872,36687872,49999872,5474732,6316032,1853800,0,1,0,0.000000,0.031300,0.000000,0.193400
+# raw sample=17 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=17 batches=0 peak=0
+directory_metadata_rescan,17,3505.152200,2734.375000,10104,0,0,36687872,36282368,49999872,4425032,17742304,9352144,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=17 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=17 batches=0 peak=0
+single_metadata_increment,18,145.098900,140.625000,10104,0,3,36282368,36282368,49999872,5474732,6316032,1845592,0,1,0,0.000000,0.029800,0.000000,0.217900
+# raw sample=18 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=18 batches=0 peak=0
+directory_metadata_rescan,18,2684.465200,2593.750000,10104,0,0,36282368,36093952,49999872,4425032,11348968,4081632,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=18 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=18 batches=0 peak=0
+single_metadata_increment,19,146.771100,140.625000,10104,0,3,35794944,35794944,49999872,5474732,6316032,1853800,0,1,0,0.000000,0.029200,0.000000,0.194300
+# raw sample=19 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=19 batches=0 peak=0
+directory_metadata_rescan,19,3420.084700,2765.625000,10104,0,0,35794944,35639296,49999872,4425032,21724552,9734912,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=19 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=19 batches=0 peak=0
+query_auto,0,0.542700,0.000000,10104,0,0,35659776,35663872,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+query_force_fts,0,5.719200,15.625000,10104,0,0,35663872,35835904,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+query_scan,0,0.313600,0.000000,10104,0,0,35835904,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+query_auto,1,0.450100,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=1 batches=0 peak=0
+query_force_fts,1,7.682700,0.000000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=1 batches=0 peak=0
+query_scan,1,0.434900,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=1 batches=0 peak=0
+query_auto,2,0.374400,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=2 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=2 batches=0 peak=0
+query_force_fts,2,5.376200,15.625000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=2 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=2 batches=0 peak=0
+query_scan,2,0.453600,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=2 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=2 batches=0 peak=0
+query_auto,3,0.394800,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=3 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=3 batches=0 peak=0
+query_force_fts,3,7.999100,0.000000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=3 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=3 batches=0 peak=0
+query_scan,3,0.452800,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=3 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=3 batches=0 peak=0
+query_auto,4,0.422100,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=4 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=4 batches=0 peak=0
+query_force_fts,4,7.742900,15.625000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=4 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=4 batches=0 peak=0
+query_scan,4,0.517700,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=4 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=4 batches=0 peak=0
+query_auto,5,0.392800,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=5 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=5 batches=0 peak=0
+query_force_fts,5,5.310500,0.000000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=5 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=5 batches=0 peak=0
+query_scan,5,0.351100,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=5 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=5 batches=0 peak=0
+query_auto,6,0.323800,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=6 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=6 batches=0 peak=0
+query_force_fts,6,5.272000,15.625000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=6 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=6 batches=0 peak=0
+query_scan,6,0.332500,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=6 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=6 batches=0 peak=0
+query_auto,7,0.456100,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=7 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=7 batches=0 peak=0
+query_force_fts,7,5.223500,0.000000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=7 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=7 batches=0 peak=0
+query_scan,7,0.294100,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=7 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=7 batches=0 peak=0
+query_auto,8,0.302600,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=8 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=8 batches=0 peak=0
+query_force_fts,8,5.134700,15.625000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=8 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=8 batches=0 peak=0
+query_scan,8,0.331100,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=8 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=8 batches=0 peak=0
+query_auto,9,0.366900,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=9 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=9 batches=0 peak=0
+query_force_fts,9,5.301300,0.000000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=9 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=9 batches=0 peak=0
+query_scan,9,0.275700,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=9 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=9 batches=0 peak=0
+query_auto,10,0.369800,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=10 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=10 batches=0 peak=0
+query_force_fts,10,5.236100,0.000000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=10 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=10 batches=0 peak=0
+query_scan,10,0.369100,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=10 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=10 batches=0 peak=0
+query_auto,11,0.286700,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=11 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=11 batches=0 peak=0
+query_force_fts,11,5.290700,15.625000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=11 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=11 batches=0 peak=0
+query_scan,11,0.363200,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=11 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=11 batches=0 peak=0
+query_auto,12,0.276500,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=12 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=12 batches=0 peak=0
+query_force_fts,12,5.180400,0.000000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=12 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=12 batches=0 peak=0
+query_scan,12,0.378800,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=12 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=12 batches=0 peak=0
+query_auto,13,0.382100,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=13 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=13 batches=0 peak=0
+query_force_fts,13,5.264800,15.625000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=13 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=13 batches=0 peak=0
+query_scan,13,0.272500,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=13 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=13 batches=0 peak=0
+query_auto,14,0.370700,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=14 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=14 batches=0 peak=0
+query_force_fts,14,5.302400,0.000000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=14 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=14 batches=0 peak=0
+query_scan,14,0.328000,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=14 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=14 batches=0 peak=0
+query_auto,15,0.363600,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=15 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=15 batches=0 peak=0
+query_force_fts,15,5.341700,0.000000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=15 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=15 batches=0 peak=0
+query_scan,15,0.266900,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=15 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=15 batches=0 peak=0
+query_auto,16,0.340300,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=16 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=16 batches=0 peak=0
+query_force_fts,16,5.196900,15.625000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=16 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=16 batches=0 peak=0
+query_scan,16,0.391100,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=16 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=16 batches=0 peak=0
+query_auto,17,0.258500,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=17 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=17 batches=0 peak=0
+query_force_fts,17,5.209200,0.000000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=17 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=17 batches=0 peak=0
+query_scan,17,0.280700,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=17 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=17 batches=0 peak=0
+query_auto,18,0.246000,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=18 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=18 batches=0 peak=0
+query_force_fts,18,5.256500,15.625000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=18 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=18 batches=0 peak=0
+query_scan,18,0.272300,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=18 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=18 batches=0 peak=0
+query_auto,19,0.349700,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=19 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=19 batches=0 peak=0
+query_force_fts,19,5.280900,0.000000,10104,0,0,35848192,35848192,49999872,5475772,303204,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=19 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=19 batches=0 peak=0
+query_scan,19,0.275200,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=19 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=19 batches=0 peak=0
+query_unicode_auto,0,0.214300,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+query_unicode_force_fts,0,2.427200,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+query_unicode_scan,0,0.224700,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+query_unicode_auto,1,0.225700,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=1 batches=0 peak=0
+query_unicode_force_fts,1,1.667900,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=1 batches=0 peak=0
+query_unicode_scan,1,0.233100,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=1 batches=0 peak=0
+query_unicode_auto,2,0.224600,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=2 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=2 batches=0 peak=0
+query_unicode_force_fts,2,2.328200,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=2 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=2 batches=0 peak=0
+query_unicode_scan,2,0.230000,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=2 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=2 batches=0 peak=0
+query_unicode_auto,3,0.223900,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=3 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=3 batches=0 peak=0
+query_unicode_force_fts,3,1.645800,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=3 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=3 batches=0 peak=0
+query_unicode_scan,3,0.256700,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=3 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=3 batches=0 peak=0
+query_unicode_auto,4,0.246500,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=4 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=4 batches=0 peak=0
+query_unicode_force_fts,4,1.577000,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=4 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=4 batches=0 peak=0
+query_unicode_scan,4,0.320500,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=4 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=4 batches=0 peak=0
+query_unicode_auto,5,0.247000,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=5 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=5 batches=0 peak=0
+query_unicode_force_fts,5,1.655800,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=5 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=5 batches=0 peak=0
+query_unicode_scan,5,0.287500,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=5 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=5 batches=0 peak=0
+query_unicode_auto,6,0.246400,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=6 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=6 batches=0 peak=0
+query_unicode_force_fts,6,1.637500,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=6 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=6 batches=0 peak=0
+query_unicode_scan,6,0.232700,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=6 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=6 batches=0 peak=0
+query_unicode_auto,7,0.228200,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=7 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=7 batches=0 peak=0
+query_unicode_force_fts,7,1.592300,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=7 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=7 batches=0 peak=0
+query_unicode_scan,7,0.302100,15.625000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=7 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=7 batches=0 peak=0
+query_unicode_auto,8,0.254000,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=8 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=8 batches=0 peak=0
+query_unicode_force_fts,8,1.640100,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=8 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=8 batches=0 peak=0
+query_unicode_scan,8,0.274500,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=8 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=8 batches=0 peak=0
+query_unicode_auto,9,0.225400,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=9 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=9 batches=0 peak=0
+query_unicode_force_fts,9,1.640500,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=9 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=9 batches=0 peak=0
+query_unicode_scan,9,0.234700,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=9 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=9 batches=0 peak=0
+query_unicode_auto,10,0.267100,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=10 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=10 batches=0 peak=0
+query_unicode_force_fts,10,1.569000,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=10 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=10 batches=0 peak=0
+query_unicode_scan,10,0.260000,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=10 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=10 batches=0 peak=0
+query_unicode_auto,11,0.221900,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=11 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=11 batches=0 peak=0
+query_unicode_force_fts,11,1.619600,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=11 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=11 batches=0 peak=0
+query_unicode_scan,11,0.228700,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=11 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=11 batches=0 peak=0
+query_unicode_auto,12,0.219200,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=12 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=12 batches=0 peak=0
+query_unicode_force_fts,12,1.690900,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=12 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=12 batches=0 peak=0
+query_unicode_scan,12,0.244400,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=12 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=12 batches=0 peak=0
+query_unicode_auto,13,0.225300,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=13 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=13 batches=0 peak=0
+query_unicode_force_fts,13,1.657600,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=13 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=13 batches=0 peak=0
+query_unicode_scan,13,0.236000,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=13 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=13 batches=0 peak=0
+query_unicode_auto,14,0.231100,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=14 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=14 batches=0 peak=0
+query_unicode_force_fts,14,1.580000,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=14 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=14 batches=0 peak=0
+query_unicode_scan,14,0.224300,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=14 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=14 batches=0 peak=0
+query_unicode_auto,15,0.219500,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=15 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=15 batches=0 peak=0
+query_unicode_force_fts,15,1.616200,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=15 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=15 batches=0 peak=0
+query_unicode_scan,15,0.230900,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=15 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=15 batches=0 peak=0
+query_unicode_auto,16,0.230000,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=16 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=16 batches=0 peak=0
+query_unicode_force_fts,16,1.615500,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=16 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=16 batches=0 peak=0
+query_unicode_scan,16,0.339900,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=16 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=16 batches=0 peak=0
+query_unicode_auto,17,0.309600,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=17 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=17 batches=0 peak=0
+query_unicode_force_fts,17,1.617400,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=17 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=17 batches=0 peak=0
+query_unicode_scan,17,0.228900,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=17 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=17 batches=0 peak=0
+query_unicode_auto,18,0.212400,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=18 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=18 batches=0 peak=0
+query_unicode_force_fts,18,1.749900,0.000000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=18 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=18 batches=0 peak=0
+query_unicode_scan,18,0.235100,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=18 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=18 batches=0 peak=0
+query_unicode_auto,19,0.230700,0.000000,10104,0,0,35848192,35848192,49999872,5475772,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=19 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=19 batches=0 peak=0
+query_unicode_force_fts,19,1.621400,15.625000,10104,0,0,35848192,35848192,49999872,5475772,94308,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=19 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=19 batches=0 peak=0
+query_unicode_scan,19,0.319600,0.000000,10104,0,0,35848192,35848192,49999872,4426072,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=19 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=19 batches=0 peak=0
+query_size,0,0.204700,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+query_size_scan,0,0.233100,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=0 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=0 batches=0 peak=0
+query_size,1,0.256300,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=1 batches=0 peak=0
+query_size_scan,1,0.305000,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=1 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=1 batches=0 peak=0
+query_size,2,0.256800,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=2 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=2 batches=0 peak=0
+query_size_scan,2,0.266800,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=2 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=2 batches=0 peak=0
+query_size,3,0.233000,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=3 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=3 batches=0 peak=0
+query_size_scan,3,0.234100,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=3 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=3 batches=0 peak=0
+query_size,4,0.290800,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=4 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=4 batches=0 peak=0
+query_size_scan,4,0.285500,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=4 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=4 batches=0 peak=0
+query_size,5,0.234700,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=5 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=5 batches=0 peak=0
+query_size_scan,5,0.246100,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=5 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=5 batches=0 peak=0
+query_size,6,0.232300,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=6 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=6 batches=0 peak=0
+query_size_scan,6,0.236300,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=6 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=6 batches=0 peak=0
+query_size,7,0.269300,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=7 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=7 batches=0 peak=0
+query_size_scan,7,0.265800,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=7 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=7 batches=0 peak=0
+query_size,8,0.344000,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=8 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=8 batches=0 peak=0
+query_size_scan,8,0.337500,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=8 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=8 batches=0 peak=0
+query_size,9,0.341700,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=9 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=9 batches=0 peak=0
+query_size_scan,9,0.251000,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=9 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=9 batches=0 peak=0
+query_size,10,0.231100,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=10 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=10 batches=0 peak=0
+query_size_scan,10,0.305700,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=10 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=10 batches=0 peak=0
+query_size,11,0.233200,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=11 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=11 batches=0 peak=0
+query_size_scan,11,0.343800,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=11 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=11 batches=0 peak=0
+query_size,12,0.350300,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=12 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=12 batches=0 peak=0
+query_size_scan,12,0.248100,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=12 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=12 batches=0 peak=0
+query_size,13,0.232700,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=13 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=13 batches=0 peak=0
+query_size_scan,13,0.228300,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=13 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=13 batches=0 peak=0
+query_size,14,0.233900,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=14 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=14 batches=0 peak=0
+query_size_scan,14,0.234800,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=14 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=14 batches=0 peak=0
+query_size,15,0.234100,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=15 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=15 batches=0 peak=0
+query_size_scan,15,0.238200,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=15 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=15 batches=0 peak=0
+query_size,16,0.332500,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=16 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=16 batches=0 peak=0
+query_size_scan,16,0.231900,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=16 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=16 batches=0 peak=0
+query_size,17,0.333300,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=17 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=17 batches=0 peak=0
+query_size_scan,17,0.229500,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=17 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=17 batches=0 peak=0
+query_size,18,0.333500,15.625000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=18 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=18 batches=0 peak=0
+query_size_scan,18,0.332000,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=18 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=18 batches=0 peak=0
+query_size,19,0.350200,0.000000,10104,0,0,35848192,35848192,49999872,5475781,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=19 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=19 batches=0 peak=0
+query_size_scan,19,0.249800,0.000000,10104,0,0,35848192,35848192,49999872,4426081,0,0,0,0,0,0.000000,0.000000,0.000000,0.000000
+# raw sample=19 slots=0 bytes=0 calls=0 kernel_records=0 inventory_callback_ms=0.000000
+# pipeline sample=19 batches=0 peak=0
+# acceptance=passed
