@@ -66,12 +66,16 @@ Lemon source/template notices remain intact.
 | `CMETA_ROOT` | Compatible split CMeta SDK exporting `CMeta::CMeta` |
 | `RE2C_ROOT` | Host re2c 4.6+ with `bin/` and `share/re2c/stdlib/` |
 | `VCPKG_ROOT` | Canonical vcpkg checkout/tool selected by shared setup |
-| `VCPKG_CACHE_REPOSITORY_ROOT` | Shared cache checkout containing `2913c530b8f12ae411e3c180e898fb6c7783462f` |
+| `VCPKG_CACHE_REPOSITORY_ROOT` | Shared cache release `v0.1.002` (`d9f34af3f7bcad5ae2c8abf4ec95c7e93ad5d761`) |
 
 Use absolute, forward-slash paths. The hidden `vcpkg-cache` and `sdk-roots` user
 presets own these roots. `.env` is private and ignored; CMake does not load it
 automatically. Preserve the caller's credentials and shared read-only feed policy.
-Ordinary builds do not update shared checkouts or prewarm packages.
+Ordinary builds do not update shared checkouts or prewarm packages. CI pins the
+shared actions to `v0.1.002` and selects `restore-packages: "false"`: the normal
+product manifest build uses the local files cache and pinned source downloads.
+Strict remote ABI restoration is a separate mode requiring every exact package.
+All external package/tool transport uses curl, without Mono or NuGet executables.
 
 The product manifest retains builtin baseline
 `b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01`, PCRE2 10.46 and SQLite 3.50.4 with FTS5.

@@ -41,18 +41,18 @@ jobs:
             ${{ env.VCPKG_BINARY_CACHE }}
             ${{ env.VCPKG_DOWNLOADS }}
             ${{ env.CCACHE_DIR }}
-          key: fsx-${{ runner.os }}-${{ matrix.preset }}-v0.1.0-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json', 'CMakeUserPresets.json', '.github/workflows/ci.yml') }}-${{ github.sha }}
+          key: fsx-${{ runner.os }}-${{ matrix.preset }}-v0.1.002-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json', 'CMakeUserPresets.json', '.github/workflows/ci.yml') }}-${{ github.sha }}
           restore-keys: |
-            fsx-${{ runner.os }}-${{ matrix.preset }}-v0.1.0-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json', 'CMakeUserPresets.json', '.github/workflows/ci.yml') }}-
+            fsx-${{ runner.os }}-${{ matrix.preset }}-v0.1.002-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json', 'CMakeUserPresets.json', '.github/workflows/ci.yml') }}-
       - name: Prepare cache directories
         shell: pwsh
         run: New-Item -ItemType Directory -Force -Path $env:VCPKG_BINARY_CACHE, $env:VCPKG_DOWNLOADS, $env:CCACHE_DIR | Out-Null
-      - uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@v0.1.0
+      - uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@v0.1.002
         if: runner.os != 'Windows'
         with:
           build-type: toolchain-only
           obfuscator: "false"
-      - uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@v0.1.0
+      - uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@v0.1.002
         if: runner.os == 'Windows'
         with:
           target: x64
@@ -66,13 +66,14 @@ jobs:
           if (-not $compiler -or -not $cppCompiler) { throw 'LLVM setup did not select both compilers' }
           "CC=$compiler" >> $env:GITHUB_ENV
           "CXX=$cppCompiler" >> $env:GITHUB_ENV
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@v0.1.0
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@v0.1.002
         id: dependencies
         with:
+          restore-packages: "false"
           triplet: ${{ matrix.triplet }}
           host-triplet: ${{ matrix.triplet }}
           token: ${{ github.token }}
-      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@v0.1.0
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@v0.1.002
         with:
           token: ${{ github.token }}
       - uses: actions/setup-python@v5
