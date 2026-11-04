@@ -30,6 +30,16 @@ typedef struct FsNtfsRawStats {
   uint64_t read_ns, kernel_ns, callback_ns, elapsed_ns, directories,
       prefetch_reads;
 } FsNtfsRawStats;
+/* Private, opt-in diagnostics. Set the pointer only with a quiescent writer,
+ * keep it alive through job finalization, and read it after joining the job.
+ * Stage wall times are disjoint; queue/callback times overlap those stages.
+ * Wait counts count condition waits, including timed wakes and retries. */
+typedef struct FsNtfsMetrics {
+  uint64_t initialize_ns, inventory_ns, journal_ns, reconcile_ns;
+  uint64_t projection_ns, snapshot_ns, commit_ns, publish_ns, total_ns;
+  uint64_t producer_waits, producer_wait_ns, consumer_waits, consumer_wait_ns;
+  uint64_t consumer_callback_ns;
+} FsNtfsMetrics;
 typedef struct FsNtfsOps {
   FsStatus (*query)(void *, FsNtfsIdentity *);
   FsStatus (*mft)(void *, uint64_t, void *, size_t, size_t *);
@@ -52,7 +62,9 @@ struct FsNtfs {
   FsNtfsConfig config;
   FsNtfsIdentity identity;
   FsNtfsInfo info;
+  FsNtfsMetrics *metrics;
   bool dirty;
+  bool async_pending; /* engine mutex; held until job finalization */
 };
 static inline uint64_t fsx_ntfs_get64(const unsigned char *p) {
   uint64_t value = 0;
@@ -77,5 +89,9 @@ FsStatus fsx_ntfs_native_open(FsEngine *, const char *, const FsNtfsConfig *,
 FsStatus fsx_ntfs_schema(FsEngine *);
 FsStatus fsx_ntfs_checkpoint(FsNtfs *);
 FsStatus fsx_ntfs_store(FsNtfs *, bool rebuild);
+FsStatus fsx_ntfs_run_admitted(FsNtfs *, bool rebuild, FsNtfsInfo *);
+FsStatus fsx_ntfs_collect(FsNtfs *, bool inventory, int64_t *cursor,
+                          int64_t target, bool rebuild, FsNtfsRecordFn, void *,
+                          FsNtfsRawStats *, uint64_t *, uint32_t *);
 bool fsx_ntfs_same_identity(const FsNtfsIdentity *, const FsNtfsIdentity *);
 #endif

@@ -15,6 +15,8 @@ FsEngineConfig fsx_engine_config(const char *path) {
   c.max_handles = 32;
   c.max_query_window = 100000;
   c.max_scan_depth = 256;
+  c.sqlite_cache_kib = 4096;
+  c.work_memory_pages = 4096;
   return c;
 }
 FsQueryOptions fsx_query_options(void) {
@@ -122,7 +124,9 @@ FsStatus fsx_engine_open(const FsEngineConfig *c, FsEngine **out) {
       c->max_entries >= UINT32_MAX || !c->max_handles ||
       c->max_handles > 1024 || !c->max_query_window ||
       c->max_query_window > 100000 || !c->max_scan_depth ||
-      c->max_scan_depth > 256 || c->owned_memory_budget < 4096)
+      c->max_scan_depth > 256 || c->owned_memory_budget < 4096 ||
+      !c->sqlite_cache_kib || c->sqlite_cache_kib > 1048576 ||
+      c->work_memory_pages > 262144)
     return FS_INVALID;
   FsEngine *e = calloc(1, sizeof(*e));
   if (!e)
@@ -130,6 +134,8 @@ FsStatus fsx_engine_open(const FsEngineConfig *c, FsEngine **out) {
   e->config = *c;
   e->config.open_error = NULL;
   atomic_init(&e->stopping, false);
+  atomic_init(&e->writer_cancelled, false);
+  atomic_init(&e->index_job, NULL);
   cmeta_mutex_init(&e->mutex);
   cmeta_mutex_init(&e->budget_mutex);
   cmeta_cond_init(&e->changed);
@@ -160,6 +166,14 @@ FsStatus fsx_engine_open(const FsEngineConfig *c, FsEngine **out) {
   e->pool = cmeta_threadpool_create_with_config(&pc);
   if (!e->pool) {
     s = FS_NOMEM;
+    goto fail;
+  }
+  cmeta_threadpool_config_t index_config = {1, 1};
+  e->index_pool = cmeta_threadpool_create_with_config(&index_config);
+  if (!e->index_pool) {
+    s = FS_NOMEM;
+    cmeta_threadpool_destroy(e->pool);
+    e->pool = NULL;
     goto fail;
   }
   if (c->open_error)
@@ -224,10 +238,16 @@ FsStatus fsx_engine_scan(FsEngine *e, const char *root, FsScanInfo *out) {
     return FS_BUSY;
   }
   e->writer = true;
+  atomic_store(&e->writer_cancelled, false);
   cmeta_mutex_unlock(&e->mutex);
+  return fsx_engine_scan_admitted(e, root, out);
+}
+FsStatus fsx_engine_scan_admitted(FsEngine *e, const char *root,
+                                  FsScanInfo *out) {
   char *canonical = NULL;
   FsRootHealth *health = NULL;
-  FsStatus s = fsx_native_root(e, root, &canonical);
+  FsStatus s = fsx_writer_stopping(e) ? FS_CANCELLED
+                                      : fsx_native_root(e, root, &canonical);
   if (s == FS_OK)
     s = fsx_health_prepare(e, canonical, &health);
   if (s == FS_OK)
@@ -235,6 +255,7 @@ FsStatus fsx_engine_scan(FsEngine *e, const char *root, FsScanInfo *out) {
   fsx_free(canonical);
   cmeta_mutex_lock(&e->mutex);
   e->writer = false;
+  atomic_store(&e->index_job, NULL);
   if (s == FS_OK) {
     fsx_health_validate(e, health);
     fsx_ntfs_mark_invalid(e, out->source_id);
@@ -453,6 +474,8 @@ FsStatus fsx_engine_close(FsEngine **owner, uint64_t deadline) {
   cmeta_mutex_unlock(&e->mutex);
   cmeta_threadpool_shutdown_with_policy(
       e->pool, SALTS_THREADPOOL_SHUTDOWN_CANCEL_PENDING);
+  cmeta_threadpool_shutdown_with_policy(
+      e->index_pool, SALTS_THREADPOOL_SHUTDOWN_CANCEL_PENDING);
   cmeta_mutex_lock(&e->mutex);
   while (e->handles || e->active_jobs || e->writer) {
     if (!deadline) {
@@ -471,6 +494,8 @@ FsStatus fsx_engine_close(FsEngine **owner, uint64_t deadline) {
     }
   }
   cmeta_mutex_unlock(&e->mutex);
+  cmeta_threadpool_wait_status(e->index_pool);
+  cmeta_threadpool_destroy(e->index_pool);
   cmeta_threadpool_wait_status(e->pool);
   cmeta_threadpool_destroy(e->pool);
   fsx_snapshot_release(e->current);

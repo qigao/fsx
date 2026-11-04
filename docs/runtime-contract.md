@@ -7,7 +7,7 @@ later journal, source-session and large-index architecture.
 
 | Data path | Ownership and lifetime |
 |---|---|
-| scan → SQLite | One synchronous writer per engine. A second scan returns BUSY. Names/metadata are bound into prepared statements; no shell or user SQL is evaluated. |
+| scan → SQLite | One admitted writer per engine, called synchronously or on a dedicated index worker. A competing writer returns BUSY. Names/metadata are bound into prepared statements; no shell or user SQL is evaluated. |
 | SQLite → snapshot | Build/validate a complete immutable page directory inside the write transaction, retaining unchanged pages. Allocation or validation failure rolls back; the old snapshot stays current. Commit precedes publication, which allocates nothing. |
 | snapshot → query | Submission copies the request and retains the current snapshot under the publication mutex. Evaluation uses that snapshot; FTS candidates require a read transaction at the same revision. |
 | query → result | A result holds its own snapshot reference. Result acquisition adds an independent external handle. Releasing a query does not invalidate an acquired result. |
@@ -252,10 +252,13 @@ Rebuild/sync reserve the existing single writer; queries retain old snapshots.
 The session owns one bounded I/O buffer (4–1024 KiB; default 64 KiB); the provider
 owns bounded native resources. MFT enumeration is bounded by a configured record
 limit, scope/aliases by engine entry/depth limits, and journal work by a configured
-records-per-batch limit. SQLite staging uses file-backed temporary storage and the
-existing cache/row limits, not an asserted process-wide RSS cap. Hosts join session
+records-per-batch limit. Small identity work sets use a page-limited attached memory database by default.
+Large inventory/scope/projection staging remains file-backed. Neither setting
+is an asserted process-wide RSS cap. Hosts join session
 callers before close releases the source; STOPPING is checked at batch and
-row boundaries. There are no background threads or blocking journal waits.
+row boundaries. The optional producer uses one joined native-reader thread and a bounded owned
+batch ring; asynchronous jobs also use a dedicated single-writer worker. There
+are no blocking journal waits.
 
 Rebuild captures JournalID and U0 before enumerating MFT records. The persistent
 directory graph covers the volume so subtree moves can be classified. Directory
@@ -266,7 +269,8 @@ reconciles journal records in [U0,U1), never saving a queried head as an applied
 cursor without consuming that interval. Initial inventory, entries, FTS, source
 coverage, root/volume identity and cursor commit together; the complete immutable
 mirror is allocated/validated before commit and published afterwards. Initial
-rebuild work is synchronous and cancellable at native batch/row boundaries;
+rebuild work runs on the synchronous caller or dedicated index worker and is
+cancellable at native batch/row boundaries;
 the bounded sync record count does not bound full rebuild time.
 
 Sync resumes the durable cursor. Metadata events refresh the shared object by
@@ -552,3 +556,76 @@ The formal live test can clear only BATCH_DIRS with
 FSX_NTFS_TEST_DIRECT_GRAPH=1 for a same-build direct-write control. The
 FSX_NTFS_TEST_RAW_SYNC setting now clears only PREFETCH, so I/O and directory
 ingestion can be controlled independently. Full workload counts are unchanged.
+
+
+## Asynchronous indexing and bounded NTFS batches
+
+`fsx_engine_scan_async`, `fsx_ntfs_rebuild_async` and `fsx_ntfs_sync_async`
+admit one writer job per engine. Submission copies a directory root, reserves
+writer admission before returning, and uses a separate one-worker SaltsCore
+pool so a long index job cannot occupy the query workers. Competing writers
+return BUSY; query submission and retained results remain available. NTFS jobs
+pin their source until finalization; source close and synchronous calls return
+BUSY while that pin is held. A terminal job no longer borrows its source.
+
+`fsx_index_poll/wait` return the completed scan/native information. Wait deadline
+0 polls; UINT64_MAX waits. A finite wait timeout leaves the job running.
+Cancel is cooperative; it is checked by traversal, native parsing, overlapped
+completion, queue waits, SQL progress and the final pre-commit boundary. A
+commit that wins cancellation reports success. Job release does not implicitly
+cancel. Engine STOPPING cancels queued/running work and joins both pools before
+freeing storage. Terminal status is published only after native I/O and SQL
+cleanup and source unpinning. External job handles participate in the engine
+handle/budget limits and keep close retryable.
+
+`FsNtfsConfig.pipeline_batches` defaults to 4 and accepts 0..16. Zero uses the
+serial reference path. Each slot has `buffer_bytes` owned bytes; the producer
+copies the record and UTF-16 name before returning to native parsing. The SQL
+consumer holds a slot until all callbacks finish. A full ring waits rather
+than allocating or dropping records. Only the producer touches native operations
+during inventory/journal collection; the coordinator joins it before directory
+verification, alias completion, metadata reads or further native requests.
+The existing raw reader can still have one pending overlapped volume read;
+it drains before the producer returns or exits. Queue storage is charged to
+owned_memory_budget. SQLITE/native/callback failures retain the first recorded
+error, stop the peer, join it and roll back; no queued cursor is acknowledged.
+FsNtfsInfo reports published-batch count and peak occupied slots for successful
+operations. These counters include a slot borrowed by the consumer. Raw-reader
+callback timings now measure producer copying/backpressure; SQL consumption is
+on the coordinator, so those timings are not comparable to earlier direct-SQL
+callback timings. Complete operation wall time still includes both.
+
+Small sets (changes, dirty parents, refresh IDs, relinks, processed and verified
+IDs) live in `fsx_work`. `FsEngineConfig.work_memory_pages` defaults to 4096
+4096-byte pages (16 MiB of database pages); `max_page_count` exhaustion returns
+FS_LIMIT and rolls back. Zero selects an automatically deleted spillable attached
+database. Native/memory admission failures never silently change modes. This page
+limit includes work-table indexes but is not a limit on all SQLite heap, sorter,
+allocator overhead or process RSS. SQLite allocations remain outside the managed
+fsx budget. Main facts, FTS, coverage, revision and durable USN cursor all remain
+in one WAL file transaction. The attached work database is disposable, including
+after a crash; it never owns recovery facts. Explicit schema qualification prevents
+main-schema tables from shadowing the work sets.
+
+`sqlite_cache_kib` controls the main connection's suggested cache size, default
+4096 KiB. It is a cache target, not a hard heap limit. No speedup claim follows
+from selecting memory storage or using another thread.
+
+The alias entry-key map is captured before a rebuild clears its source, or just
+before an incremental transaction first replaces a directory's names. Pure
+metadata updates do not copy the complete alias namespace into `nt_old_keys`.
+Namespace reconciliation still captures the original edge identities once per
+transaction before enumeration, so surviving aliases and descendants keep their
+entry keys. Capture failures roll back the transaction and durable cursor; a
+retry starts with a fresh work set.
+
+A new immutable query snapshot is prepared before COMMIT and published afterward.
+Queries never read uncommitted work tables. Visible and durable revisions remain
+the same; this implementation has no query-visible unflushed delta or full
+SQLite memory mirror. Such a later mode requires explicit version pinning,
+tombstones, merged totals/sorting and crash-replay rules.
+
+All hosts must rebuild for the extended FsEngineConfig, FsNtfsConfig and
+FsNtfsInfo layouts. Exact struct-size/version admission rejects older layouts.
+The CLI's index and NTFS commands exercise the asynchronous API and wait for
+completion; watch/RDC reconciliation retains its existing host-driven API.

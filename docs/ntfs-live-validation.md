@@ -39,6 +39,7 @@ Run from an authorized administrator developer shell with the same SDK roots and
 runtime environment:
 
 ```powershell
+ctest --preset windows-native-regression
 ctest --preset windows-native-release --verbose
 ```
 
@@ -52,6 +53,134 @@ The later explicit raw inventory mode uses the same complete acceptance body.
 Set FSX_NTFS_TEST_RAW_MFT=1 for its opt-in run; see
 [raw-mft-reader.md](raw-mft-reader.md) for implementation, limits and results.
 The original measurements below remain an ENUM baseline.
+
+## Asynchronous pipeline comparison
+
+The live test defaults to the asynchronous index API. Set
+`FSX_NTFS_TEST_INDEX_ASYNC=0` to call the synchronous API instead. Both execute
+the same complete namespace/identity/metadata comparisons, real mutations,
+retained-result checks and durable close/reopen continuation. Every asynchronous
+operation waits for finalization before the provider/session is inspected or
+closed; failed test cleanup cancels and joins any retained job first.
+
+Two additional controls select `FSX_NTFS_TEST_PIPELINE_BATCHES` (0..16, default 4)
+and `FSX_NTFS_TEST_WORK_MEMORY_PAGES` (0..262144, default 4096). Zero selects the
+serial callback path or spillable work database respectively. CSV headers record
+all three controls, with published-batch/peak occupancy comments per operation.
+The test asserts that occupancy never exceeds configured capacity.
+
+The optional `ci/ntfs-live` PR label, or the workflow's `ntfs_live` manual input,
+runs the existing `windows-native-release` preset on Windows 2025 with
+LLVM-MinGW. It first executes the ordinary source-owned Release tests, then the
+controlled replay described below, then the full live suite in these four modes
+on the same runner and build:
+
+| Mode | Index API | Native queue slots | Work database |
+|---|---|---:|---|
+| `serial-file` | Synchronous | 0 | Spillable |
+| `job-file` | Asynchronous | 0 | Spillable |
+| `pipeline-file` | Asynchronous | 4 | Spillable |
+| `pipeline-memory` | Asynchronous | 4 | 4096 pages / 16 MiB of database pages |
+
+All modes use raw MFT inventory, the existing raw I/O prefetch and directory
+staging settings, three complete rebuild samples and twenty metadata updates.
+These are sequential comparisons, not randomized experiments or cold-cache
+measurements. Mode order, changing volume contents and OS caches limit causal
+speedup claims. Query-visible uncommitted deltas are outside this acceptance.
+
+The job stages an exclusively owned Git worktree on the existing system volume
+so its build-tree fixture uses that volume's journal. It never creates or resets
+a journal, elevates a token, or substitutes a mock/RDC backend. Denied native
+admission fails the opt-in job. CSV, JUnit and CTest logs are preserved per mode
+before the worktree is removed. Ordinary unlabelled Debug/sanitizer jobs retain
+their existing scope and do not request volume access.
+
+### Controlled replay and diagnostic counters
+
+`fsx_ntfs_benchmark_test` is a formal CTest entry. The ordinary suite checks a
+small modeled provider plus VFS counter calibration. The live Release job also
+runs it with `FSX_NTFS_BENCHMARK=1`: 100 directories, 10,000 files, four rounds,
+twenty single-file metadata batches and one 10,000-file metadata batch per mode
+per round. This provider supplies the same snapshot, metadata and exact V2 USN
+bytes to the production parser/coordinator in every mode. It models input; it
+does not replay captured device reads or measure raw NTFS throughput.
+
+The four rounds rotate the first mode, placing every configuration in every
+position once. Each operation checks its input fingerprint against the first
+mode and validates every resulting path, name, identity and file size against
+the model. A mode gets a fresh persistent database. All modes keep the default
+work-pager cache settings. No cache flush, artificial provider delay or latency
+threshold is used. Benchmark timings include the query load described below;
+they must not be pooled with older runs without that load.
+
+Both replay and live tests now emit `# stages` counters in nanoseconds:
+
+| Counter | Wall-time boundary |
+|---|---|
+| `initialize_ns` | Transaction admission, checkpoint/source setup, work-table preparation |
+| `inventory_ns` | Inventory collection and its SQL callbacks/queue drain |
+| `journal_ns` | Journal identity check and event collection/SQL callbacks |
+| `reconcile_ns` | Inventory merge, directory/link reconciliation and metadata refresh |
+| `projection_ns` | Projection, final journal validation and durable cursor preparation |
+| `snapshot_ns` | Snapshot load or metadata patch before commit |
+| `commit_ns` | Statement finalization and SQLite COMMIT, including any WAL checkpoint |
+| `publish_ns` | Committed snapshot publication and source statistics |
+
+These stage intervals are disjoint wall times, not SQL CPU times. Provider and
+callback counters overlap them and must not be added to them. `total_ns` includes
+small unassigned bookkeeping/diagnostic overhead; failed operations need not
+account for every stage. Producer-full and consumer-empty condition-wait counts
+and nanoseconds record actual waits (including timed wakes/retries and lock
+reacquisition), separately from queue occupancy. Consumer callback wall time
+overlaps collection; it is zero for the direct serial path.
+
+The test-only forwarding VFS counts successful `xWrite` calls/bytes on the
+`fsx_work` database file identified through SQLite's file-control interface.
+It excludes main, WAL, other TEMP files and temporary journals. An unopened
+spillable pager can report zero writes; memory work storage has no VFS writes.
+`work_pages` reports allocated pager pages, including reusable free pages, not
+RSS or peak memory. The memory factory selects 4096-byte pages. Calibration forces
+a spill with a two-page cache and verifies that main-db writes do not change
+the work counter. VFS bytes describe writes handed to the OS, not physical
+device traffic. Native-mode process I/O remains a separate, broader counter.
+
+A joined query thread submits `file` searches with a ten-result window and a
+one-millisecond pause between completions during each replay operation and a
+separate additional live rebuild, including synchronous controls. Ordinary live
+build/update samples run without this query load. The thread uses its own handles and records submit-through-result
+latency, epoch and match count in a separate `*-queries.csv`. Index start/end
+timestamps allow analysis to retain only queries wholly inside the operation;
+queries crossing a boundary must be reported separately. A short operation can
+have no wholly contained sample. Sampling stops at 65,536 queries; per-operation
+sample/capacity comments expose saturation. This is one concurrent client with
+closed-loop pacing, not a throughput or saturated-service benchmark. The sampler
+buffer and query load affect process memory/CPU; uninstrumented historical
+working-set peaks are not directly comparable.
+CSV serialization occurs after the measured index interval. The ordinary live
+samples retain their unloaded-query workload; the extra `concurrent_rebuild`
+sample is labeled separately.
+
+Replay CSVs/JUnit/CTest logs are uploaded under `reports/replay`, alongside the
+separate live-mode artifacts. To reproduce with the existing Release presets:
+
+```powershell
+$env:FSX_NTFS_BENCHMARK = '1'
+ctest --preset windows-native-regression -R '^fsx_ntfs_benchmark_test$' --verbose
+```
+
+Summarize one replay CSV and its query CSV with
+`python tools/ntfs_benchmark_report.py REPLAY.csv QUERIES.csv`. The script checks
+matched input fingerprints/balanced positions and reports sample counts, exact
+VFS-write totals, stage medians and contained/crossing query samples separately.
+It does not establish statistical significance or combine hosted runs.
+
+## Asynchronous pipeline results
+
+The [2026-11-03 four-mode report](performance/async-index-2026-11-03.md) preserves
+real-volume correctness, all four original CSVs and the source/CI/artifact
+identities. All modes passed; the sampled memory-work-table and pipeline changes
+did not establish a material end-to-end latency improvement. The prior local
+hardware measurements below remain separate baselines.
 
 ## Measurements
 

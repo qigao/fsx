@@ -328,7 +328,7 @@ done:
 }
 static FsStatus walk_dir(FsWalk *walk, HANDLE directory, const char *root,
                          unsigned depth) {
-  if (atomic_load(&walk->engine->stopping))
+  if (fsx_writer_stopping(walk->engine))
     return FS_CANCELLED;
   if (depth >= walk->engine->config.max_scan_depth)
     return FS_LIMIT;
@@ -339,7 +339,7 @@ static FsStatus walk_dir(FsWalk *walk, HANDLE directory, const char *root,
   FsStatus status = FS_OK;
   bool first = true;
   for (;;) {
-    if (atomic_load(&walk->engine->stopping)) {
+    if (fsx_writer_stopping(walk->engine)) {
       status = FS_CANCELLED;
       break;
     }
@@ -478,7 +478,7 @@ FsStatus fsx_native_volume(FsEngine *e, const char *root, uint64_t *out) {
 static FsStatus walk_dir(FsWalk *walk, int descriptor, const char *root,
                          unsigned depth) {
   FsEngine *e = walk->engine;
-  if (atomic_load(&e->stopping)) {
+  if (fsx_writer_stopping(e)) {
     close(descriptor);
     return FS_CANCELLED;
   }
@@ -503,7 +503,7 @@ static FsStatus walk_dir(FsWalk *walk, int descriptor, const char *root,
     }
     if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
       continue;
-    if (atomic_load(&e->stopping)) {
+    if (fsx_writer_stopping(e)) {
       status = FS_CANCELLED;
       break;
     }

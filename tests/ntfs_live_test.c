@@ -3,7 +3,7 @@
  * namespace fixture. All filesystem mutations stay inside that fixture. */
 #define _WIN32_WINNT 0x0602
 #define WIN32_LEAN_AND_MEAN
-#include "../src/source/ntfs/ntfs.h"
+#include "ntfs_measure.h"
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,9 +31,49 @@ static FsEngine *native_engine, *directory_engine, *trial_engine;
 static FsNtfs *source;
 static FsQuery *query;
 static FsResult *result, *old_result;
-static FILE *metrics;
+static FsIndexJob *index_job;
+static bool async_index;
+static uint32_t pipeline_batches, work_memory_pages;
+static FILE *metrics, *query_metrics;
+static FsNtfsMetrics native_timing, native_totals;
+static FsTestQueries *concurrent_queries;
+static bool vfs_started, queries_running;
 static uint64_t frequency;
 static FsNtfsInfo info;
+static uint32_t setting(const char *name, uint32_t fallback, uint32_t maximum) {
+  const char *text = getenv(name);
+  if (!text)
+    return fallback;
+  char *end;
+  unsigned long value = strtoul(text, &end, 10);
+  check(end != text && !*end && value <= maximum, "invalid %s=%s", name, text);
+  return (uint32_t)value;
+}
+static FsStatus index_native_impl(bool rebuild) {
+  info = (FsNtfsInfo){0};
+  if (!async_index)
+    return rebuild ? fsx_ntfs_rebuild(source, &info)
+                   : fsx_ntfs_sync(source, &info);
+  check_null(index_job);
+  FsStatus status = rebuild ? fsx_ntfs_rebuild_async(source, &index_job)
+                            : fsx_ntfs_sync_async(source, &index_job);
+  if (status != FS_OK)
+    return status;
+  status = fsx_index_wait(index_job, FSX_DEADLINE_INFINITE);
+  FsIndexInfo done;
+  FsStatus polled = fsx_index_poll(index_job, &done);
+  info = done.ntfs;
+  fsx_index_release(index_job);
+  index_job = NULL;
+  check_equal(polled, status);
+  check(done.state >= FS_INDEX_READY, "native job finalized before returning");
+  return status;
+}
+static FsStatus index_native(bool rebuild) {
+  FsStatus status = index_native_impl(rebuild);
+  fsx_test_metrics_add(&native_totals, &native_timing);
+  return status;
+}
 typedef struct Provider {
   const FsNtfsOps *ops;
   void *context;
@@ -312,6 +352,7 @@ static void open_engine(FsEngine **out, const char *name, bool scanner) {
   snprintf(database, sizeof(database), "%s/%s", fixture, name);
   check_true(owned(database));
   FsEngineConfig config = fsx_engine_config(database);
+  config.work_memory_pages = work_memory_pages;
   if (scanner)
     config.flags |= FS_ENGINE_SCAN_ONLY;
   FsOpenError error = {0};
@@ -339,6 +380,7 @@ static void open_source_config(FsEngine *engine,
     engine->sql_observer_context = NULL;
   }
   FsNtfsConfig config = fsx_ntfs_config();
+  config.pipeline_batches = pipeline_batches;
   const char *raw = getenv("FSX_NTFS_TEST_RAW_MFT");
   if (raw && !strcmp(raw, "1"))
     config.mft_reader = FS_NTFS_MFT_RAW;
@@ -363,6 +405,7 @@ static void open_source_config(FsEngine *engine,
   status = fsx_ntfs_open_provider(engine, root, &config, &profiling_ops,
                                   &provider, &source);
   check(status == FS_OK, "real source admission: %s", fsx_status_name(status));
+  source->metrics = &native_timing;
 }
 static void open_source(FsEngine *engine) { open_source_config(engine, NULL); }
 static void close_source(void) {
@@ -379,9 +422,14 @@ typedef struct Measurement {
   uint64_t wall, cpu;
   IO_COUNTERS io;
   PROCESS_MEMORY_COUNTERS memory;
+  FsNtfsMetrics timing;
+  FsTestIo work_io;
 } Measurement;
 static Measurement begin_measurement(void) {
   Measurement m = {0};
+  m.timing = native_totals;
+  if (source)
+    m.work_io = fsx_test_work_io(source->engine);
   m.cpu = cpu();
   m.memory.cb = sizeof(m.memory);
   check_true(GetProcessIoCounters(GetCurrentProcess(), &m.io) != 0);
@@ -422,8 +470,8 @@ static void record(const char *phase, unsigned sample, Measurement before,
           initial ? provider.list_calls - initial->list_calls : 0,
           (double)mft / 1e6, (double)read / 1e6, (double)list / 1e6,
           (double)stat / 1e6);
-  /* Raw inventory includes SQL directory callbacks; separate it from native
-   * MFT-lookup time so the two readers do not imply equal provider work. */
+  /* Inventory wall time includes callbacks/backpressure; SQL callbacks run on
+   * the coordinator when the producer queue is enabled. */
   fprintf(metrics,
           "# raw sample=%u slots=%" PRIu64 " bytes=%" PRIu64 " calls=%" PRIu64
           " kernel_records=%" PRIu64 " inventory_callback_ms=%.6f\n",
@@ -432,6 +480,20 @@ static void record(const char *phase, unsigned sample, Measurement before,
           native ? native->raw_read_calls : 0,
           native ? native->mft_kernel_records : 0,
           initial ? (double)(provider.raw_ns - initial->raw_ns) / 1e6 : 0);
+  fprintf(metrics, "# pipeline sample=%u batches=%" PRIu64 " peak=%u\n", sample,
+          native ? native->pipeline_batches : 0,
+          native ? native->pipeline_peak_batches : 0);
+
+  if (native) {
+    FsTestIo work = fsx_test_work_io(engine);
+    fprintf(metrics,
+            "# stages phase=%s sample=%u work_pages=%" PRId64
+            " work_write_calls=%" PRIu64 " work_write_bytes=%" PRIu64,
+            phase, sample, fsx_test_work_pages(engine),
+            work.writes - before.work_io.writes,
+            work.bytes - before.work_io.bytes);
+    fsx_test_metrics_report(metrics, &native_totals, &before.timing);
+  }
 
   sql_report();
   fflush(metrics);
@@ -511,21 +573,29 @@ static void sync_native(const char *phase, unsigned sample) {
   Measurement m = begin_measurement();
   FsStatus status = FS_OK;
   uint64_t records = 0;
+  uint64_t queued = 0;
+  uint32_t peak = 0;
   unsigned batches = 0;
   uint64_t deadline = now() + 120000000000;
   do {
-    status = fsx_ntfs_sync(source, &info);
+    status = index_native(false);
     records += info.journal_records;
+    queued += info.pipeline_batches;
+    if (info.pipeline_peak_batches > peak)
+      peak = info.pipeline_peak_batches;
     batches++;
     if (status != FS_OK || info.caught_up)
       break;
   } while (batches < 512 && now() < deadline);
   FsNtfsInfo total = info;
   total.journal_records = records;
+  total.pipeline_batches = queued;
+  total.pipeline_peak_batches = peak;
   record(phase, sample, m, native_engine, &total, &before);
   check(status == FS_OK, "USN sync: %s native=%u cursor=%" PRId64,
         fsx_status_name(status), info.native_error, info.next_usn);
   check_true(info.caught_up);
+  check_true(total.pipeline_peak_batches <= source->config.pipeline_batches);
 }
 static uint64_t file_entry_key(const char *suffix) {
   sqlite3_stmt *s = NULL;
@@ -572,9 +642,19 @@ static void setup(void) {
   fixture[0] = 0;
   native_engine = directory_engine = trial_engine = NULL;
   source = NULL;
+  index_job = NULL;
   query = NULL;
   result = old_result = NULL;
-  metrics = NULL;
+  metrics = query_metrics = NULL;
+  queries_running = false;
+  native_totals = (FsNtfsMetrics){0};
+  check_equal(fsx_test_vfs_start(), SQLITE_OK);
+  vfs_started = true;
+  concurrent_queries = calloc(1, sizeof(*concurrent_queries));
+  check_not_null(concurrent_queries);
+  async_index = setting("FSX_NTFS_TEST_INDEX_ASYNC", 1, 1) != 0;
+  pipeline_batches = setting("FSX_NTFS_TEST_PIPELINE_BATCHES", 4, 16);
+  work_memory_pages = setting("FSX_NTFS_TEST_WORK_MEMORY_PAGES", 4096, 262144);
   memset(&provider, 0, sizeof(provider));
   LARGE_INTEGER f;
   check_true(QueryPerformanceFrequency(&f) != 0);
@@ -597,6 +677,14 @@ static void setup(void) {
            GetCurrentProcessId(), (unsigned long long)GetTickCount64());
   metrics = fopen(report, "wb");
   check_not_null(metrics);
+  fprintf(stderr, "metrics=%s\n", report);
+  snprintf(report, sizeof(report), "ntfs-live-%lu-%llu-queries.csv",
+           GetCurrentProcessId(), (unsigned long long)GetTickCount64());
+  query_metrics = fopen(report, "wb");
+  check_not_null(query_metrics);
+  fputs("phase,sample,index_start_ns,index_end_ns,query_start_ns,query_end_ns,"
+        "epoch,matches,status\n",
+        query_metrics);
   SYSTEM_INFO system;
   GetSystemInfo(&system);
   fprintf(metrics,
@@ -610,6 +698,9 @@ static void setup(void) {
                   !strcmp(getenv("FSX_NTFS_TEST_RAW_MFT"), "1")
               ? "raw"
               : "enum");
+  fprintf(metrics,
+          "# index_async=%u pipeline_capacity=%u work_memory_pages=%u\n",
+          async_index ? 1u : 0u, pipeline_batches, work_memory_pages);
   fprintf(metrics, "# raw_io=%s profile=%s\n",
           getenv("FSX_NTFS_TEST_RAW_SYNC") &&
                   !strcmp(getenv("FSX_NTFS_TEST_RAW_SYNC"), "1")
@@ -625,10 +716,21 @@ static void setup(void) {
         "bytes,mft_calls,read_calls,list_calls,mft_ms,read_ms,list_callback_ms,"
         "stat_ms\n",
         metrics);
-  fprintf(stderr, "metrics=%s\n", report);
+  fprintf(stderr, "queries=%s\n", report);
   fflush(stderr);
 }
 static void teardown(void) {
+  if (queries_running) {
+    fsx_test_queries_stop(concurrent_queries);
+    queries_running = false;
+  }
+  if (index_job) {
+    fsx_index_cancel(index_job);
+    FsStatus status = fsx_index_wait(index_job, FSX_DEADLINE_INFINITE);
+    fsx_index_release(index_job);
+    index_job = NULL;
+    check(status != FS_WAIT && status != FS_TIMEOUT, "native job joined");
+  }
   fsx_result_release(old_result);
   old_result = NULL;
   fsx_result_release(result);
@@ -642,6 +744,16 @@ static void teardown(void) {
   if (metrics) {
     fclose(metrics);
     metrics = NULL;
+  }
+  if (query_metrics) {
+    fclose(query_metrics);
+    query_metrics = NULL;
+  }
+  free(concurrent_queries);
+  concurrent_queries = NULL;
+  if (vfs_started) {
+    check_equal(fsx_test_vfs_stop(), SQLITE_OK);
+    vfs_started = false;
   }
   if (fixture_ready)
     cleanup(fixture);
@@ -785,13 +897,16 @@ suite("Real NTFS volume acceptance and performance") {
       m = begin_measurement();
       FsStatus native_status;
       benchmark_batch("MFT initial build with USN handoff", 1) {
-        native_status = fsx_ntfs_rebuild(source, &info);
+        native_status = index_native(true);
       }
       record("mft_initial", sample, m, target, &info, &before);
       check(native_status == FS_OK, "MFT rebuild: %s native=%u cursor=%" PRId64,
             fsx_status_name(native_status), info.native_error, info.next_usn);
       check_true(info.caught_up);
       check_true(info.mft_records > GROUPS * FILES_PER_GROUP);
+      check_true(info.pipeline_peak_batches <= source->config.pipeline_batches);
+      check_equal(info.pipeline_batches != 0,
+                  source->config.pipeline_batches != 0);
       if (source->config.mft_reader == FS_NTFS_MFT_RAW) {
         check_true(info.mft_slots >= info.mft_records);
         check_true(info.raw_read_bytes > 0);
@@ -804,6 +919,29 @@ suite("Real NTFS volume acceptance and performance") {
         close_engine(&trial_engine);
     }
     open_source(native_engine);
+    check_equal(fsx_test_queries_start(concurrent_queries, native_engine), 0);
+    queries_running = true;
+    Provider concurrent_before = provider;
+    Measurement concurrent_measurement = begin_measurement();
+    uint64_t concurrent_start = cmeta_hrtime();
+    FsStatus concurrent_status = index_native(true);
+    uint64_t concurrent_end = cmeta_hrtime();
+    record("concurrent_rebuild", 0, concurrent_measurement, native_engine,
+           &info, &concurrent_before);
+    fsx_test_queries_stop(concurrent_queries);
+    queries_running = false;
+    fsx_test_queries_report(concurrent_queries, query_metrics, "rebuild", 0,
+                            concurrent_start, concurrent_end);
+    fprintf(metrics, "# concurrent samples=%u capacity=%u interval_ms=1\n",
+            concurrent_queries->count, FSX_TEST_QUERY_CAPACITY);
+    check_equal(concurrent_status, FS_OK);
+    check_true(concurrent_queries->count > 0);
+    for (unsigned i = 0; i < concurrent_queries->count; i++) {
+      check_equal(concurrent_queries->samples[i].status, FS_OK);
+      check_equal(concurrent_queries->samples[i].matches,
+                  (uint64_t)GROUPS * FILES_PER_GROUP);
+    }
+    compare(native_engine, directory_engine);
     uint64_t descendant = file_entry_key("/group001/file001.txt");
     FsResultInfo prior = execute(native_engine, "Stra\xc3\x9f"
                                                 "e");

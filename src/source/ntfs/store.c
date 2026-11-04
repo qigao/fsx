@@ -164,7 +164,8 @@ typedef struct Tx {
   uint32_t source;
   uint64_t revision, parent, enumerated, mft_records, journal_records,
       directories, dirty_parents;
-  bool all, topology_changed, structural, raw_bootstrap, stage_graph;
+  bool all, topology_changed, structural, raw_bootstrap, stage_graph,
+      keys_saved;
   uint64_t staged;
   sqlite3_stmt *statements[11];
 } Tx;
@@ -233,7 +234,7 @@ static FsStatus source(Tx *t, const FsNtfsIdentity *id) {
   return FS_OK;
 }
 static FsStatus directory(Tx *t, const FsNtfsRecord *r) {
-  if (atomic_load(&t->e->stopping))
+  if (fsx_writer_stopping(t->e))
     return FS_CANCELLED;
   if (t->stage_graph && t->staged >= t->n->config.max_mft_records)
     return FS_LIMIT;
@@ -301,12 +302,6 @@ static FsStatus merge_inventory(Tx *t) {
 static FsStatus raw_directory(void *context, const FsNtfsRecord *r) {
   return directory(context, r);
 }
-static FsStatus inventory(void *context, const FsNtfsRecord *r) {
-  Tx *t = context;
-  if (++t->mft_records > t->n->config.max_mft_records)
-    return FS_LIMIT;
-  return r->attributes & FSX_NTFS_DIR ? directory(t, r) : FS_OK;
-}
 static FsStatus object(Tx *t, const FsObserved *o, sqlite3_int64 *key) {
   sqlite3_stmt *s;
   int rc = prepare(t, 1,
@@ -339,7 +334,7 @@ static FsStatus object(Tx *t, const FsObserved *o, sqlite3_int64 *key) {
 }
 static FsStatus alias(void *context, const FsObserved *o) {
   Tx *t = context;
-  if (atomic_load(&t->e->stopping))
+  if (fsx_writer_stopping(t->e))
     return FS_CANCELLED;
   if (++t->enumerated > t->e->config.max_entries)
     return FS_LIMIT;
@@ -382,7 +377,8 @@ static FsStatus alias(void *context, const FsObserved *o) {
     status = directory(t, &r);
   }
   if (status == FS_OK) {
-    int step = prepare(t, 8, "INSERT OR IGNORE INTO nt_refresh VALUES(?1)", &s);
+    int step = prepare(
+        t, 8, "INSERT OR IGNORE INTO fsx_work.nt_refresh VALUES(?1)", &s);
     if (step == SQLITE_OK) {
       bind_id(s, 1, o->file_lo);
       step = sqlite3_step(s);
@@ -402,7 +398,8 @@ static FsStatus parent_capacity(Tx *t) {
 }
 static FsStatus dirty_parent(Tx *t, uint64_t parent) {
   sqlite3_stmt *s;
-  int rc = prepare(t, 3, "INSERT OR IGNORE INTO nt_dirty VALUES(?1)", &s);
+  int rc =
+      prepare(t, 3, "INSERT OR IGNORE INTO fsx_work.nt_dirty VALUES(?1)", &s);
   if (rc == SQLITE_OK) {
     bind_id(s, 1, parent);
     rc = sqlite3_step(s);
@@ -411,7 +408,7 @@ static FsStatus dirty_parent(Tx *t, uint64_t parent) {
 }
 static FsStatus event(void *context, const FsNtfsRecord *r) {
   Tx *t = context;
-  if (atomic_load(&t->e->stopping))
+  if (fsx_writer_stopping(t->e))
     return FS_CANCELLED;
   t->journal_records++;
   if (t->journal_records > t->n->config.max_mft_records)
@@ -424,8 +421,9 @@ static FsStatus event(void *context, const FsNtfsRecord *r) {
   if (status != FS_OK)
     return status;
   sqlite3_stmt *parent_refresh;
-  int parent_step = prepare(t, 8, "INSERT OR IGNORE INTO nt_refresh VALUES(?1)",
-                            &parent_refresh);
+  int parent_step =
+      prepare(t, 8, "INSERT OR IGNORE INTO fsx_work.nt_refresh VALUES(?1)",
+              &parent_refresh);
   if (parent_step == SQLITE_OK) {
     bind_id(parent_refresh, 1, r->parent);
     parent_step = sqlite3_step(parent_refresh);
@@ -436,8 +434,8 @@ static FsStatus event(void *context, const FsNtfsRecord *r) {
   if (!(r->attributes & FSX_NTFS_DIR) &&
       (r->reason & (FSX_USN_OLD | FSX_USN_NEW | FSX_USN_LINK))) {
     sqlite3_stmt *links;
-    int step =
-        prepare(t, 9, "INSERT OR IGNORE INTO nt_relinks VALUES(?1)", &links);
+    int step = prepare(
+        t, 9, "INSERT OR IGNORE INTO fsx_work.nt_relinks VALUES(?1)", &links);
     if (step == SQLITE_OK) {
       bind_id(links, 1, r->frn);
       step = sqlite3_step(links);
@@ -449,7 +447,7 @@ static FsStatus event(void *context, const FsNtfsRecord *r) {
   sqlite3_stmt *s;
   int rc = prepare(
       t, 4,
-      "INSERT INTO nt_changes VALUES(?1,?2) ON CONFLICT(frn)"
+      "INSERT INTO fsx_work.nt_changes VALUES(?1,?2) ON CONFLICT(frn)"
       " DO UPDATE SET attributes=nt_changes.attributes|excluded.attributes",
       &s);
   if (rc == SQLITE_OK) {
@@ -459,6 +457,21 @@ static FsStatus event(void *context, const FsNtfsRecord *r) {
   }
   return fsx_db_status(rc);
 }
+/* Alias identity needs the old edge map only when names will be replaced.
+ * Rebuild captures it before clearing the source. Incremental reconciliation
+ * captures it before its first directory enumeration; metadata patches never
+ * copy the complete namespace. */
+static FsStatus preserve_keys(Tx *t) {
+  char command[192];
+  snprintf(command, sizeof(command),
+           "INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM "
+           "fsx_ntfs_names WHERE source_id=%u;",
+           t->source);
+  FsStatus status = sql(t->e, command);
+  if (status == FS_OK)
+    t->keys_saved = true;
+  return status;
+}
 static FsStatus temp_tables(Tx *t, bool rebuild) {
   FsStatus status = sql(
       t->e,
@@ -467,12 +480,12 @@ static FsStatus temp_tables(Tx *t, bool rebuild) {
       "DELETE FROM nt_inventory;"
       "CREATE TEMP TABLE IF NOT EXISTS nt_scope(frn BLOB PRIMARY KEY,path "
       "TEXT NOT NULL,depth INTEGER NOT NULL);"
-      "CREATE TEMP TABLE IF NOT EXISTS nt_processed(frn BLOB PRIMARY KEY);"
-      "CREATE TEMP TABLE IF NOT EXISTS nt_verified(frn BLOB PRIMARY KEY);"
-      "CREATE TEMP TABLE IF NOT EXISTS nt_dirty(frn BLOB PRIMARY KEY);"
-      "CREATE TEMP TABLE IF NOT EXISTS nt_relinks(frn BLOB PRIMARY KEY);"
-      "CREATE TEMP TABLE IF NOT EXISTS nt_refresh(frn BLOB PRIMARY KEY);"
-      "CREATE TEMP TABLE IF NOT EXISTS nt_changes(frn BLOB PRIMARY "
+      "CREATE TABLE IF NOT EXISTS fsx_work.nt_processed(frn BLOB PRIMARY KEY);"
+      "CREATE TABLE IF NOT EXISTS fsx_work.nt_verified(frn BLOB PRIMARY KEY);"
+      "CREATE TABLE IF NOT EXISTS fsx_work.nt_dirty(frn BLOB PRIMARY KEY);"
+      "CREATE TABLE IF NOT EXISTS fsx_work.nt_relinks(frn BLOB PRIMARY KEY);"
+      "CREATE TABLE IF NOT EXISTS fsx_work.nt_refresh(frn BLOB PRIMARY KEY);"
+      "CREATE TABLE IF NOT EXISTS fsx_work.nt_changes(frn BLOB PRIMARY "
       "KEY,attributes INTEGER);"
       "CREATE TEMP TABLE IF NOT EXISTS nt_old_keys(parent BLOB,raw "
       "BLOB,entry_key INTEGER,PRIMARY KEY(parent,raw));"
@@ -480,23 +493,21 @@ static FsStatus temp_tables(Tx *t, bool rebuild) {
       "BLOB,entry_key INTEGER,name TEXT,path TEXT,"
       "name_fold TEXT,path_fold TEXT,object_key INTEGER,PRIMARY "
       "KEY(parent,raw));"
-      "DELETE FROM nt_verified;DELETE FROM nt_scope;DELETE FROM "
-      "nt_processed;DELETE FROM "
-      "nt_dirty;DELETE FROM nt_changes;DELETE FROM nt_refresh;DELETE FROM "
-      "nt_relinks;"
+      "DELETE FROM fsx_work.nt_verified;DELETE FROM nt_scope;DELETE FROM "
+      "fsx_work.nt_processed;DELETE FROM "
+      "fsx_work.nt_dirty;DELETE FROM fsx_work.nt_changes;DELETE FROM "
+      "fsx_work.nt_refresh;DELETE FROM "
+      "fsx_work.nt_relinks;"
       "DELETE FROM nt_old_keys;DELETE FROM nt_projection;"
       "CREATE UNIQUE INDEX IF NOT EXISTS nt_projection_key ON "
       "nt_projection(entry_key);");
   if (status != FS_OK)
     return status;
-  char command[384];
-  snprintf(command, sizeof(command),
-           "INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM "
-           "fsx_ntfs_names WHERE source_id=%u;"
-           "%s",
-           t->source, "");
-  status = sql(t->e, command);
-  if (status == FS_OK && rebuild) {
+  if (rebuild) {
+    status = preserve_keys(t);
+    if (status != FS_OK)
+      return status;
+    char command[192];
     snprintf(command, sizeof(command),
              "DELETE FROM fsx_ntfs_names WHERE source_id=%u;"
              "DELETE FROM fsx_ntfs_dirs WHERE source_id=%u;",
@@ -634,7 +645,8 @@ static FsStatus current_directory(Tx *t, uint64_t frn) {
 }
 static FsStatus changes(Tx *t) {
   sqlite3_stmt *rows = NULL;
-  int rc = sqlite3_prepare_v2(t->e->db, "SELECT frn,attributes FROM nt_changes",
+  int rc = sqlite3_prepare_v2(t->e->db,
+                              "SELECT frn,attributes FROM fsx_work.nt_changes",
                               -1, &rows, NULL);
   FsStatus status = fsx_db_status(rc);
   while (status == FS_OK && (rc = sqlite3_step(rows)) == SQLITE_ROW) {
@@ -654,19 +666,19 @@ static FsStatus changes(Tx *t) {
 
 static FsStatus link_parent(void *context, uint64_t parent) {
   Tx *t = context;
-  if (atomic_load(&t->e->stopping))
+  if (fsx_writer_stopping(t->e))
     return FS_CANCELLED;
   return dirty_parent(t, parent);
 }
 static FsStatus reconcile_links(Tx *t) {
   sqlite3_stmt *rows = NULL;
-  int rc = sqlite3_prepare_v2(t->e->db, "SELECT frn FROM nt_relinks", -1, &rows,
-                              NULL);
+  int rc = sqlite3_prepare_v2(t->e->db, "SELECT frn FROM fsx_work.nt_relinks",
+                              -1, &rows, NULL);
   if (rc != SQLITE_OK)
     return fsx_db_status(rc);
   FsStatus status = FS_OK;
   while ((rc = sqlite3_step(rows)) == SQLITE_ROW) {
-    if (atomic_load(&t->e->stopping)) {
+    if (fsx_writer_stopping(t->e)) {
       status = FS_CANCELLED;
       break;
     }
@@ -678,7 +690,7 @@ static FsStatus reconcile_links(Tx *t) {
     sqlite3_stmt *saved = NULL;
     int step = sqlite3_prepare_v2(
         t->e->db,
-        "INSERT OR IGNORE INTO nt_dirty"
+        "INSERT OR IGNORE INTO fsx_work.nt_dirty"
         " SELECT parent FROM fsx_ntfs_names WHERE source_id=?1 AND frn=?2",
         -1, &saved, NULL);
     if (step == SQLITE_OK) {
@@ -719,7 +731,8 @@ static FsStatus reconcile(Tx *t) {
 
   if (t->all) {
     status =
-        sql(t->e, "INSERT OR IGNORE INTO nt_dirty SELECT frn FROM nt_scope");
+        sql(t->e,
+            "INSERT OR IGNORE INTO fsx_work.nt_dirty SELECT frn FROM nt_scope");
     if (status == FS_OK)
       status = parent_capacity(t);
   }
@@ -729,11 +742,13 @@ static FsStatus reconcile(Tx *t) {
     sqlite3_stmt *pick = NULL;
     int rc = sqlite3_prepare_v2(
         t->e->db,
-        "SELECT s.frn,EXISTS(SELECT 1 FROM nt_verified v WHERE v.frn=s.frn),"
+        "SELECT s.frn,EXISTS(SELECT 1 FROM fsx_work.nt_verified v WHERE "
+        "v.frn=s.frn),"
         "EXISTS(SELECT 1 FROM fsx_ntfs_scopes old WHERE old.source_id=?1 AND "
         "old.frn=s.frn)"
-        " FROM nt_scope s LEFT JOIN nt_processed p ON p.frn=s.frn"
-        " WHERE p.frn IS NULL AND (s.frn IN(SELECT frn FROM nt_dirty) OR NOT "
+        " FROM nt_scope s LEFT JOIN fsx_work.nt_processed p ON p.frn=s.frn"
+        " WHERE p.frn IS NULL AND (s.frn IN(SELECT frn FROM fsx_work.nt_dirty) "
+        "OR NOT "
         "EXISTS"
         "(SELECT 1 FROM fsx_ntfs_scopes n WHERE n.source_id=?1 AND "
         "n.frn=s.frn)) LIMIT 1",
@@ -760,7 +775,7 @@ static FsStatus reconcile(Tx *t) {
         return status;
       sqlite3_stmt *verified = NULL;
       int step = sqlite3_prepare_v2(
-          t->e->db, "INSERT OR IGNORE INTO nt_verified VALUES(?1)", -1,
+          t->e->db, "INSERT OR IGNORE INTO fsx_work.nt_verified VALUES(?1)", -1,
           &verified, NULL);
       if (step == SQLITE_OK) {
         bind_id(verified, 1, frn);
@@ -776,6 +791,11 @@ static FsStatus reconcile(Tx *t) {
           return status;
         continue; /* The verified directory may have left the selected scope. */
       }
+    }
+    if (!t->keys_saved) {
+      status = preserve_keys(t);
+      if (status != FS_OK)
+        return status;
     }
     t->parent = frn;
     sqlite3_stmt *clear = NULL;
@@ -826,7 +846,8 @@ static FsStatus reconcile(Tx *t) {
       return status;
     t->directories++;
     sqlite3_stmt *mark = NULL;
-    rc = sqlite3_prepare_v2(t->e->db, "INSERT INTO nt_processed VALUES(?1)", -1,
+    rc = sqlite3_prepare_v2(t->e->db,
+                            "INSERT INTO fsx_work.nt_processed VALUES(?1)", -1,
                             &mark, NULL);
     if (rc == SQLITE_OK) {
       bind_id(mark, 1, frn);
@@ -853,24 +874,26 @@ static FsStatus reconcile(Tx *t) {
  * Refresh observed objects, changed objects and affected parent directories by
  * full identity after namespace reconciliation. Each identity is read once. */
 static FsStatus refresh_metadata(Tx *t) {
-  FsStatus status =
-      sql(t->e, "INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_changes;"
-                "INSERT OR IGNORE INTO nt_refresh SELECT frn FROM nt_dirty;");
+  FsStatus status = sql(t->e, "INSERT OR IGNORE INTO fsx_work.nt_refresh "
+                              "SELECT frn FROM fsx_work.nt_changes;"
+                              "INSERT OR IGNORE INTO fsx_work.nt_refresh "
+                              "SELECT frn FROM fsx_work.nt_dirty;");
   if (status != FS_OK)
     return status;
   char parents[256];
-  snprintf(parents, sizeof(parents),
-           "INSERT OR IGNORE INTO nt_refresh SELECT n.parent"
-           " FROM fsx_ntfs_names n JOIN nt_changes c ON n.frn=c.frn WHERE "
-           "n.source_id=%u",
-           t->source);
+  snprintf(
+      parents, sizeof(parents),
+      "INSERT OR IGNORE INTO fsx_work.nt_refresh SELECT n.parent"
+      " FROM fsx_ntfs_names n JOIN fsx_work.nt_changes c ON n.frn=c.frn WHERE "
+      "n.source_id=%u",
+      t->source);
   status = sql(t->e, parents);
   if (status != FS_OK)
     return status;
   sqlite3_stmt *rows = NULL;
   int rc = sqlite3_prepare_v2(
       t->e->db,
-      "SELECT r.frn FROM nt_refresh r WHERE EXISTS"
+      "SELECT r.frn FROM fsx_work.nt_refresh r WHERE EXISTS"
       "(SELECT 1 FROM fsx_ntfs_names n WHERE n.source_id=?1 AND n.frn=r.frn)",
       -1, &rows, NULL);
   if (rc == SQLITE_OK)
@@ -878,7 +901,7 @@ static FsStatus refresh_metadata(Tx *t) {
   else
     return fsx_db_status(rc);
   while ((rc = sqlite3_step(rows)) == SQLITE_ROW) {
-    if (atomic_load(&t->e->stopping)) {
+    if (fsx_writer_stopping(t->e)) {
       status = FS_CANCELLED;
       break;
     }
@@ -986,7 +1009,7 @@ static FsStatus project(Tx *t) {
   FsStatus status = FS_OK;
   uint64_t count = 0;
   while ((rc = sqlite3_step(rows)) == SQLITE_ROW) {
-    if (atomic_load(&t->e->stopping)) {
+    if (fsx_writer_stopping(t->e)) {
       status = FS_CANCELLED;
       break;
     }
@@ -1172,7 +1195,7 @@ static FsStatus patch_metadata(Tx *t, FsSnapshot **out) {
       "p.path||CASE WHEN substr(p.path,-1)='/' THEN '' ELSE '/' END||n.name,"
       "e.source_id=n.source_id AND o.source_id=n.source_id AND "
       "e.object_key=n.object_key"
-      " FROM nt_refresh r CROSS JOIN fsx_ntfs_names n INDEXED BY "
+      " FROM fsx_work.nt_refresh r CROSS JOIN fsx_ntfs_names n INDEXED BY "
       "fsx_ntfs_names_file"
       " LEFT JOIN entries e ON e.entry_key=n.entry_key"
       " LEFT JOIN objects o ON o.object_key=n.object_key"
@@ -1220,32 +1243,18 @@ static FsStatus save(Tx *t, const FsNtfsIdentity *id, int64_t cursor) {
            t->source, (unsigned long long)t->revision, t->source, t->source);
   return sql(t->e, command);
 }
-static FsStatus read_events(Tx *t, int64_t *cursor, int64_t target,
-                            bool rebuild) {
-  while (*cursor < target) {
-    size_t size = 0;
-    uint64_t next;
-    uint32_t count;
-    FsStatus status =
-        t->n->ops->read(t->n->provider, *cursor, t->n->identity.journal_id,
-                        t->n->buffer, t->n->config.buffer_bytes, &size);
-    if (status != FS_OK)
-      return status;
-    status =
-        fsx_ntfs_records(t->n->buffer, size, true, (uint64_t)*cursor, target,
-                         rebuild ? UINT32_MAX : t->n->config.max_batch_records,
-                         event, t, &next, &count);
-    if (status != FS_OK)
-      return status;
-    if (next <= (uint64_t)*cursor)
-      return FS_STALE;
-    *cursor = (int64_t)next;
-    if (!rebuild)
-      break;
+static void stage(FsNtfsMetrics *metrics, uint64_t *started,
+                  uint64_t *elapsed) {
+  if (metrics) {
+    uint64_t end = cmeta_hrtime();
+    *elapsed += end - *started;
+    *started = end;
   }
-  return FS_OK;
 }
-FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
+/* Use a local accumulator even when diagnostics are disabled, so stage
+ * boundaries never dereference an absent optional metrics pointer. */
+static FsStatus store(FsNtfs *n, bool rebuild, FsNtfsMetrics *timing,
+                      uint64_t started) {
   FsEngine *e = n->engine;
   FsStatus status = sql(e, "BEGIN IMMEDIATE");
   if (status != FS_OK)
@@ -1278,10 +1287,13 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   if (status == FS_OK && !rebuild && cursor == start.next_usn) {
     /* Another admitted database writer may already have advanced the durable
      * source. Never acknowledge its cursor while retaining an older mirror. */
+    stage(n->metrics, &started, &timing->initialize_ns);
     if (e->current->epoch != (uint64_t)revision)
       status = fsx_snapshot_load(e, &snapshot);
+    stage(n->metrics, &started, &timing->snapshot_ns);
     if (status == FS_OK)
-      status = sql(e, "COMMIT");
+      status = fsx_writer_stopping(e) ? FS_CANCELLED : sql(e, "COMMIT");
+    stage(n->metrics, &started, &timing->commit_ns);
     if (status != FS_OK) {
       sql(e, "ROLLBACK");
       fsx_snapshot_release(snapshot);
@@ -1305,9 +1317,11 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
     n->info.native_error = 0;
     n->info.mft_slots = n->info.raw_read_bytes = n->info.raw_read_calls =
         n->info.mft_kernel_records = 0;
+    n->info.pipeline_batches = n->info.pipeline_peak_batches = 0;
     n->info.mft_records = 0;
     n->info.journal_records = 0;
     n->info.directories_reconciled = 0;
+    stage(n->metrics, &started, &timing->publish_ns);
     return FS_OK;
   }
   if (status == FS_OK) {
@@ -1317,50 +1331,25 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   t.revision = (uint64_t)revision + 1;
   if (status == FS_OK)
     status = temp_tables(&t, rebuild);
+  stage(n->metrics, &started, &timing->initialize_ns);
   FsNtfsRawStats raw = {0};
   t.raw_bootstrap = rebuild && n->config.mft_reader == FS_NTFS_MFT_RAW;
   t.stage_graph =
       t.raw_bootstrap && (n->config.raw_flags & FS_NTFS_RAW_BATCH_DIRS);
-  if (status == FS_OK && t.raw_bootstrap) {
-    status = n->ops->inventory
-                 ? n->ops->inventory(n->provider, raw_directory, &t, &raw)
-                 : FS_UNSUPPORTED;
+  uint64_t pipeline_batches = 0;
+  uint32_t pipeline_peak = 0;
+  if (status == FS_OK && rebuild) {
+    status = fsx_ntfs_collect(n, true, NULL, 0, true, raw_directory, &t, &raw,
+                              &pipeline_batches, &pipeline_peak);
+    stage(n->metrics, &started, &timing->inventory_ns);
     t.mft_records = raw.records;
     if (status == FS_OK)
       status = merge_inventory(&t);
-  }
-  if (status == FS_OK && rebuild) {
-    uint64_t from = 0;
-    while (!t.raw_bootstrap) {
-      if (atomic_load(&e->stopping)) {
-        status = FS_CANCELLED;
-        break;
-      }
-      size_t size = 0;
-      status = n->ops->mft(n->provider, from, n->buffer, n->config.buffer_bytes,
-                           &size);
-      if (status == FS_END) {
-        status = FS_OK;
-        break;
-      }
-      if (status != FS_OK)
-        break;
-      uint64_t next;
-      uint32_t count;
-      status = fsx_ntfs_records(n->buffer, size, false, from, 0, UINT32_MAX,
-                                inventory, &t, &next, &count);
-      if (status != FS_OK)
-        break;
-      if (next <= from) {
-        status = FS_CORRUPT;
-        break;
-      }
-      from = next;
-    }
     if (status == FS_OK) {
       t.all = true;
       status = reconcile(&t);
     }
+    stage(n->metrics, &started, &timing->reconcile_ns);
   }
   head = start;
   if (status == FS_OK && rebuild)
@@ -1369,14 +1358,16 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
       (!fsx_ntfs_same_identity(&start, &head) || !covered(&head, cursor)))
     status = FS_STALE;
   if (status == FS_OK)
-    status = read_events(&t, &cursor, head.next_usn, rebuild);
+    status = fsx_ntfs_collect(n, false, &cursor, head.next_usn, rebuild, event,
+                              &t, &raw, &pipeline_batches, &pipeline_peak);
+  stage(n->metrics, &started, &timing->journal_ns);
   if (status == FS_OK)
     status = changes(&t);
   if (status == FS_OK)
     status = reconcile_links(&t);
   if (status == FS_OK) {
     t.enumerated = 0;
-    status = sql(e, "DELETE FROM nt_processed");
+    status = sql(e, "DELETE FROM fsx_work.nt_processed");
   }
   if (status == FS_OK && (!rebuild || t.journal_records))
     status = reconcile(&t);
@@ -1391,6 +1382,7 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   }
   if (status == FS_OK && (uint64_t)dirs > n->config.max_mft_records)
     status = FS_LIMIT;
+  stage(n->metrics, &started, &timing->reconcile_ns);
   bool metadata_only = !rebuild && e->current->epoch == (uint64_t)revision &&
                        !e->current->incomplete && !e->current->unsupported &&
                        !t.structural && !t.directories;
@@ -1404,12 +1396,15 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
     status = FS_STALE;
   if (status == FS_OK)
     status = save(&t, &head, cursor);
+  stage(n->metrics, &started, &timing->projection_ns);
   if (status == FS_OK)
     status = metadata_only ? patch_metadata(&t, &snapshot)
                            : fsx_snapshot_load(e, &snapshot);
+  stage(n->metrics, &started, &timing->snapshot_ns);
   finish(&t);
   if (status == FS_OK)
-    status = sql(e, "COMMIT");
+    status = fsx_writer_stopping(e) ? FS_CANCELLED : sql(e, "COMMIT");
+  stage(n->metrics, &started, &timing->commit_ns);
   if (status != FS_OK) {
     sql(e, "ROLLBACK");
     fsx_snapshot_release(snapshot);
@@ -1425,6 +1420,8 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   n->info.next_usn = cursor;
   n->info.target_usn = head.next_usn;
   n->info.snapshot_epoch = t.revision;
+  n->info.pipeline_batches = pipeline_batches;
+  n->info.pipeline_peak_batches = pipeline_peak;
   n->info.mft_slots = raw.slots;
   n->info.raw_read_bytes = raw.read_bytes;
   n->info.raw_read_calls = raw.read_calls;
@@ -1436,5 +1433,16 @@ FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
   n->info.native_error = 0;
   n->info.caught_up = cursor == head.next_usn;
   n->info.needs_rebuild = false;
+  stage(n->metrics, &started, &timing->publish_ns);
   return FS_OK;
+}
+FsStatus fsx_ntfs_store(FsNtfs *n, bool rebuild) {
+  FsNtfsMetrics unused = {0};
+  FsNtfsMetrics *timing = n->metrics ? n->metrics : &unused;
+  *timing = (FsNtfsMetrics){0};
+  uint64_t started = n->metrics ? cmeta_hrtime() : 0;
+  FsStatus status = store(n, rebuild, timing, started);
+  if (n->metrics)
+    timing->total_ns = cmeta_hrtime() - started;
+  return status;
 }

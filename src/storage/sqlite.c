@@ -104,7 +104,7 @@ static FsStatus database_identity(FsEngine *e) {
 }
 static int writer_progress(void *context) {
   FsEngine *e = context;
-  if (atomic_load(&e->stopping))
+  if (fsx_writer_stopping(e))
     return 1;
   return e->sql_observer ? e->sql_observer(e->sql_observer_context) : 0;
 }
@@ -123,8 +123,12 @@ FsStatus fsx_db_open(FsEngine *e) {
   sqlite3_limit(e->db, SQLITE_LIMIT_LENGTH, 1024 * 1024);
   sqlite3_limit(e->db, SQLITE_LIMIT_SQL_LENGTH, 32768);
   sqlite3_db_config(e->db, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, 0, NULL);
-  FsStatus st = sql(e, "PRAGMA foreign_keys=ON; PRAGMA cache_size=-4096; "
-                       "PRAGMA temp_store=FILE;");
+  char settings[192];
+  snprintf(settings, sizeof(settings),
+           "PRAGMA foreign_keys=ON; PRAGMA main.cache_size=-%u; "
+           "PRAGMA temp_store=FILE;",
+           e->config.sqlite_cache_kib);
+  FsStatus st = sql(e, settings);
   if (st != FS_OK)
     return st;
   int64_t version = scalar(e, "PRAGMA user_version", &rc);
@@ -201,7 +205,21 @@ FsStatus fsx_db_open(FsEngine *e) {
   if (!compatible)
     return rc == SQLITE_ROW ? FS_UNSUPPORTED : FS_CORRUPT;
   st = sql(e, "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
-  return st == FS_OK ? database_identity(e) : st;
+  if (st == FS_OK)
+    st = database_identity(e);
+  if (st == FS_OK) {
+    st = sql(e, e->config.work_memory_pages
+                    ? "ATTACH DATABASE ':memory:' AS fsx_work"
+                    : "ATTACH DATABASE '' AS fsx_work");
+    if (st == FS_OK && e->config.work_memory_pages) {
+      snprintf(settings, sizeof(settings),
+               "PRAGMA fsx_work.page_size=4096;"
+               "PRAGMA fsx_work.max_page_count=%u;",
+               e->config.work_memory_pages);
+      st = sql(e, settings);
+    }
+  }
+  return st;
 }
 /* SQLite owns these views until the next step/finalize. Copy only into private
  * pages. */
@@ -436,7 +454,7 @@ FsStatus fsx_snapshot_patch(FsEngine *e, uint64_t epoch, sqlite3_stmt *rows,
   uint64_t previous = 0;
   int rc;
   while ((rc = sqlite3_step(rows)) == SQLITE_ROW) {
-    if (atomic_load(&e->stopping)) {
+    if (fsx_writer_stopping(e)) {
       status = FS_CANCELLED;
       goto done;
     }
@@ -505,7 +523,7 @@ FsStatus fsx_snapshot_patch(FsEngine *e, uint64_t epoch, sqlite3_stmt *rows,
         goto done;
       }
       for (uint32_t i = 0; i < base->pages[page_id]->count; i++) {
-        if (atomic_load(&e->stopping))
+        if (fsx_writer_stopping(e))
           status = FS_CANCELLED;
         else
           status = fsx_page_append(e, copy, &base->pages[page_id]->entries[i]);
@@ -542,7 +560,7 @@ typedef struct StoreScan {
 static FsStatus observe(void *ctx, const FsObserved *o) {
   StoreScan *s = ctx;
   FsEngine *e = s->engine;
-  if (atomic_load(&e->stopping))
+  if (fsx_writer_stopping(e))
     return FS_CANCELLED;
   if (++s->count > e->config.max_entries)
     return FS_LIMIT;
@@ -724,7 +742,7 @@ FsStatus fsx_db_scan(FsEngine *e, const char *root, FsScanInfo *out) {
   st = fsx_snapshot_load(e, &snapshot);
   if (st != FS_OK)
     goto done;
-  st = sql(e, "COMMIT");
+  st = fsx_writer_stopping(e) ? FS_CANCELLED : sql(e, "COMMIT");
   if (st != FS_OK)
     goto done;
   cmeta_mutex_lock(&e->mutex);

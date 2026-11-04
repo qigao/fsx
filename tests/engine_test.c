@@ -5,12 +5,12 @@
 #include "../src/internal.h"
 #include "../src/source/ntfs/ntfs.h"
 #include <fsx/api.h>
-#include <salts/thread.h>
 #include <sqlite3.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <thread.h>
 #include <tinytest.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -19,6 +19,7 @@
 #include <winioctl.h>
 #else
 #include <dirent.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
@@ -29,6 +30,75 @@ static FsQuery *held_query;
 static FsResult *held_result, *retained_result;
 static FsWatch *watch, *second_watch;
 static sqlite3 *scan_blocker;
+static FsIndexJob *held_index;
+typedef struct IndexGate {
+  cmeta_mutex_t mutex;
+  cmeta_cond_t changed;
+  bool entered, released, native, armed;
+} IndexGate;
+static IndexGate index_gate;
+static void gate_start(bool native) {
+  memset(&index_gate, 0, sizeof(index_gate));
+  cmeta_mutex_init(&index_gate.mutex);
+  cmeta_cond_init(&index_gate.changed);
+  check_not_null(index_gate.mutex);
+  check_not_null(index_gate.changed);
+  index_gate.native = native;
+  index_gate.armed = true;
+}
+static int pause_index(void *context) {
+  (void)context;
+  if (!index_gate.armed)
+    return 0;
+  cmeta_mutex_lock(&index_gate.mutex);
+  index_gate.entered = true;
+  cmeta_cond_broadcast(&index_gate.changed);
+  while (!index_gate.released && !fsx_writer_stopping(engine))
+    cmeta_cond_timedwait(&index_gate.changed, &index_gate.mutex, 10000000);
+  bool cancelled = fsx_writer_stopping(engine);
+  cmeta_mutex_unlock(&index_gate.mutex);
+  return cancelled ? 1 : 0;
+}
+static void occupy_index_worker(void *context) { (void)pause_index(context); }
+static int pause_inventory(unsigned event, void *context, void *statement,
+                           void *duration) {
+  (void)context;
+  (void)duration;
+  if (event == SQLITE_TRACE_STMT) {
+    const char *text = sqlite3_sql(statement);
+    index_gate.armed = text && strstr(text, "INSERT INTO nt_inventory VALUES");
+  }
+  return 0;
+}
+static void gate_wait(void) {
+  uint64_t deadline = cmeta_hrtime() + UINT64_C(5000000000);
+  cmeta_mutex_lock(&index_gate.mutex);
+  while (!index_gate.entered && cmeta_hrtime() < deadline)
+    cmeta_cond_timedwait(&index_gate.changed, &index_gate.mutex, 10000000);
+  bool entered = index_gate.entered;
+  cmeta_mutex_unlock(&index_gate.mutex);
+  check_true(entered);
+}
+static void gate_release(void) {
+  if (!index_gate.mutex)
+    return;
+  cmeta_mutex_lock(&index_gate.mutex);
+  index_gate.released = true;
+  cmeta_cond_broadcast(&index_gate.changed);
+  cmeta_mutex_unlock(&index_gate.mutex);
+}
+static void finish_index(void) {
+  gate_release();
+  if (held_index) {
+    fsx_index_cancel(held_index);
+    FsStatus status =
+        fsx_index_wait(held_index, cmeta_hrtime() + UINT64_C(5000000000));
+    check(status != FS_WAIT && status != FS_TIMEOUT, "index cleanup completed");
+    fsx_index_release(held_index);
+    held_index = NULL;
+  }
+}
+
 #ifdef _WIN32
 static void wide(const char *s, wchar_t *out, size_t cap) {
   check(MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, out,
@@ -160,8 +230,16 @@ static void setup(void) {
   retained_result = NULL;
   watch = second_watch = NULL;
   scan_blocker = NULL;
+  held_index = NULL;
+  memset(&index_gate, 0, sizeof(index_gate));
 }
 static void teardown(void) {
+  finish_index();
+  if (index_gate.changed)
+    cmeta_cond_destroy(&index_gate.changed);
+  if (index_gate.mutex)
+    cmeta_mutex_destroy(&index_gate.mutex);
+  memset(&index_gate, 0, sizeof(index_gate));
   if (scan_blocker) {
     sqlite3_exec(scan_blocker, "ROLLBACK", NULL, NULL, NULL);
     sqlite3_close(scan_blocker);
@@ -478,6 +556,112 @@ static void sender_run(void *arg) {
 suite("FileSearch engine") {
   before_each() { setup(); }
   after_each() { teardown(); }
+  it("indexes asynchronously while queries retain the committed revision") {
+    put("old.txt", "x");
+    open_engine();
+    FsScanInfo before = scan();
+    for (unsigned i = 0; i < 160; i++) {
+      char name[64];
+      snprintf(name, sizeof(name), "new-%u.txt", i);
+      put(name, "new");
+    }
+    gate_start(false);
+    engine->sql_observer = pause_index;
+    check_equal(fsx_engine_scan_async(engine, root, &held_index), FS_OK);
+    gate_wait();
+    check_equal(fsx_index_wait(held_index, 0), FS_WAIT);
+    check_equal(fsx_index_wait(held_index, cmeta_hrtime()), FS_TIMEOUT);
+    FsScanInfo rejected;
+    check_equal(fsx_engine_scan(engine, root, &rejected), FS_BUSY);
+    FsIndexJob *duplicate = NULL;
+    check_equal(fsx_engine_scan_async(engine, root, &duplicate), FS_BUSY);
+    check_null(duplicate);
+    check_equal(count("old"), (uint64_t)1);
+    retained_result = held_result;
+    held_result = NULL;
+    check_equal(count("new"), (uint64_t)0);
+    gate_release();
+    check_equal(
+        fsx_index_wait(held_index, cmeta_hrtime() + UINT64_C(5000000000)),
+        FS_OK);
+    FsIndexInfo done;
+    check_equal(fsx_index_poll(held_index, &done), FS_OK);
+    check_equal(done.state, (uint32_t)FS_INDEX_READY);
+    check_equal(done.scan.snapshot_epoch, before.snapshot_epoch + 1);
+    check_equal(done.scan.entries, (uint64_t)161);
+    check_equal(count("new"), (uint64_t)160);
+    FsResultInfo old;
+    fsx_result_info(retained_result, &old);
+    check_equal(old.snapshot_epoch, before.snapshot_epoch);
+    engine->sql_observer = NULL;
+  }
+  it("cancels an asynchronous SQL writer without advancing its revision") {
+    put("old.txt", "x");
+    open_engine();
+    FsScanInfo before = scan();
+    for (unsigned i = 0; i < 160; i++) {
+      char name[64];
+      snprintf(name, sizeof(name), "later-%u.txt", i);
+      put(name, "new");
+    }
+    gate_start(false);
+    engine->sql_observer = pause_index;
+    check_equal(fsx_engine_scan_async(engine, root, &held_index), FS_OK);
+    gate_wait();
+    fsx_index_cancel(held_index);
+    check_equal(
+        fsx_index_wait(held_index, cmeta_hrtime() + UINT64_C(5000000000)),
+        FS_CANCELLED);
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_equal(progress.snapshot_epoch, before.snapshot_epoch);
+    check_true(sqlite3_get_autocommit(engine->db) != 0);
+    check_equal(count("later"), (uint64_t)0);
+    engine->sql_observer = NULL;
+    check_equal(scan().entries, (uint64_t)161);
+  }
+  it("cancels a queued index job and releases writer admission on STOPPING") {
+    open_engine();
+    gate_start(false);
+    check_equal(cmeta_threadpool_try_submit(engine->index_pool,
+                                            occupy_index_worker, NULL),
+                0);
+    gate_wait();
+    check_equal(fsx_engine_scan_async(engine, root, &held_index), FS_OK);
+    check_equal(fsx_engine_close(&engine, 0), FS_BUSY);
+    check_equal(
+        fsx_index_wait(held_index, cmeta_hrtime() + UINT64_C(5000000000)),
+        FS_CANCELLED);
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_false(progress.scanning);
+    check_equal(progress.snapshot_epoch, (uint64_t)0);
+    fsx_index_release(held_index);
+    held_index = NULL;
+    check_equal(
+        fsx_engine_close(&engine, cmeta_hrtime() + UINT64_C(5000000000)),
+        FS_OK);
+  }
+  it("joins a released background index job during engine shutdown") {
+    put("old.txt", "x");
+    open_engine();
+    scan();
+    for (unsigned i = 0; i < 160; i++) {
+      char name[64];
+      snprintf(name, sizeof(name), "pending-%u.txt", i);
+      put(name, "new");
+    }
+    gate_start(false);
+    engine->sql_observer = pause_index;
+    check_equal(fsx_engine_scan_async(engine, root, &held_index), FS_OK);
+    gate_wait();
+    fsx_index_release(held_index);
+    held_index = NULL;
+    check_equal(
+        fsx_engine_close(&engine, cmeta_hrtime() + UINT64_C(5000000000)),
+        FS_OK);
+    check_null(engine);
+  }
   it("indexes nested names and exposes committed metadata") {
     subdir("sub");
     put("alpha.txt", "12345");
@@ -792,8 +976,14 @@ suite("FileSearch engine") {
     check_true(info.coverage_complete);
     check_equal(count("secret"), (uint64_t)0);
     check_equal(count("victim"), (uint64_t)1);
-    check_true((entry(0, NULL).flags & (FS_ENTRY_LINK | FS_ENTRY_DIRECTORY)) ==
-               (FS_ENTRY_LINK | FS_ENTRY_DIRECTORY));
+    uint32_t flags = entry(0, NULL).flags;
+    check_true((flags & FS_ENTRY_LINK) != 0);
+#ifdef _WIN32
+    check_true((flags & FS_ENTRY_DIRECTORY) != 0);
+#else
+    /* lstat describes the symlink itself; its target is never traversed. */
+    check_false((flags & FS_ENTRY_DIRECTORY) != 0);
+#endif
   }
   it("enters retryable STOPPING while an external result is retained") {
     put("file.txt", "x");
@@ -1757,6 +1947,7 @@ static struct {
   unsigned inventory_repeat;
 } nt;
 static FsNtfs *native_source, *other_native_source;
+static FsNtfsMetrics nt_metrics;
 #define NT_FRN(index) (UINT64_C(0x8123000000000000) | (index))
 static void nt16(unsigned char *p, uint16_t n) {
   p[0] = (unsigned char)n;
@@ -1810,6 +2001,8 @@ static void nt_event(NtNode *node, uint32_t reason) {
 }
 static FsStatus nt_query(void *context, FsNtfsIdentity *out) {
   (void)context;
+  if (index_gate.native && pause_index(NULL))
+    return FS_CANCELLED;
   if (++nt.queries == 3 && nt.inject_create) {
     NtNode *created = nt_add(40, 20, "catchup.txt", false);
     nt_event(created, FSX_USN_CREATE);
@@ -2092,11 +2285,181 @@ static void nt_raw_open(uint64_t flags, uint32_t cap) {
 suite("NTFS transaction protocol") {
   before_each() { nt_setup(); }
   after_each() {
+    finish_index();
     if (other_native_source)
       check_equal(fsx_ntfs_close(&other_native_source), FS_OK);
     if (native_source)
       check_equal(fsx_ntfs_close(&native_source), FS_OK);
     teardown();
+  }
+
+  it("keeps serial and bounded native pipelines equivalent across rebuilds") {
+    nt.inventory_repeat = 256;
+    for (uint32_t batches = 0; batches <= 2; batches++) {
+      FsNtfsConfig config = fsx_ntfs_config();
+      config.mft_reader = FS_NTFS_MFT_RAW;
+      config.buffer_bytes = 4096;
+      config.pipeline_batches = batches;
+      check_equal(fsx_ntfs_open_provider(engine, root, &config, &nt_ops, &nt,
+                                         &native_source),
+                  FS_OK);
+      native_source->metrics = &nt_metrics;
+      FsNtfsInfo info;
+      check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+      check_true(info.caught_up);
+      check_equal(count("alpha"), (uint64_t)1);
+      check_equal(info.mft_records, (uint64_t)3);
+      check_true(info.pipeline_peak_batches <= batches);
+      if (batches)
+        check_true(info.pipeline_batches > 1);
+      else
+        check_equal(info.pipeline_batches, (uint64_t)0);
+      if (batches == 1) {
+        check_true(nt_metrics.producer_waits > 0);
+        check_true(nt_metrics.producer_wait_ns > 0);
+        check_true(nt_metrics.consumer_callback_ns > 0);
+      }
+      check_true(nt_metrics.total_ns > 0);
+      check_true(nt_metrics.inventory_ns > 0);
+      check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
+      check_equal(nt_metrics.inventory_ns, UINT64_C(0));
+      check_equal(nt_metrics.producer_waits, UINT64_C(0));
+      check_equal(nt_metrics.consumer_waits, UINT64_C(0));
+      check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    }
+  }
+  it("pins an asynchronous NTFS session while old queries remain available") {
+    FsNtfsInfo before = nt_build();
+    nt.nodes[2].size = 70;
+    nt_event(&nt.nodes[2], 1);
+    gate_start(true);
+    check_equal(fsx_ntfs_sync_async(native_source, &held_index), FS_OK);
+    gate_wait();
+    check_equal(fsx_ntfs_close(&native_source), FS_BUSY);
+    FsNtfsInfo rejected;
+    check_equal(fsx_ntfs_sync(native_source, &rejected), FS_BUSY);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)7);
+    retained_result = held_result;
+    held_result = NULL;
+    gate_release();
+    check_equal(
+        fsx_index_wait(held_index, cmeta_hrtime() + UINT64_C(5000000000)),
+        FS_OK);
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    FsIndexInfo info;
+    check_equal(fsx_index_poll(held_index, &info), FS_OK);
+    check_equal(info.ntfs.next_usn, nt.identity.next_usn);
+    check_equal(info.ntfs.snapshot_epoch, before.snapshot_epoch + 1);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)70);
+    FsResultInfo old;
+    fsx_result_info(retained_result, &old);
+    check_equal(old.snapshot_epoch, before.snapshot_epoch);
+  }
+  it("retains the durable USN cursor after cancelling an asynchronous batch") {
+    FsNtfsInfo before = nt_build();
+    nt.nodes[2].size = 70;
+    nt_event(&nt.nodes[2], 1);
+    gate_start(true);
+    check_equal(fsx_ntfs_sync_async(native_source, &held_index), FS_OK);
+    gate_wait();
+    fsx_index_cancel(held_index);
+    check_equal(
+        fsx_index_wait(held_index, cmeta_hrtime() + UINT64_C(5000000000)),
+        FS_CANCELLED);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    check_equal(nt_scalar("SELECT revision FROM fsx_meta"),
+                (int64_t)before.snapshot_epoch);
+    check_true(sqlite3_get_autocommit(engine->db) != 0);
+    gate_release();
+    FsNtfsInfo retried;
+    check_equal(fsx_ntfs_sync(native_source, &retried), FS_OK);
+    check_equal(retried.next_usn, nt.identity.next_usn);
+  }
+  it("bounds memory work pages and rolls back facts before a larger-budget "
+     "retry") {
+    put("baseline.txt", "x");
+    FsScanInfo before = scan();
+    check_equal(sqlite3_exec(engine->db, "PRAGMA fsx_work.max_page_count=1",
+                             NULL, NULL, NULL),
+                SQLITE_OK);
+    nt_open(4096);
+    FsNtfsInfo info;
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_LIMIT);
+    check_equal(nt_scalar("SELECT revision FROM fsx_meta"),
+                (int64_t)before.snapshot_epoch);
+    check_equal(count("baseline"), (uint64_t)1);
+    check_true(sqlite3_get_autocommit(engine->db) != 0);
+    check_equal(sqlite3_exec(engine->db, "PRAGMA fsx_work.max_page_count=4096",
+                             NULL, NULL, NULL),
+                SQLITE_OK);
+    check_equal(fsx_ntfs_rebuild(native_source, &info), FS_OK);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(
+        nt_scalar(
+            "SELECT count(*) FROM main.sqlite_schema WHERE name='nt_changes'"),
+        (int64_t)0);
+  }
+  it("cancels with a borrowed full queue before releasing native buffers") {
+    nt_raw_open(FS_NTFS_RAW_BATCH_DIRS, 16000000);
+    native_source->config.pipeline_batches = 1;
+    native_source->config.buffer_bytes = 4096;
+    FsNtfsInfo before;
+    check_equal(fsx_ntfs_rebuild(native_source, &before), FS_OK);
+    nt.inventory_repeat = 1000;
+    gate_start(false);
+    index_gate.armed = false;
+    engine->sql_observer = pause_index;
+    sqlite3_trace_v2(engine->db, SQLITE_TRACE_STMT, pause_inventory, NULL);
+    check_equal(fsx_ntfs_rebuild_async(native_source, &held_index), FS_OK);
+    gate_wait();
+    fsx_index_cancel(held_index);
+    check_equal(
+        fsx_index_wait(held_index, cmeta_hrtime() + UINT64_C(5000000000)),
+        FS_CANCELLED);
+    engine->sql_observer = NULL;
+    sqlite3_trace_v2(engine->db, 0, NULL, NULL);
+    check_true(sqlite3_get_autocommit(engine->db) != 0);
+    check_equal(nt_scalar("SELECT revision FROM fsx_meta"),
+                (int64_t)before.snapshot_epoch);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+  }
+  it("preserves a consumer SQL error while draining the native producer") {
+    nt_raw_open(FS_NTFS_RAW_BATCH_DIRS, 16000000);
+    FsNtfsInfo before;
+    check_equal(fsx_ntfs_rebuild(native_source, &before), FS_OK);
+    nt.inventory_repeat = 1000;
+    check_equal(
+        sqlite3_exec(
+            engine->db,
+            "CREATE TEMP TRIGGER refuse_pipeline BEFORE INSERT ON nt_inventory "
+            "BEGIN SELECT RAISE(ABORT,'pipeline consumer'); END",
+            NULL, NULL, NULL),
+        SQLITE_OK);
+    FsNtfsInfo failed;
+    check_equal(fsx_ntfs_rebuild(native_source, &failed), FS_CORRUPT);
+    check_true(sqlite3_get_autocommit(engine->db) != 0);
+    check_equal(nt_scalar("SELECT revision FROM fsx_meta"),
+                (int64_t)before.snapshot_epoch);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                before.next_usn);
+    check_equal(sqlite3_exec(engine->db, "DROP TRIGGER refuse_pipeline", NULL,
+                             NULL, NULL),
+                SQLITE_OK);
+    check_equal(fsx_ntfs_rebuild(native_source, &failed), FS_OK);
+  }
+  it("supports disk-backed work storage with the same committed results") {
+    check_equal(fsx_engine_close(&engine, FSX_DEADLINE_INFINITE), FS_OK);
+    FsEngineConfig config = fsx_engine_config(database);
+    config.work_memory_pages = 0;
+    check_equal(fsx_engine_open(&config, &engine), FS_OK);
+    FsNtfsInfo info = nt_build();
+    check_true(info.caught_up);
+    check_equal(count("alpha"), (uint64_t)1);
   }
 
   it("validates complete native hardlink buffers and preserves full parent "
@@ -2327,6 +2690,57 @@ suite("NTFS transaction protocol") {
     check_equal(fsx_ntfs_sync(native_source, &info), FS_OK);
     check_equal(count("alpha"), (uint64_t)1);
     check_equal(entry(0, NULL).size, (uint64_t)999);
+  }
+  it("copies alias keys only when replacing names and rolls back a failed "
+     "capture") {
+    nt_build();
+    check_equal(count("alpha"), (uint64_t)1);
+    FsEntryView old = entry(0, NULL);
+    uint64_t key = old.entry_key;
+    retained_result = held_result;
+    held_result = NULL;
+    check_equal(sqlite3_exec(engine->db,
+                             "CREATE TEMP TRIGGER refuse_key_copy BEFORE "
+                             "INSERT ON nt_old_keys BEGIN SELECT "
+                             "RAISE(ABORT,'alias key copy'); END;",
+                             NULL, NULL, NULL),
+                SQLITE_OK);
+    unsigned lists = nt.lists;
+    nt.nodes[2].size = 77;
+    nt_event(&nt.nodes[2], 1);
+    FsNtfsInfo metadata, failed, created;
+    check_equal(fsx_ntfs_sync(native_source, &metadata), FS_OK);
+    check_equal(nt.lists, lists);
+    check_equal(nt_scalar("SELECT count(*) FROM nt_old_keys"), (int64_t)0);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).entry_key, key);
+    check_equal(entry(0, NULL).size, (uint64_t)77);
+    check_equal(old.size, (uint64_t)7);
+
+    NtNode *node = nt_add(40, 20, "created.txt", false);
+    nt_event(node, FSX_USN_CREATE);
+    check_equal(fsx_ntfs_sync(native_source, &failed), FS_CORRUPT);
+    check_equal(nt.lists, lists);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                metadata.next_usn);
+    check_equal(nt_scalar("SELECT revision FROM fsx_meta"),
+                (int64_t)metadata.snapshot_epoch);
+    check_equal(count("created"), (uint64_t)0);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).entry_key, key);
+
+    check_equal(sqlite3_exec(engine->db, "DROP TRIGGER refuse_key_copy", NULL,
+                             NULL, NULL),
+                SQLITE_OK);
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    nt_open(4096);
+    check_equal(fsx_ntfs_sync(native_source, &created), FS_OK);
+    check_equal(created.next_usn, nt.identity.next_usn);
+    check_equal(count("created"), (uint64_t)1);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).entry_key, key);
+    check_equal(entry(0, NULL).size, (uint64_t)77);
+    check_equal(old.size, (uint64_t)7);
   }
   it("catches changes after initial namespace enumeration before publishing "
      "U1") {

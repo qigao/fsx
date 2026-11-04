@@ -10,6 +10,7 @@ typedef struct FsQuery FsQuery;
 typedef struct FsResult FsResult;
 typedef struct FsWatch FsWatch;
 typedef struct FsNtfs FsNtfs;
+typedef struct FsIndexJob FsIndexJob;
 typedef struct FsOpenError {
   FsStatus status;
   int native_code;
@@ -25,6 +26,8 @@ typedef struct FsNtfsConfig {
   uint32_t mft_reader;
   uint64_t raw_flags; /* PREFETCH | BATCH_DIRS by default; 0 selects direct
                          serial ingestion. */
+  /* Owned batches between the native reader and SQL writer; 0 is serial. */
+  uint32_t pipeline_batches;
 } FsNtfsConfig;
 typedef struct FsNtfsInfo {
   FsNtfsState state;
@@ -35,6 +38,8 @@ typedef struct FsNtfsInfo {
   uint64_t mft_records, journal_records, directories_reconciled;
   uint64_t mft_slots, raw_read_bytes, raw_read_calls, mft_kernel_records;
   bool needs_rebuild, caught_up;
+  uint32_t pipeline_peak_batches;
+  uint64_t pipeline_batches;
 } FsNtfsInfo;
 typedef struct FsEngineConfig {
   uint32_t struct_size, api_version, flags, worker_threads;
@@ -45,6 +50,10 @@ typedef struct FsEngineConfig {
   /* Safe FTS admission floor; default 65,536; 0 admits any safe plan. */
   uint32_t fts_min_entries;
   FsOpenError *open_error; /* Optional output, borrowed only during open. */
+  uint32_t sqlite_cache_kib;
+  /* 4096-byte pages for small NTFS work tables; 0 selects spillable storage.
+   * SQLite allocations are separate from owned_memory_budget. */
+  uint32_t work_memory_pages;
 } FsEngineConfig;
 typedef struct FsQueryRequest {
   uint32_t struct_size, api_version;
@@ -78,6 +87,20 @@ typedef struct FsScanInfo {
   uint32_t source_id;
   bool coverage_complete;
 } FsScanInfo;
+enum { FS_INDEX_SCAN, FS_INDEX_NTFS_REBUILD, FS_INDEX_NTFS_SYNC };
+enum {
+  FS_INDEX_QUEUED,
+  FS_INDEX_RUNNING,
+  FS_INDEX_READY,
+  FS_INDEX_FAILED,
+  FS_INDEX_CANCELLED
+};
+typedef struct FsIndexInfo {
+  uint32_t operation, state;
+  FsStatus status;
+  FsScanInfo scan;
+  FsNtfsInfo ntfs;
+} FsIndexInfo;
 typedef struct FsQueryInfo {
   uint32_t state;
   FsStatus status;
@@ -114,6 +137,20 @@ FsStatus fsx_engine_progress(FsEngine *, FsProgress *out);
  * Partial coverage is explicit in out; fatal errors preserve the old revision.
  */
 FsStatus fsx_engine_scan(FsEngine *, const char *root_utf8, FsScanInfo *out);
+/* One admitted writer job per engine, on a worker independent of queries.
+ * Submission copies the root and returns BUSY while another writer is admitted.
+ * NTFS jobs pin their session until finalization; source close returns BUSY.
+ * Cancellation before commit rolls back; a committed operation returns OK.
+ * Wait uses the engine clock: 0 polls, UINT64_MAX waits. A wait timeout does
+ * not cancel the operation. Release never cancels implicitly. */
+FsStatus fsx_engine_scan_async(FsEngine *, const char *root_utf8,
+                               FsIndexJob **);
+FsStatus fsx_ntfs_rebuild_async(FsNtfs *, FsIndexJob **);
+FsStatus fsx_ntfs_sync_async(FsNtfs *, FsIndexJob **);
+FsStatus fsx_index_poll(FsIndexJob *, FsIndexInfo *out);
+FsStatus fsx_index_wait(FsIndexJob *, uint64_t deadline_ns);
+void fsx_index_cancel(FsIndexJob *);
+void fsx_index_release(FsIndexJob *);
 FsWatchConfig fsx_watch_config(void);
 /* Host serializes calls per watch. Open arms monitoring before the first scan.
  * Wait pumps notifications; 0 polls, UINT64_MAX waits. Scan reconciles one
