@@ -1,5 +1,9 @@
 # C11 与 CMeta 文件搜索引擎设计
 
+> **2026-11-04 跨平台与内容方案**：Linux inotify、macOS FSEvents，以及复用
+> vcpkg-cache bfs/ugrep 的显式实时内容任务见[详细方案](cross-platform-content-search.md)。
+> 这是待实现设计；包括工具静态依赖/LLVM-MinGW 缺口、文件身份、读取语义、取消预算和分阶段验收。
+
 > **异步建索引实现**：新增独立单写入者任务 API、有界 NTFS 原生批队列和限定页数的 SQLite 内存工作集；文件事实、FTS、USN 游标提交成功后才发布不可变查询快照。完整内存镜像与未落盘增量可见仍属后续工作；生命周期及存储边界见[运行时契约](runtime-contract.md#asynchronous-indexing-and-bounded-ntfs-batches)。
 
 > **2026-11-03 目录图批量写入**：RAW 工厂配置启用独立的 `FS_NTFS_RAW_BATCH_DIRS`，目录先有界暂存于 SQLite TEMP，再按完整 FRN 和发出顺序合并；重复 FRN 保留末条语义，数据库结构不变。暂存/合并、live 回核、U0/U1、事实/FTS/游标仍同事务，失败不发布；写连接每 2,048 条 VM 指令检查 STOPPING，可中断批量 SQL。与同构建直接落库对照，各 3 次初建中位数 26.25 / 27.05 s（墙钟低约 3%，范围重叠），CPU 19.53 / 23.89 s（低约 18%），进程写 I/O 低约 18%；不是物理磁盘写量或固定加速保证。两组真实卷各通过 3 用例 / 52,866 断言。当前正式回归 92 引擎 + 25 raw + 10 CLI；已更正上轮把实际 19 个 raw 用例误写为 25 的记录，并补齐 6 项预取错误/排空测试。详见[报告及四份独立 CSV](performance/raw-directory-batch-2026-11-03.md)。
@@ -8,7 +12,7 @@
 
 NTFS/V2 后端已实现卷级目录图、选定子树完整别名枚举、U0/U1 交接、分批续读与事实/FTS/检查点同事务。文件改名/硬链接核对已保存和当前完整 FRN 的父目录，辅助查询不可用/拒绝时退回所选范围核对；纯元数据更新避免目录枚举，精确同版本且名字空间未变时仅复制受影响的快照页。权限失败/日志缺口不推进游标，旧结果继续有效。当前回归与真实卷结果见上方最新记录。早期 ENUM 优化验收 2 用例、52,824 断言通过，完整枚举约 457 万 MFT 记录并与 1 万文件子树逐项对账。元数据同步中位数由 1,986 ms 降至 255 ms，P95 由 3,480 ms 降至 1,935 ms；自动名字查询 0.608 ms，同轮强制 FTS 5.416 ms。该早期版本全卷初建约 60 s；不同时间的共享卷样本不能作为隔离速度保证。详见[优化与原始数据报告](performance/ntfs-optimization-2026-11-03.md)。
 
-普通令牌的卷访问仍可能拒绝。专用异步事件队列、原始非法 Unicode 名字查询、Everything 导入和 Linux/sanitizer 验收尚未交付。边界见[当前运行时契约](runtime-contract.md)。不提供 install/consumer 路径。
+普通令牌的卷访问仍可能拒绝。专用异步事件队列、原始非法 Unicode 名字查询和 Everything 导入尚未交付。Linux Debug/ASan/UBSan 已通过异步索引正式回归；Linux 原生监听与 macOS 平台验收仍待实现。最新验证见[异步索引报告](performance/async-index-2026-11-03.md)，边界见[当前运行时契约](runtime-contract.md)。不提供 install/consumer 路径。
 
 Raw MFT reader 已实现，可通过 `--raw-mft` 或 `FsNtfsConfig.mft_reader=FS_NTFS_MFT_RAW` 显式启用，默认仍为 ENUM。批量 FILE 记录从卷 extent 直接读取，支持 USA、bitmap 空块跳过、mapping pairs 与属性列表扩展；元数据/扩展记录使用有界内核解析接口，所选目录按当前内核父名核对，文件别名继续通过目录句柄完整采集。U0/U1、SQLite/FTS/游标事务及保留页协议保持。新配置结构需要重新编译宿主，失败不会自动切换模式。RAW 已加入双缓冲预取，最多一个未完成读取，复用单写入者；失败/STOPPING 先取消并排空 I/O 再释放缓冲区。`raw_flags=0` 选择直接落库和串行读取；`--raw-mft-sync` 只关闭预取。新配置结构需重新编译宿主。同一最终 Release 构建的预取/串行对照各通过 3 用例、52,866 断言；3 次初建中位数 36.63 / 39.73 s，本轮低 7.8%，范围重叠且未隔离系统缓存/负载。详见[预取报告](performance/raw-prefetch-2026-11-03.md)。详见[raw reader 协议、边界与验收](raw-mft-reader.md)。
 

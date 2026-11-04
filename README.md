@@ -45,6 +45,11 @@ See the [runtime and ownership contract](docs/runtime-contract.md) for precise
 boundaries and limits. The C API is in [api.h](include/fsx/api.h); CMeta value and
 status declarations are in [types.h](include/fsx/types.h).
 
+The [cross-platform and content-search proposal](docs/cross-platform-content-search.md)
+defines Linux inotify/macOS FSEvents and explicit bfs/ugrep content jobs. These
+capabilities remain planned; current content search and POSIX watch support are
+not implemented.
+
 ## Build policy
 
 Use versioned configure/build presets and formal CTest tests. There are no project
