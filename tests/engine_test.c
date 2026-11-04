@@ -371,8 +371,11 @@ static FsWatchInfo settle_watch(FsWatch *w) {
   FsWatchInfo info;
   uint64_t end = fsx_engine_now_ns(engine) + 5000000000ull;
   for (unsigned pass = 0; pass < 64; pass++) {
-    FsStatus status = fsx_watch_wait(w, 0, &info);
-    if (status == FS_WAIT)
+    /* Native delivery may trail a scan's observed IDLE state. Reconcile until
+     * the stream has actually remained quiet for a bounded interval. */
+    FsStatus status =
+        fsx_watch_wait(w, fsx_engine_now_ns(engine) + 100000000ull, &info);
+    if (status == FS_TIMEOUT)
       return info;
     check_equal(status, FS_OK);
     check_true(fsx_engine_now_ns(engine) < end);
