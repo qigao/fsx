@@ -116,9 +116,10 @@ typedef struct FsProgress {
   uint32_t active_watches, dirty_watches;
 } FsProgress;
 typedef struct FsWatchConfig {
+  /* macOS buffer_bytes bounds copied native event flags, without path storage. */
   uint32_t struct_size, api_version, buffer_bytes;
   /* Linux directory registrations per reconciliation, including the root.
-   * Windows uses one native recursive watch. */
+   * Windows/macOS use one native recursive watch/stream. */
   uint32_t max_directories;
 } FsWatchConfig;
 typedef struct FsWatchInfo {
@@ -230,11 +231,11 @@ FsStatus fsx_index_wait(FsIndexJob *, uint64_t deadline_ns);
 void fsx_index_cancel(FsIndexJob *);
 void fsx_index_release(FsIndexJob *);
 FsWatchConfig fsx_watch_config(void);
-/* Windows RDC / Linux inotify. Host serializes calls per watch. Open arms
- * the root before the first scan; Linux registers descendants before enumeration.
+/* Windows RDC / Linux inotify / macOS FSEvents. Host serializes calls per watch.
+ * Open arms the root before the first scan; Linux registers descendants before enumeration.
  * Wait pumps notifications; 0 polls, UINT64_MAX waits. Scan reconciles one
- * pass. Repeat wait/scan while dirty. No background thread or durable journal
- * cursor. */
+ * pass. Repeat wait/scan while dirty. macOS native callbacks only enqueue bounded
+ * flags; wait/scan consume them. No FSX watch worker or durable journal cursor. */
 FsStatus fsx_watch_open(FsEngine *, const char *root_utf8,
                         const FsWatchConfig *, FsWatch **out);
 FsStatus fsx_watch_wait(FsWatch *, uint64_t deadline_ns, FsWatchInfo *out);

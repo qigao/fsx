@@ -193,8 +193,8 @@ Mach-O minimum deployment versions are 15.0. The versioned presets match that
 baseline. Intel macOS and older OS releases are not qualified here.
 The APFS fixture explicitly verifies rejection of an ill-formed UTF-8 filename
 at creation; Linux exercises discovered invalid-name skips. File content remains
-UTF-8/NUL validated on both. macOS watch APIs return UNSUPPORTED; FSEvents is a
-separate future milestone.
+UTF-8/NUL validated on both. macOS FSEvents uses the bounded native bridge
+described below; its new source-owned cases await native macOS qualification.
 
 The expanded request/info structures require callers to recompile and use the
 request factories. `FsContentRequest` selects exactly the supplied retained `FsResult` window,
@@ -340,19 +340,19 @@ coverage: terminal OK, no skipped/changed candidates and no captured source
 invalidation. It does not assert that the whole current filesystem was searched.
 Published record/file counters, process start/running counts, native tool exit
 status and diagnostics remain available through poll. No PDF/Office extraction
-is claimed by this API. macOS watching/FSEvents remains unsupported.
+is claimed by this API.
 
 ## Cooperative directory watches
 
 `FsWatch` is an external engine handle. The host serializes all calls on a given
 watch, and closes it only after its wait/scan caller returns. Different watches
 can run concurrently; the existing single-writer admission still returns BUSY.
-There are no watch threads or filename queues. On Windows each watch owns a canonical root,
+There are no FSX watch workers or filename queues. On Windows each watch owns a canonical root,
 native directory handle, cancellation/completion events, one OVERLAPPED and a
 DWORD-aligned buffer (1–64 KiB, default 64 KiB), charged to the engine budget.
 Watch count shares the engine's external-handle limit; duplicate native roots
-are rejected. Linux uses the inotify protocol below; other platforms currently
-return UNSUPPORTED.
+are rejected. Linux uses inotify and macOS uses FSEvents as described below;
+other platforms return UNSUPPORTED.
 
 Open arms recursive ReadDirectoryChangesW before returning and starts DIRTY.
 Wait pumps bounded batches, coalescing every completion into a root-wide dirty
@@ -388,6 +388,43 @@ remain valid. A monitor/root check may fail after a database commit; in that cas
 the scan output identifies the committed pass and the session stays invalidated.
 Filesystem root identity checks do not turn enumeration into an OS transaction.
 
+### macOS FSEvents
+
+The macOS 15 ARM64 backend schedules one live-only stream on a private serial
+native dispatch queue with WatchRoot, FileEvents and NoDefer. It starts before
+open returns; every reopened session begins DIRTY and requires a complete scan.
+No event ID or history checkpoint is persisted. The run-loop scheduling API is
+deprecated; this backend uses SetDispatchQueue directly, without a run-loop or
+polling alternative. Serialized watch calls may move between host threads.
+
+The callback copies only 32-bit event flags into a mutex-protected bridge bounded
+by buffer_bytes (1–64 KiB, charged to the engine budget), and signals a semaphore.
+It does not retain native paths or access SQLite, snapshots, engine health or
+host-owned watch info. A full bridge coalesces excess flags into an overflow
+mask, preserving root-failure flags, and creates a full reconciliation obligation.
+MustScanSubDirs, UserDropped, KernelDropped and EventIdsWrapped also increment
+that gap counter. RootChanged, mount/unmount events or a mismatched canonical
+root identity fail STALE. A retained root fd prevents the original inode from
+being recycled while the watch is alive.
+
+Wait synchronously flushes the stream before consuming copied flags; finite
+waits use the engine's monotonic deadline and native semaphore timeout. STOPPING
+signals the same semaphore. Scan flushes before enumeration, consumes delivered
+flags at directory entry/every 256 records, then flushes again after commit.
+A scan-local latch retains every change consumed during the pass. Only a complete
+pass with no observed intervening events can clear DIRTY; IDLE is not a durable
+journal position or atomic filesystem snapshot. Native flush and stop calls are
+not hard real-time operations. Independent watches retain independent obligations.
+
+Database placement is checked by walking actual parent directory identities;
+APFS case aliases cannot bypass self-invalidation admission. Close stops,
+invalidates and releases the stream on its serial queue, then waits for its
+context release callback before freeing bridge storage and its engine handle.
+Callers must join wait/scan before close. Native CoreFoundation/dispatch allocations
+and OS buffers are outside the managed-byte counter, like kernel inotify/RDC
+state. This backend still requires native macOS CI qualification; FSEvents
+history replay and nonlocal filesystem completeness are not claimed.
+
 ### Linux inotify
 
 Linux exposes the same cooperative API and transactional scanner. Open registers
@@ -410,7 +447,7 @@ an explicit failure, not a reason to reopen an unverified pathname. The new
 `FsWatchConfig.max_directories` limits registration visits per pass, including
 the root (default 65,536, accepted range 1–1,048,576). Bind aliases can count
 more than once; the number is an upper bound on native watches, not a unique
-object count. The field is unused on Windows. Callers must recompile and use
+object count. The field is unused on Windows/macOS. Callers must recompile and use
 the configuration factory with the exact current struct size.
 
 `IN_Q_OVERFLOW` increments `overflows`, retains DIRTY and requires a new complete

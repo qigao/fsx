@@ -358,7 +358,7 @@ static FsResultInfo equivalent(const char *text, FsQueryOptions options) {
     check_equal(entry(i, NULL).entry_key, keys[i]);
   return accelerated;
 }
-#if defined(_WIN32) || defined(__linux__)
+#if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
 static void open_watch(FsWatch **out, const char *path, uint32_t bytes) {
   FsWatchConfig config = fsx_watch_config();
   config.buffer_bytes = bytes;
@@ -407,7 +407,7 @@ static void watch_scanner(void *arg) {
   waiter->native_error = (unsigned long)errno;
 #endif
 }
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 static void watch_opener(void *arg) {
   WatchWaiter *waiter = arg;
   FsWatchConfig config = fsx_watch_config();
@@ -1231,7 +1231,7 @@ suite("FileSearch engine") {
     check_equal(old.name, "removed.txt");
     check_equal(count(""), (uint64_t)0);
   }
-#if defined(_WIN32) || defined(__linux__)
+#if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
   it("watches create, metadata, rename and delete through retained snapshots") {
     put("seed.txt", "x");
     open_engine();
@@ -1674,7 +1674,9 @@ suite("FileSearch engine") {
     check_equal(count("new"), (uint64_t)1);
     check_equal(old.name, "seed.txt");
   }
-  it("keeps events consumed during Linux scan checkpoints dirty after commit") {
+#endif
+#if defined(__linux__) || defined(__APPLE__)
+  it("keeps events consumed during POSIX scan checkpoints dirty after commit") {
     for (unsigned i = 0; i < 512; i++) {
       char name[64];
       snprintf(name, sizeof(name), "existing-%04u.txt", i);
@@ -1705,17 +1707,87 @@ suite("FileSearch engine") {
     check_false(progress.needs_rescan);
   }
 #endif
-#endif
 #ifdef __APPLE__
-  it("reports macOS directory watching as unsupported") {
-    put("safe.txt", "x");
+  it("hands a macOS watch between serialized opener, waiter and scanner threads") {
     open_engine();
-    scan();
-    FsWatchConfig config = fsx_watch_config();
-    check_equal(fsx_watch_open(engine, root, &config, &watch), FS_UNSUPPORTED);
-    check_null(watch);
-    check_equal(count("safe"), (uint64_t)1);
+    WatchWaiter opened = {NULL, FS_WAIT, 0};
+    cmeta_thread_t thread = {0};
+    check_equal(cmeta_thread_create(&thread, watch_opener, &opened), 0);
+    int joined = cmeta_thread_join(&thread);
+    cmeta_thread_destroy(&thread);
+    check_equal(joined, 0);
+    check_equal(opened.status, FS_OK);
+    settle_watch(watch);
+    put("handoff.txt", "native");
+    WatchWaiter waiting = {watch, FS_WAIT, 0};
+    check_equal(cmeta_thread_create(&thread, watch_waiter, &waiting), 0);
+    joined = cmeta_thread_join(&thread);
+    cmeta_thread_destroy(&thread);
+    check_equal(joined, 0);
+    check_equal(waiting.status, FS_OK);
+    WatchWaiter scanning = {watch, FS_WAIT, 0};
+    check_equal(cmeta_thread_create(&thread, watch_scanner, &scanning), 0);
+    joined = cmeta_thread_join(&thread);
+    cmeta_thread_destroy(&thread);
+    check_equal(joined, 0);
+    check_equal(scanning.status, FS_OK);
+    settle_watch(watch);
+    check_equal(count("handoff"), (uint64_t)1);
+    check_equal(fsx_watch_close(&watch), FS_OK);
   }
+  it("reconciles a bounded macOS notification bridge after a real file burst") {
+    open_engine();
+    open_watch(&watch, root, 1024);
+    settle_watch(watch);
+    for (unsigned i = 0; i < 800; i++) {
+      char name[64];
+      snprintf(name, sizeof(name), "burst-%04u.txt", i);
+      put(name, "x");
+    }
+    FsWatchInfo info = wait_change(watch);
+    check_true(info.overflows > 0);
+    scan();
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_true(progress.needs_rescan);
+    info = settle_watch(watch);
+    check_equal(info.state, FS_WATCH_IDLE);
+    check_true(info.overflows > 0);
+    check_equal(count("burst"), (uint64_t)800);
+  }
+  it("rejects APFS case aliases of a database-containing root") {
+    char inside[2048], alias[2048];
+    snprintf(inside, sizeof(inside), "%s/inside.db", root);
+    snprintf(alias, sizeof(alias), "%s/TREE", fixture);
+    FsEngineConfig config = fsx_engine_config(inside);
+    check_equal(fsx_engine_open(&config, &engine), FS_OK);
+    FsWatchConfig options = fsx_watch_config();
+    check_equal(fsx_watch_open(engine, alias, &options, &watch), FS_INVALID);
+    check_null(watch);
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_equal(progress.active_watches, 0u);
+    check_equal(progress.dirty_watches, 0u);
+  }
+  it("joins pending macOS callbacks before releasing every watch allocation") {
+    open_engine();
+    FsProgress before, after;
+    fsx_engine_progress(engine, &before);
+    for (unsigned i = 0; i < 16; i++) {
+      open_watch(&watch, root, 1024);
+      char name[64];
+      snprintf(name, sizeof(name), "pending-%u.txt", i);
+      put(name, "x");
+      check_equal(fsx_watch_close(&watch), FS_OK);
+      fsx_engine_progress(engine, &after);
+      check_equal(after.active_watches, 0u);
+      check_equal(after.dirty_watches, 0u);
+      check_equal(after.owned_bytes, before.owned_bytes);
+    }
+    scan();
+    check_equal(count("pending"), (uint64_t)16);
+  }
+#endif
 #endif
 #ifdef _WIN32
   it("reports an unrepresentable native name as partial coverage") {
