@@ -16,10 +16,10 @@ milestones remain on the roadmap.
   bounded owned NTFS batches, and page-limited SQLite memory work sets.
 - Asynchronous queries on SaltsCore's bounded thread pool, retained results,
   cancellation, deadlines, STOPPING/close and allocation/admission limits.
-- Linux/Windows asynchronous UTF-8 content jobs over a retained result window or a full
+- Linux/macOS/Windows asynchronous UTF-8 content jobs over a retained result window or a full
   metadata scope streamed from a pinned snapshot, using
   an explicit native ugrep executable, per-file batches and consumer backpressure.
-- Explicit Linux bfs live discovery for unindexed directories, with root-relative
+- Explicit Linux/macOS bfs live discovery for unindexed directories, with root-relative
   file opens, bounded NUL path frames and no index writes.
 - Unicode 17 full-fold substring search, scalar-aware glob matching, scoped
   `case:`/`path:`, AND/OR/NOT/groups, `file:`/`folder:`, extension sets, checked
@@ -53,9 +53,9 @@ status declarations are in [types.h](include/fsx/types.h).
 
 The [cross-platform and content-search proposal](docs/cross-platform-content-search.md)
 defines Linux inotify/macOS FSEvents and explicit bfs/ugrep content jobs. These
-milestones include Linux inotify and the initial Linux content runtime. macOS
-FSEvents and macOS content processes remain planned. Linux bfs live
-discovery is implemented with an explicit separate request/CLI command.
+milestones include Linux inotify, Linux/macOS/Windows indexed content jobs, and
+Linux/macOS bfs live discovery with an explicit separate request/CLI command.
+macOS FSEvents remains planned; macOS watch calls explicitly return UNSUPPORTED.
 
 ## Build policy
 
@@ -111,6 +111,13 @@ cmake --preset windows-debug
 cmake --build --preset windows-debug
 ctest --preset windows-debug
 ```
+
+`macos-debug` builds native ARM64 source-owned tests with the runner's Clang and
+the published macOS Core/CMeta SDKs; `macos-release` builds the library/CLI.
+The macOS 15 ARM64 CI profile runs scans, queries, indexing and real ugrep/bfs
+content jobs. Native watching is not implemented on macOS. Intel macOS is not
+qualified by this profile. The selected SDK dylibs require macOS 15, matching
+the explicit deployment baseline in the presets.
 
 `windows-release` builds the library and CLI without tests. Linux exposes
 `linux-debug`, `linux-release`, `linux-asan-ubsan` and `linux-tsan`; Debug/sanitizer
@@ -255,8 +262,8 @@ before allocating. Engine limits bound indexed aliases and depth.
 
 The native content API and CLI use the actual ugrep stdin/JSON protocol. Enable
 their formal tests with `FSX_BUILD_CONTENT_TESTS=ON` and an absolute
-`FSX_CONTENT_TEST_UGREP` and (Linux only) `FSX_CONTENT_TEST_BFS` executable paths.
-Linux CI builds the pinned optional search-tools manifest feature. Windows CI
+`FSX_CONTENT_TEST_UGREP` and (Linux/macOS) `FSX_CONTENT_TEST_BFS` executable paths.
+Linux/macOS CI build the pinned optional search-tools manifest feature. Windows CI
 qualifies the exact static LLVM-MinGW candidate from cache PR #282, commit
 `b247d9c4cf738fbf5640cd4ad82832e74929e756`, and runs FSX against that tool.
 That package is unreleased; production dependency/Action pins are unchanged.
@@ -293,11 +300,16 @@ changed, so callers must recompile using the factories.
 Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native tools,
 CLI and formal tests. The current suite has 104 Windows / 102 Linux engine cases, 25 dedicated raw
 reader cases, two controlled-replay/measurement cases and 10 CLI cases, run
-through four ordinary CTest entries. Enabled Linux content profiles add two
-CTest entries with 33 native API cases and nine CLI cases using real ugrep/bfs.
+through four ordinary CTest entries. Enabled POSIX content profiles add two
+CTest entries with 35 native API cases and nine CLI cases using real ugrep/bfs.
 A source-owned native process peer injects malformed path frames, traversal
 errors and stalled discovery for failure/cancellation cases; it does not link FSX.
-Windows content profiles run 13 native API cases and six CLI cases (three Linux
+The POSIX suite also checks unrelated non-CLOEXEC fd exclusion and survival after
+a matcher closes stdin early. macOS uses POSIX_SPAWN_CLOEXEC_DEFAULT and per-fd
+F_SETNOSIGPIPE; Linux keeps close-from spawn actions and worker-local signal handling.
+The APFS fixture expects illegal UTF-8 names to be rejected at creation; Linux
+tests their discovered-path skip behavior. No substitute names are generated.
+Windows content profiles run 13 native API cases and six CLI cases (three POSIX
 bfs CLI cases are explicitly skipped), including UTF-16 argv quoting, overlapped
 pipe traffic, restricted handle inheritance and actual descendant cancellation.
 Windows 10+ is required for the Job Object process-creation attribute. New indexes

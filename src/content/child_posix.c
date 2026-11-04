@@ -1,5 +1,9 @@
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE
+#else
 #define _GNU_SOURCE
-#include "child_linux.h"
+#endif
+#include "child_posix.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -12,9 +16,16 @@ FsStatus fsx_child_spawn(FsContentQuery *q, const char *tool, char *const *argv,
   *child = (FsChild){0, -1, -1, -1, discovery};
   int pipes[3][2] = {{-1, -1}, {-1, -1}, {-1, -1}};
   FsStatus status = FS_IO;
-  for (unsigned i = 0; i < 3; i++)
+  for (unsigned i = 0; i < 3; i++) {
+#ifdef __APPLE__
+    if (pipe(pipes[i]) || fcntl(pipes[i][0], F_SETFD, FD_CLOEXEC) < 0 ||
+        fcntl(pipes[i][1], F_SETFD, FD_CLOEXEC) < 0)
+      goto cleanup;
+#else
     if (pipe2(pipes[i], O_CLOEXEC))
       goto cleanup;
+#endif
+  }
   for (unsigned i = 0; i < 3; i++)
     for (unsigned j = 0; j < 2; j++)
       if (pipes[i][j] < 3) {
@@ -36,7 +47,9 @@ FsStatus fsx_child_spawn(FsContentQuery *q, const char *tool, char *const *argv,
   for (unsigned i = 0; i < 3; i++)
     rc |=
         posix_spawn_file_actions_adddup2(&actions, pipes[i][i ? 1 : 0], (int)i);
+#ifndef __APPLE__
   rc |= posix_spawn_file_actions_addclosefrom_np(&actions, 3);
+#endif
   sigset_t empty, defaults;
   sigemptyset(&empty);
   sigemptyset(&defaults);
@@ -44,9 +57,12 @@ FsStatus fsx_child_spawn(FsContentQuery *q, const char *tool, char *const *argv,
   rc |= posix_spawnattr_setsigmask(&attr, &empty);
   rc |= posix_spawnattr_setsigdefault(&attr, &defaults);
   rc |= posix_spawnattr_setpgroup(&attr, 0);
-  rc |= posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP |
-                                            POSIX_SPAWN_SETSIGMASK |
-                                            POSIX_SPAWN_SETSIGDEF);
+  short flags =
+      POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF;
+#ifdef __APPLE__
+  flags |= POSIX_SPAWN_CLOEXEC_DEFAULT;
+#endif
+  rc |= posix_spawnattr_setflags(&attr, flags);
   char *env[] = {"LANG=C", "LC_ALL=C", NULL};
   if (!rc)
     rc = posix_spawn(&child->pid, tool, &actions, &attr, argv, env);

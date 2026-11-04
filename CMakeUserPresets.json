@@ -99,6 +99,31 @@
       "cacheVariables": {
         "FSX_ENABLE_TSAN": "ON"
       }
+    },
+    {
+      "name": "macos-debug",
+      "displayName": "macOS ARM64 Debug",
+      "inherits": [
+        "macos-base",
+        "vcpkg-cache",
+        "sdk-roots"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "macos-release",
+      "displayName": "macOS ARM64 Release",
+      "inherits": [
+        "macos-base",
+        "vcpkg-cache",
+        "sdk-roots"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
@@ -135,6 +160,16 @@
     {
       "name": "linux-tsan",
       "configurePreset": "linux-tsan",
+      "jobs": 2
+    },
+    {
+      "name": "macos-debug",
+      "configurePreset": "macos-debug",
+      "jobs": 2
+    },
+    {
+      "name": "macos-release",
+      "configurePreset": "macos-release",
       "jobs": 2
     }
   ],
@@ -206,6 +241,16 @@
     {
       "name": "linux-tsan",
       "configurePreset": "linux-tsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "macos-debug",
+      "configurePreset": "macos-debug",
       "output": {
         "outputOnFailure": true
       },

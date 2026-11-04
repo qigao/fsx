@@ -1,7 +1,12 @@
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE
+#else
 #define _GNU_SOURCE
+#endif
 #include "content.h"
-#ifdef __linux__
-#include "child_linux.h"
+#ifdef FSX_POSIX_CONTENT
+#include "../platform_stat.h"
+#include "child_posix.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -78,10 +83,11 @@ static FsStatus open_file(FsContentQuery *q, const FsEntry *entry, int *out,
 }
 static bool same_version(const struct stat *a, const struct stat *b) {
   return a->st_dev == b->st_dev && a->st_ino == b->st_ino &&
-         a->st_size == b->st_size && a->st_mtim.tv_sec == b->st_mtim.tv_sec &&
-         a->st_mtim.tv_nsec == b->st_mtim.tv_nsec &&
-         a->st_ctim.tv_sec == b->st_ctim.tv_sec &&
-         a->st_ctim.tv_nsec == b->st_ctim.tv_nsec;
+         a->st_size == b->st_size &&
+         fsx_stat_mtime(a).tv_sec == fsx_stat_mtime(b).tv_sec &&
+         fsx_stat_mtime(a).tv_nsec == fsx_stat_mtime(b).tv_nsec &&
+         fsx_stat_ctime(a).tv_sec == fsx_stat_ctime(b).tv_sec &&
+         fsx_stat_ctime(a).tv_nsec == fsx_stat_ctime(b).tv_nsec;
 }
 static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
   char *argv[] = {q->tool,
@@ -101,10 +107,14 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
   if (status != FS_OK)
     return status;
   int rc = 0;
+#ifdef __APPLE__
+  int masked = fcntl(child.input, F_SETNOSIGPIPE, 1);
+#else
   sigset_t blocked, previous;
   sigemptyset(&blocked);
   sigaddset(&blocked, SIGPIPE);
   int masked = pthread_sigmask(SIG_BLOCK, &blocked, &previous);
+#endif
   for (unsigned i = 0; i < 3; i++) {
     int fd = i == 0 ? child.input : i == 1 ? child.output : child.error;
     if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0)
@@ -209,6 +219,7 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
   fsx_free(input);
   int exit_code;
   status = fsx_child_finish(q, &child, status, &exit_code);
+#ifndef __APPLE__
   if (!masked) {
     if (!sigismember(&previous, SIGPIPE)) {
       sigset_t pending;
@@ -220,6 +231,7 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
     }
     pthread_sigmask(SIG_SETMASK, &previous, NULL);
   }
+#endif
   if (status == FS_OK &&
       (exit_code < 0 || exit_code > 1 || diagnostic ||
        (exit_code == 1 && b->used) || (exit_code == 0 && !b->used)))

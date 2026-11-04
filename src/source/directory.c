@@ -433,6 +433,7 @@ static FsStatus walk_root(FsWalk *walk, const char *root) {
 }
 
 #else
+#include "../platform_stat.h"
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -584,10 +585,10 @@ static FsStatus walk_dir(FsWalk *walk, int descriptor, const char *root,
       o.file_hi = (uint64_t)st.st_dev;
       o.size = st.st_size >= 0 ? (uint64_t)st.st_size : 0;
       o.flags = FS_ENTRY_MTIME_VALID;
-      int64_t sec = (int64_t)st.st_mtim.tv_sec;
+      int64_t sec = (int64_t)fsx_stat_mtime(&st).tv_sec;
       if (sec >= -11644473600LL && sec <= 1728223453709LL)
         o.mtime = (uint64_t)(sec + 11644473600LL) * 10000000ULL +
-                  (uint64_t)st.st_mtim.tv_nsec / 100;
+                  (uint64_t)fsx_stat_mtime(&st).tv_nsec / 100;
       else
         o.flags = 0;
       if (S_ISDIR(st.st_mode))

@@ -1,5 +1,5 @@
-#ifndef FSX_CHILD_LINUX_H
-#define FSX_CHILD_LINUX_H
+#ifndef FSX_CHILD_POSIX_H
+#define FSX_CHILD_POSIX_H
 #include "content.h"
 #include <sys/types.h>
 typedef struct FsChild {

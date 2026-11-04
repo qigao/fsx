@@ -57,6 +57,26 @@
         "FSX_VCPKG_HOST_TRIPLET": "x64-linux",
         "LD_LIBRARY_PATH": "${sourceDir}/build/${presetName}/lib:$env{SALTSCORE_ROOT}/lib:$env{CMETA_ROOT}/lib:$penv{LD_LIBRARY_PATH}"
       }
+    },
+    {
+      "name": "macos-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0"
+      },
+      "environment": {
+        "FSX_VCPKG_TARGET_TRIPLET": "arm64-osx",
+        "FSX_VCPKG_HOST_TRIPLET": "arm64-osx",
+        "DYLD_LIBRARY_PATH": "$env{SALTSCORE_ROOT}/lib:$env{CMETA_ROOT}/lib:$penv{DYLD_LIBRARY_PATH}"
+      }
     }
   ]
 }

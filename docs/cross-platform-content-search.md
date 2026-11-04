@@ -11,7 +11,8 @@
 一个 engine 同时执行一个任务/ugrep 进程，一个未释放文件批次形成背压。
 Linux BFS_LIVE 已实现，额外持有一个 bfs 子进程；同时执行两个 ugrep 仍是后续目标。
 Windows 索引候选内容后端已进入实现/验收，使用 cache #282 的精确候选工具；
-该工具仍未发布，生产依赖固定版本不变。macOS 内容进程适配尚未实现。
+该工具仍未发布，生产依赖固定版本不变。macOS 15 ARM64 扫描和内容后端已进入
+正式验收；FSEvents 尚未实现，watch API 仍明确返回 UNSUPPORTED。
 
 ## 1. 选定方案与范围
 
@@ -39,7 +40,7 @@ Windows 索引候选内容后端已进入实现/验收，使用 cache #282 的�
 | Windows 本地 NTFS | 原生目录扫描、MFT/USN、RDC；异步索引 | ugrep 内容搜索，先完成 LLVM-MinGW 工具资格 | 保留现有 USN 同事务检查点 |
 | Windows 其他可枚举卷 | 通用目录采集、RDC 路径；未逐格式验收 | 同一内容 API，按实际卷验收 | RDC 无持久游标 |
 | Linux 本地普通文件系统 | POSIX 扫描、异步索引/查询、持久化；本分支增加 inotify | ugrep；可选 bfs 实时发现 | inotify 无持久游标，重开需扫描 |
-| macOS APFS 等可枚举卷 | 尚无正式构建/测试资格 | 扫描移植、Clang presets/CI、FSEvents、ugrep/bfs | 首版重开扫描；FSEvents 历史续读后续独立验收 |
+| macOS APFS 等可枚举卷 | 本分支加入 macOS 15 ARM64 扫描、Clang presets/CI、ugrep/bfs | FSEvents 后续独立实现 | 首版重开扫描；FSEvents 历史续读后续独立验收 |
 | SMB/NFS、FUSE、伪文件系统、可移动卷 | 无通用监听完整性保证 | 仅公布逐项通过的能力；手动扫描为显式操作 | 不推断等同本地 NTFS |
 
 Linux inotify 不递归，必须为目录树逐级注册；网络远端变化、mmap 修改及挂载覆盖有
@@ -90,8 +91,9 @@ flowchart TD
 不能经替换字符生成假路径。macOS 保留原始名字，不将 APFS 的大小写或规范化
 行为硬编码为所有卷通用规则；搜索仍遵循 FSX 公布的 Unicode 语义。
 
-macOS 首先处理 `st_mtim` / `st_mtimespec` 时间字段适配、所需 POSIX 功能声明、
-Core/CMeta SDK 架构和工具路径。通过正式 macOS 编译/测试后才宣布支持。
+macOS 时间字段和 Darwin 进程适配复用 POSIX 内容管线；正式 ARM64 preset/CI 使用
+runner 自带 Clang 和已发布的对应 Core/CMeta SDK，最低部署版本 15 与 SDK Mach-O
+一致。FSEvents、Intel 架构和更旧系统仍需单独验收。
 挂载边界必须显式配置并进入源配置指纹；bfs 发现首版固定不跨设备，
 不悄悄改变现有元数据扫描的遍历策略。
 
@@ -147,8 +149,7 @@ FSEvents 有历史事件能力，但首版不持久化一个看似等价于 USN 
 请求记录元数据 revision 和源覆盖范围；元数据评估的取消/截止时间与内容任务一致。
 索引较旧时可漏掉新文件，结果必须携带该覆盖状态。
 
-`BFS_LIVE` 不要求先写索引，候选来自 bfs 的 NUL 路径流；当前仅 Linux 实现，macOS
-仍待平台移植。固定 argv 如下（示例为可读展示，执行时不经过 shell）：
+`BFS_LIVE` 不要求先写索引，候选来自 bfs 的 NUL 路径流；当前 Linux/macOS 均有实现，macOS 首先限定为 15 ARM64 正式验收。固定 argv 如下（示例为可读展示，执行时不经过 shell）：
 
 ```text
 bfs -j1 -P -f ABSOLUTE_ROOT -xdev -type f -print0
