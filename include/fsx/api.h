@@ -11,6 +11,36 @@ typedef struct FsResult FsResult;
 typedef struct FsWatch FsWatch;
 typedef struct FsNtfs FsNtfs;
 typedef struct FsIndexJob FsIndexJob;
+typedef struct FsContentQuery FsContentQuery;
+typedef struct FsContentBatch FsContentBatch;
+enum { FS_CONTENT_LITERAL, FS_CONTENT_PCRE2 };
+typedef struct FsContentRequest {
+  uint32_t struct_size, api_version;
+  const FsResult *candidates; /* Exactly this retained result window. */
+  const char *ugrep_executable, *pattern;
+  uint32_t mode, max_records, max_output_bytes;
+  uint64_t max_file_bytes, deadline_ns;
+} FsContentRequest;
+typedef struct FsContentInfo {
+  FsStatus status;
+  bool finished, complete;
+  uint64_t metadata_epoch, candidate_count, files_scanned, changed_files;
+  uint64_t skipped_files, match_records, processes_started;
+  uint32_t running_processes;
+  int tool_exit_code;
+  char diagnostic[192];
+} FsContentInfo;
+typedef struct FsContentFileView {
+  FsFileKey key;
+  uint64_t entry_key, metadata_epoch, read_start_ns, read_end_ns;
+  const char *path;
+  uint32_t record_count;
+} FsContentFileView;
+typedef struct FsContentRecordView {
+  uint64_t line, byte_offset;
+  const char *text;
+  size_t text_bytes;
+} FsContentRecordView;
 typedef struct FsOpenError {
   FsStatus status;
   int native_code;
@@ -130,6 +160,25 @@ typedef struct FsEntryView {
 } FsEntryView;
 
 FsEngineConfig fsx_engine_config(const char *database_path);
+FsContentRequest fsx_content_request(const FsResult *, const char *ugrep,
+                                      const char *pattern);
+/* Linux native backend. Other platforms explicitly return UNSUPPORTED.
+ * One active content task per engine, independent of query/index pools.
+ * LIVE_READ observations, not content at metadata_epoch. Only UTF-8 text
+ * without NUL is searched; a leading UTF-8 BOM is removed before matching.
+ * Wait wakes for a batch or termination; consume/release batches before waiting
+ * again. One outstanding file batch applies backpressure until released.
+ * Release cancels and discards an unacquired batch; acquired batches remain live.
+ */
+FsStatus fsx_content_submit(FsEngine *, const FsContentRequest *, FsContentQuery **);
+FsStatus fsx_content_poll(FsContentQuery *, FsContentInfo *);
+FsStatus fsx_content_wait(FsContentQuery *, uint64_t deadline_ns);
+FsStatus fsx_content_batch_acquire(FsContentQuery *, FsContentBatch **);
+FsStatus fsx_content_batch_info(const FsContentBatch *, FsContentFileView *);
+FsStatus fsx_content_batch_record(const FsContentBatch *, uint32_t, FsContentRecordView *);
+void fsx_content_batch_release(FsContentBatch *);
+void fsx_content_cancel(FsContentQuery *);
+void fsx_content_release(FsContentQuery *);
 FsQueryOptions fsx_query_options(void);
 const char *fsx_status_name(FsStatus);
 FsStatus fsx_engine_open(const FsEngineConfig *, FsEngine **out);

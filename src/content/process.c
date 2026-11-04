@@ -1,0 +1,366 @@
+#define _GNU_SOURCE
+#include "content.h"
+#ifdef __linux__
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
+#include <spawn.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+static FsStatus os_status(int error) {
+  return error == EACCES || error == EPERM                       ? FS_DENIED
+         : error == ENOENT || error == ENOTDIR || error == ELOOP ? FS_STALE
+         : error == ENOMEM                                       ? FS_NOMEM
+                                                                 : FS_IO;
+}
+/* Open each component relative to a directory fd, without following links. */
+static FsStatus open_file(FsContentQuery *q, const FsEntry *entry, int *out,
+                          struct stat *info) {
+  char *path = fsx_copy(q->engine, entry->path, strlen(entry->path));
+  if (!path)
+    return FS_NOMEM;
+  int parent = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (parent < 0) {
+    fsx_free(path);
+    return os_status(errno);
+  }
+  char *p = path + 1;
+  FsStatus status = FS_OK;
+  for (;;) {
+    char *slash = strchr(p, '/');
+    if (slash)
+      *slash = 0;
+    int next = openat(parent, p,
+                      O_RDONLY | O_NOFOLLOW | O_CLOEXEC |
+                          (slash ? O_DIRECTORY : O_NONBLOCK));
+    int error = errno;
+    close(parent);
+    if (next < 0) {
+      status = os_status(error);
+      break;
+    }
+    parent = next;
+    if (!slash) {
+      if (fstat(parent, info))
+        status = os_status(errno);
+      else if (!S_ISREG(info->st_mode))
+        status = FS_UNSUPPORTED;
+      else if ((uint64_t)info->st_ino != entry->key.file_id_lo ||
+               (uint64_t)info->st_dev != entry->key.file_id_hi)
+        status = FS_STALE;
+      if (status == FS_OK)
+        *out = parent;
+      else
+        close(parent);
+      break;
+    }
+    p = slash + 1;
+  }
+  fsx_free(path);
+  return status;
+}
+static bool same_version(const struct stat *a, const struct stat *b) {
+  return a->st_dev == b->st_dev && a->st_ino == b->st_ino &&
+         a->st_size == b->st_size && a->st_mtim.tv_sec == b->st_mtim.tv_sec &&
+         a->st_mtim.tv_nsec == b->st_mtim.tv_nsec &&
+         a->st_ctim.tv_sec == b->st_ctim.tv_sec &&
+         a->st_ctim.tv_nsec == b->st_ctim.tv_nsec;
+}
+typedef struct TextState {
+  uint32_t scalar, minimum;
+  unsigned remaining;
+} TextState;
+static bool text_bytes(TextState *s, const unsigned char *p, size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    unsigned c = p[i];
+    if (!c)
+      return false;
+    if (s->remaining) {
+      if ((c & 0xc0) != 0x80)
+        return false;
+      s->scalar = s->scalar * 64 + (c & 63);
+      if (!--s->remaining && (s->scalar < s->minimum || s->scalar > 0x10ffff ||
+                              (s->scalar >= 0xd800 && s->scalar <= 0xdfff)))
+        return false;
+    } else if (c >= 0x80) {
+      if (c >= 0xc2 && c <= 0xdf) {
+        s->remaining = 1;
+        s->scalar = c & 31;
+        s->minimum = 0x80;
+      } else if (c >= 0xe0 && c <= 0xef) {
+        s->remaining = 2;
+        s->scalar = c & 15;
+        s->minimum = 0x800;
+      } else if (c >= 0xf0 && c <= 0xf4) {
+        s->remaining = 3;
+        s->scalar = c & 7;
+        s->minimum = 0x10000;
+      } else
+        return false;
+    }
+  }
+  return true;
+}
+static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
+  int pipes[3][2] = {{-1, -1}, {-1, -1}, {-1, -1}};
+  FsStatus status = FS_IO;
+  for (unsigned i = 0; i < 3; i++)
+    if (pipe2(pipes[i], O_CLOEXEC))
+      goto cleanup;
+  for (unsigned i = 0; i < 3; i++)
+    for (unsigned j = 0; j < 2; j++)
+      if (pipes[i][j] < 3) {
+        int fd = fcntl(pipes[i][j], F_DUPFD_CLOEXEC, 3);
+        if (fd < 0)
+          goto cleanup;
+        close(pipes[i][j]);
+        pipes[i][j] = fd;
+      }
+  posix_spawn_file_actions_t actions;
+  posix_spawnattr_t attr;
+  if (posix_spawn_file_actions_init(&actions))
+    goto cleanup;
+  if (posix_spawnattr_init(&attr)) {
+    posix_spawn_file_actions_destroy(&actions);
+    goto cleanup;
+  }
+  int rc = 0;
+  for (unsigned i = 0; i < 3; i++)
+    rc |=
+        posix_spawn_file_actions_adddup2(&actions, pipes[i][i ? 1 : 0], (int)i);
+  rc |= posix_spawn_file_actions_addclosefrom_np(&actions, 3);
+  sigset_t empty, defaults;
+  sigemptyset(&empty);
+  sigemptyset(&defaults);
+  sigaddset(&defaults, SIGPIPE);
+  rc |= posix_spawnattr_setsigmask(&attr, &empty);
+  rc |= posix_spawnattr_setsigdefault(&attr, &defaults);
+  rc |= posix_spawnattr_setpgroup(&attr, 0);
+  rc |= posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP |
+                                            POSIX_SPAWN_SETSIGMASK |
+                                            POSIX_SPAWN_SETSIGDEF);
+  char *argv[] = {q->tool,
+                  "-J1",
+                  q->request.mode == FS_CONTENT_LITERAL ? "-F" : "-P",
+                  "--color=never",
+                  "--line-buffered",
+                  "--label=fsx-input",
+                  "--format={\"line\":%n,\"offset\":%b,\"text\":%J}%~",
+                  "-e",
+                  q->pattern,
+                  "--",
+                  "-",
+                  NULL};
+  char *env[] = {"LANG=C", "LC_ALL=C", NULL};
+  pid_t child = 0;
+  if (!rc)
+    rc = posix_spawn(&child, q->tool, &actions, &attr, argv, env);
+  posix_spawnattr_destroy(&attr);
+  posix_spawn_file_actions_destroy(&actions);
+  if (rc) {
+    status = rc == ENOMEM ? FS_NOMEM : FS_IO;
+    goto cleanup;
+  }
+  cmeta_mutex_lock(&q->mutex);
+  q->info.processes_started++;
+  q->info.running_processes = 1;
+  cmeta_mutex_unlock(&q->mutex);
+  close(pipes[0][0]);
+  pipes[0][0] = -1;
+  close(pipes[1][1]);
+  pipes[1][1] = -1;
+  close(pipes[2][1]);
+  pipes[2][1] = -1;
+  sigset_t blocked, previous;
+  sigemptyset(&blocked);
+  sigaddset(&blocked, SIGPIPE);
+  int masked = pthread_sigmask(SIG_BLOCK, &blocked, &previous);
+  for (unsigned i = 0; i < 3; i++) {
+    int fd = pipes[i][i ? 0 : 1];
+    if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0)
+      rc = errno;
+  }
+  unsigned char *input = fsx_alloc(q->engine, 65536);
+  unsigned char output[8192];
+  size_t used = 0, sent = 0, diagnostic = 0;
+  uint64_t read_bytes = 0;
+  bool first = true;
+  TextState utf8 = {0};
+  status = masked || rc ? FS_IO : !input ? FS_NOMEM : FS_OK;
+  while (status == FS_OK &&
+         (pipes[0][1] >= 0 || pipes[1][0] >= 0 || pipes[2][0] >= 0)) {
+    status = fsx_content_stop(q);
+    if (status != FS_OK)
+      break;
+    if (pipes[0][1] >= 0 && sent == used) {
+      ssize_t n = read(file, input, 65536);
+      if (n < 0) {
+        if (errno == EINTR)
+          continue;
+        status = os_status(errno);
+        break;
+      }
+      if (!n) {
+        if (utf8.remaining) {
+          status = FS_UNSUPPORTED;
+          break;
+        }
+        close(pipes[0][1]);
+        pipes[0][1] = -1;
+      } else {
+        read_bytes += (uint64_t)n;
+        if (read_bytes > q->request.max_file_bytes) {
+          status = FS_LIMIT;
+          break;
+        }
+        used = (size_t)n;
+        sent = 0;
+        if (first && used >= 3 && !memcmp(input, "\xef\xbb\xbf", 3))
+          sent = 3;
+        first = false;
+        if (!text_bytes(&utf8, input + sent, used - sent)) {
+          status = FS_UNSUPPORTED;
+          break;
+        }
+      }
+    }
+    struct pollfd fds[3] = {{pipes[0][1], POLLOUT, 0},
+                            {pipes[1][0], POLLIN, 0},
+                            {pipes[2][0], POLLIN, 0}};
+    if (poll(fds, 3, 25) < 0) {
+      if (errno == EINTR)
+        continue;
+      status = FS_IO;
+      break;
+    }
+    if (fds[0].revents && pipes[0][1] >= 0 && sent < used) {
+      ssize_t n = write(pipes[0][1], input + sent, used - sent);
+      if (n > 0)
+        sent += (size_t)n;
+      else if (n < 0 && errno != EAGAIN && errno != EINTR) {
+        status = FS_IO;
+      }
+    }
+    for (unsigned i = 1; i < 3 && status == FS_OK; i++) {
+      if (!fds[i].revents || pipes[i][0] < 0)
+        continue;
+      ssize_t n = read(pipes[i][0], output, sizeof(output));
+      if (!n) {
+        close(pipes[i][0]);
+        pipes[i][0] = -1;
+      } else if (n < 0) {
+        if (errno != EAGAIN && errno != EINTR)
+          status = FS_IO;
+      } else if (i == 1) {
+        if ((size_t)n > q->request.max_output_bytes - b->used)
+          status = FS_LIMIT;
+        else {
+          memcpy(b->wire + b->used, output, (size_t)n);
+          b->used += (size_t)n;
+        }
+      } else {
+        cmeta_mutex_lock(&q->mutex);
+        size_t copy = sizeof(q->info.diagnostic) - 1;
+        if (diagnostic < copy) {
+          copy -= diagnostic;
+          if (copy > (size_t)n)
+            copy = (size_t)n;
+          memcpy(q->info.diagnostic + diagnostic, output, copy);
+          q->info.diagnostic[diagnostic + copy] = 0;
+        }
+        cmeta_mutex_unlock(&q->mutex);
+        diagnostic += (size_t)n;
+        if (diagnostic > 65536)
+          status = FS_LIMIT;
+      }
+    }
+  }
+  fsx_free(input);
+  if (status != FS_OK)
+    kill(-child, SIGKILL);
+  int result = 0;
+  for (;;) {
+    pid_t waited = waitpid(child, &result, WNOHANG);
+    if (waited == child)
+      break;
+    if (waited < 0) {
+      if (errno == EINTR)
+        continue;
+      status = FS_IO;
+      break;
+    }
+    FsStatus stopped = fsx_content_stop(q);
+    if (stopped != FS_OK) {
+      if (status == FS_OK)
+        status = stopped;
+      kill(-child, SIGKILL);
+    }
+    cmeta_sleep_ms(1);
+  }
+  if (!masked) {
+    if (!sigismember(&previous, SIGPIPE)) {
+      sigset_t pending;
+      sigpending(&pending);
+      if (sigismember(&pending, SIGPIPE)) {
+        struct timespec zero = {0};
+        sigtimedwait(&blocked, NULL, &zero);
+      }
+    }
+    pthread_sigmask(SIG_SETMASK, &previous, NULL);
+  }
+  cmeta_mutex_lock(&q->mutex);
+  q->info.running_processes = 0;
+  q->info.tool_exit_code = WIFEXITED(result) ? WEXITSTATUS(result) : -1;
+  cmeta_mutex_unlock(&q->mutex);
+  if (status == FS_OK && (!WIFEXITED(result) || WEXITSTATUS(result) > 1 ||
+                          diagnostic || (WEXITSTATUS(result) == 1 && b->used) ||
+                          (WEXITSTATUS(result) == 0 && !b->used)))
+    status = FS_IO;
+cleanup:
+  for (unsigned i = 0; i < 3; i++)
+    for (unsigned j = 0; j < 2; j++)
+      if (pipes[i][j] >= 0)
+        close(pipes[i][j]);
+  return status;
+}
+FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
+                          FsContentBatch *b) {
+  if (entry->flags & (FS_ENTRY_DIRECTORY | FS_ENTRY_LINK))
+    return FS_UNSUPPORTED;
+  int fd = -1;
+  struct stat before, after, association;
+  FsStatus status = open_file(q, entry, &fd, &before);
+  if (status != FS_OK)
+    return status;
+  b->info.read_start_ns = cmeta_hrtime();
+  status =
+      before.st_size < 0 || (uint64_t)before.st_size > q->request.max_file_bytes
+          ? FS_LIMIT
+          : execute(q, fd, b);
+  if (status == FS_OK && (fstat(fd, &after) || !same_version(&before, &after)))
+    status = FS_STALE;
+  close(fd);
+  if (status == FS_OK) {
+    status = open_file(q, entry, &fd, &association);
+    if (status == FS_OK) {
+      if (!same_version(&before, &association))
+        status = FS_STALE;
+      close(fd);
+    }
+  }
+  b->info.read_end_ns = cmeta_hrtime();
+  return status;
+}
+#else
+FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
+                          FsContentBatch *b) {
+  (void)q;
+  (void)entry;
+  (void)b;
+  return FS_UNSUPPORTED;
+}
+#endif

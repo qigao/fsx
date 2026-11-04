@@ -16,6 +16,8 @@ milestones remain on the roadmap.
   bounded owned NTFS batches, and page-limited SQLite memory work sets.
 - Asynchronous queries on SaltsCore's bounded thread pool, retained results,
   cancellation, deadlines, STOPPING/close and allocation/admission limits.
+- Linux asynchronous UTF-8 content jobs over a retained result window, using
+  an explicit native ugrep executable, per-file batches and consumer backpressure.
 - Unicode 17 full-fold substring search, scalar-aware glob matching, scoped
   `case:`/`path:`, AND/OR/NOT/groups, `file:`/`folder:`, extension sets, checked
   size filters and fixed-timezone modification-day filters.
@@ -48,8 +50,8 @@ status declarations are in [types.h](include/fsx/types.h).
 
 The [cross-platform and content-search proposal](docs/cross-platform-content-search.md)
 defines Linux inotify/macOS FSEvents and explicit bfs/ugrep content jobs. These
-milestones include the implemented Linux inotify backend; macOS FSEvents and
-content search remain planned.
+milestones include Linux inotify and the initial Linux content runtime. macOS
+FSEvents, Windows content processes and bfs discovery remain planned.
 
 ## Build policy
 
@@ -247,10 +249,29 @@ before allocating. Engine limits bound indexed aliases and depth.
 
 ## Validation
 
+The Linux content API and CLI use the actual ugrep stdin/JSON protocol. Enable
+their formal tests with `FSX_BUILD_CONTENT_TESTS=ON` and an absolute
+`FSX_CONTENT_TEST_UGREP` executable path; Linux CI builds the pinned optional
+search-tools manifest feature and supplies that path. Windows content submission
+explicitly returns UNSUPPORTED. There is no automatic tool discovery or fallback.
+
+```sh
+fsx content index.db /absolute/path/to/ugrep --literal 'sqlite3_open' -- 'file: ext:c'
+```
+
+The CLI emits match records and a final `live_read` summary; repeated matches on
+one line remain separate records. It searches the metadata-selected candidates
+and refuses a candidate set larger than the configured query window. The API
+accepts exactly a retained result window, not an implicit all-index iterator.
+Missing/skipped/changed files make coverage incomplete (CLI exit 3); tool errors,
+resource limits or timeout are failures (exit 1). The database is not modified.
+See [content ownership and limits](docs/runtime-contract.md#linux-content-jobs).
+
 Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native tools,
 CLI and formal tests. The current suite has 104 Windows / 102 Linux engine cases, 25 dedicated raw
 reader cases, two controlled-replay/measurement cases and 10 CLI cases, run
-through four ordinary CTest entries.
+through four ordinary CTest entries. Enabled Linux content profiles add two
+CTest entries with 15 native API cases and four CLI cases using real ugrep.
 Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.
