@@ -14,13 +14,21 @@ static FsStatus native_status(DWORD error) {
     return FS_NOMEM;
   return FS_IO;
 }
-static FsStatus file_info(HANDLE file, BY_HANDLE_FILE_INFORMATION *id,
+static FsStatus report(FsContentQuery *q, const char *phase, DWORD error) {
+  cmeta_mutex_lock(&q->mutex);
+  snprintf(q->info.diagnostic, sizeof(q->info.diagnostic), "Windows %s: %lu",
+           phase, (unsigned long)error);
+  cmeta_mutex_unlock(&q->mutex);
+  return native_status(error);
+}
+static FsStatus file_info(FsContentQuery *q, HANDLE file,
+                          BY_HANDLE_FILE_INFORMATION *id,
                           FILE_BASIC_INFO *basic, FILE_ID_INFO *volume) {
   if (!GetFileInformationByHandle(file, id) ||
       !GetFileInformationByHandleEx(file, FileBasicInfo, basic,
                                     sizeof(*basic)) ||
       !GetFileInformationByHandleEx(file, FileIdInfo, volume, sizeof(*volume)))
-    return native_status(GetLastError());
+    return report(q, "file information", GetLastError());
   if (id->dwFileAttributes &
       (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_OFFLINE |
        FILE_ATTRIBUTE_RECALL_ON_OPEN | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS))
@@ -32,7 +40,7 @@ static FsStatus open_file(FsContentQuery *q, const FsEntry *entry, HANDLE *out,
                           FILE_BASIC_INFO *basic, FILE_ID_INFO *volume) {
   wchar_t *path = fsx_wide(q->engine, entry->path);
   if (!path)
-    return native_status(GetLastError());
+    return report(q, "path conversion", GetLastError());
   wchar_t *component;
   if (!wcsncmp(path, L"\\\\?\\UNC\\", 8)) {
     component = wcschr(path + 8, L'\\');
@@ -58,7 +66,7 @@ static FsStatus open_file(FsContentQuery *q, const FsEntry *entry, HANDLE *out,
   while (status == FS_OK) {
     BY_HANDLE_FILE_INFORMATION directory;
     if (!GetFileInformationByHandle(parent, &directory)) {
-      status = native_status(GetLastError());
+      status = report(q, "directory information", GetLastError());
       break;
     }
     if (!(directory.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
@@ -95,14 +103,14 @@ static FsStatus open_file(FsContentQuery *q, const FsEntry *entry, HANDLE *out,
     CloseHandle(parent);
     parent = next;
     if (rc < 0) {
-      status = native_status(RtlNtStatusToDosError(rc));
+      status = report(q, "relative open", RtlNtStatusToDosError(rc));
       break;
     }
     if (end) {
       component = end + 1;
       continue;
     }
-    status = file_info(parent, id, basic, volume);
+    status = file_info(q, parent, id, basic, volume);
     if (status == FS_OK) {
       uint64_t expected = 0;
       bool found = false;
@@ -390,6 +398,7 @@ static FsStatus execute(FsContentQuery *q, HANDLE file, FsContentBatch *b) {
         }
       }
     }
+    bool progressed = false;
     HANDLE events[3];
     DWORD count = 0;
     for (unsigned i = 0; i < 3 && status == FS_OK; i++) {
@@ -424,6 +433,7 @@ static FsStatus execute(FsContentQuery *q, HANDLE file, FsContentBatch *b) {
         break;
       }
       p->pending = false;
+      progressed = true;
       if (!i)
         sent += transferred;
       else if (!transferred) {
@@ -432,7 +442,7 @@ static FsStatus execute(FsContentQuery *q, HANDLE file, FsContentBatch *b) {
       } else
         status = output_bytes(q, b, i, p->bytes, transferred, &diagnostic);
     }
-    if (status == FS_OK && count &&
+    if (status == FS_OK && count && !progressed &&
         WaitForMultipleObjects(count, events, FALSE, 25) == WAIT_FAILED)
       status = FS_IO;
   }
@@ -511,7 +521,7 @@ FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
   uint64_t size = ((uint64_t)before.nFileSizeHigh << 32) | before.nFileSizeLow;
   status = size > q->request.max_file_bytes ? FS_LIMIT : execute(q, file, b);
   if (status == FS_OK) {
-    status = file_info(file, &after, &after_basic, &after_volume);
+    status = file_info(q, file, &after, &after_basic, &after_volume);
     if (status == FS_OK && !same_file(&before, &before_basic, &before_volume,
                                       &after, &after_basic, &after_volume))
       status = FS_STALE;
