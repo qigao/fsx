@@ -190,7 +190,10 @@ SIGPIPE disposition or worker mask; Linux retains its worker-local mask/drain.
 There is no alternate spawn, signal or scan backend. The native macOS 15 ARM64
 profile uses runner Apple Clang and the fixed released Core/CMeta SDKs, whose
 Mach-O minimum deployment versions are 15.0. The versioned presets match that
-baseline. Intel macOS and older OS releases are not qualified here.
+baseline. Intel macOS now has separate macos-x64 presets and a macos-15-intel CI
+job, using the same published packages and their x64 SDKs. Intel qualification is
+independent from ARM64; both are pending native results. Older OS releases remain
+unqualified.
 The APFS fixture explicitly verifies rejection of an ill-formed UTF-8 filename
 at creation; Linux exercises discovered invalid-name skips. File content remains
 UTF-8/NUL validated on both. macOS FSEvents uses the bounded native bridge
@@ -390,7 +393,7 @@ Filesystem root identity checks do not turn enumeration into an OS transaction.
 
 ### macOS FSEvents
 
-The macOS 15 ARM64 backend schedules one live-only stream on a private serial
+The macOS 15 backend schedules one live-only stream on a private serial
 native dispatch queue with WatchRoot, FileEvents and NoDefer. It starts before
 open returns; every reopened session begins DIRTY and requires a complete scan.
 No event ID or history checkpoint is persisted. The run-loop scheduling API is

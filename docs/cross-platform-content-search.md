@@ -93,7 +93,8 @@ flowchart TD
 
 macOS 时间字段和 Darwin 进程适配复用 POSIX 内容管线；正式 ARM64 preset/CI 使用
 runner 自带 Clang 和已发布的对应 Core/CMeta SDK，最低部署版本 15 与 SDK Mach-O
-一致。FSEvents 后端正在独立验收；Intel 架构和更旧系统仍需单独验收。
+一致。FSEvents 后端正在独立验收；Intel 有独立 x64 preset/CI，同样待原生结果，
+不代替 ARM64 资格。更旧系统仍需单独验收。
 挂载边界必须显式配置并进入源配置指纹；bfs 发现首版固定不跨设备，
 不悄悄改变现有元数据扫描的遍历策略。
 

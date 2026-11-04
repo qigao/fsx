@@ -124,6 +124,31 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "macos-x64-debug",
+      "displayName": "macOS x64 Debug",
+      "inherits": [
+        "macos-x64-base",
+        "vcpkg-cache",
+        "sdk-roots"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "macos-x64-release",
+      "displayName": "macOS x64 Release",
+      "inherits": [
+        "macos-x64-base",
+        "vcpkg-cache",
+        "sdk-roots"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
@@ -170,6 +195,16 @@
     {
       "name": "macos-release",
       "configurePreset": "macos-release",
+      "jobs": 2
+    },
+    {
+      "name": "macos-x64-debug",
+      "configurePreset": "macos-x64-debug",
+      "jobs": 2
+    },
+    {
+      "name": "macos-x64-release",
+      "configurePreset": "macos-x64-release",
       "jobs": 2
     }
   ],
@@ -251,6 +286,16 @@
     {
       "name": "macos-debug",
       "configurePreset": "macos-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "macos-x64-debug",
+      "configurePreset": "macos-x64-debug",
       "output": {
         "outputOnFailure": true
       },

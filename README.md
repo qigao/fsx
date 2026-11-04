@@ -116,11 +116,13 @@ ctest --preset windows-debug
 `macos-debug` builds native ARM64 source-owned tests with the runner's Clang and
 the published macOS Core/CMeta SDKs; `macos-release` builds the library/CLI.
 The macOS 15 ARM64 CI profile targets scans, queries, indexing, real ugrep/bfs
-content jobs and native FSEvents watching. Intel macOS is not
-qualified by this profile. The selected SDK dylibs require macOS 15, matching
+content jobs and native FSEvents watching. `macos-x64-debug` and
+`macos-x64-release` select the published Intel SDKs and x64-osx triplet; a separate
+macos-15-intel CI job runs the same native suite. The selected SDK dylibs require macOS 15, matching
 the explicit deployment baseline in the presets.
-The FSEvents follow-up is pending native macOS CI; Linux/Windows results do not
-qualify that backend.
+The FSEvents follow-up is pending native macOS CI. ARM64 jobs have been cancelled
+before startup because GitHub reports hosted runner capacity constraints. Intel
+qualification is independent; it does not substitute for an ARM64 result.
 
 `windows-release` builds the library and CLI without tests. Linux exposes
 `linux-debug`, `linux-release`, `linux-asan-ubsan` and `linux-tsan`; Debug/sanitizer

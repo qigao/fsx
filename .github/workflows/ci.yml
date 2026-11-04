@@ -32,6 +32,7 @@ jobs:
           - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-asan-ubsan, triplet: x64-linux, content: 'ON', search_tools: 'ON', ugrep: 'build/linux-asan-ubsan/vcpkg_installed/x64-linux/tools/ugrep/ugrep'}
           - {runner: windows-2025, rid: windows-x64, preset: windows-debug, triplet: qigao-x64-windows-llvm-mingw, content: 'ON', search_tools: 'OFF', ugrep: 'build/windows-tool-candidate/build-search-tools/installed/qigao-x64-windows-llvm-mingw-static/tools/ugrep/ugrep.exe'}
           - {runner: macos-15, rid: macos-arm64, preset: macos-debug, triplet: arm64-osx, content: 'ON', search_tools: 'ON', ugrep: 'build/macos-debug/vcpkg_installed/arm64-osx/tools/ugrep/ugrep'}
+          - {runner: macos-15-intel, rid: macos-x64, preset: macos-x64-debug, triplet: x64-osx, content: 'ON', search_tools: 'ON', ugrep: 'build/macos-x64-debug/vcpkg_installed/x64-osx/tools/ugrep/ugrep'}
     env: &native_environment
       VCPKG_BINARY_CACHE: ${{ github.workspace }}/build/vcpkg-binary-cache
       VCPKG_DOWNLOADS: ${{ github.workspace }}/build/vcpkg-downloads
