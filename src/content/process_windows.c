@@ -97,8 +97,7 @@ static FsStatus open_file(FsContentQuery *q, const FsEntry *entry, HANDLE *out,
         &attributes, &io, NULL, 0,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
         FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT |
-            FILE_OPEN_NO_RECALL |
-            (end ? FILE_DIRECTORY_FILE : FILE_NON_DIRECTORY_FILE),
+            (end ? FILE_DIRECTORY_FILE : FILE_NON_DIRECTORY_FILE | FILE_OPEN_NO_RECALL),
         NULL, 0);
     CloseHandle(parent);
     parent = next;
