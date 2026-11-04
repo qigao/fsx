@@ -1,17 +1,17 @@
 #define _GNU_SOURCE
 #include "content.h"
 #ifdef __linux__
+#include "child_linux.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
-#include <spawn.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
+
 #include <unistd.h>
 
-static FsStatus os_status(int error) {
+FsStatus fsx_content_os_status(int error) {
   return error == EACCES || error == EPERM                       ? FS_DENIED
          : error == ENOENT || error == ENOTDIR || error == ELOOP ? FS_STALE
          : error == ENOMEM                                       ? FS_NOMEM
@@ -23,12 +23,13 @@ static FsStatus open_file(FsContentQuery *q, const FsEntry *entry, int *out,
   char *path = fsx_copy(q->engine, entry->path, strlen(entry->path));
   if (!path)
     return FS_NOMEM;
-  int parent = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  int parent = q->root ? fcntl(q->root_fd, F_DUPFD_CLOEXEC, 3)
+                       : open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
   if (parent < 0) {
     fsx_free(path);
-    return os_status(errno);
+    return fsx_content_os_status(errno);
   }
-  char *p = path + 1;
+  char *p = path + (q->root && strcmp(q->root, "/") ? strlen(q->root) + 1 : 1);
   FsStatus status = FS_OK;
   for (;;) {
     char *slash = strchr(p, '/');
@@ -40,23 +41,35 @@ static FsStatus open_file(FsContentQuery *q, const FsEntry *entry, int *out,
     int error = errno;
     close(parent);
     if (next < 0) {
-      status = os_status(error);
+      status = fsx_content_os_status(error);
       break;
     }
     parent = next;
     if (!slash) {
       if (fstat(parent, info))
-        status = os_status(errno);
+        status = fsx_content_os_status(errno);
       else if (!S_ISREG(info->st_mode))
         status = FS_UNSUPPORTED;
-      else if ((uint64_t)info->st_ino != entry->key.file_id_lo ||
-               (uint64_t)info->st_dev != entry->key.file_id_hi)
+      else if (q->root ? (uint64_t)info->st_dev != q->root_device
+                       : ((uint64_t)info->st_ino != entry->key.file_id_lo ||
+                          (uint64_t)info->st_dev != entry->key.file_id_hi))
         status = FS_STALE;
       if (status == FS_OK)
         *out = parent;
       else
         close(parent);
       break;
+    }
+    if (q->root) {
+      struct stat directory;
+      if (fstat(parent, &directory))
+        status = fsx_content_os_status(errno);
+      else if ((uint64_t)directory.st_dev != q->root_device)
+        status = FS_UNSUPPORTED;
+      if (status != FS_OK) {
+        close(parent);
+        break;
+      }
     }
     p = slash + 1;
   }
@@ -106,43 +119,6 @@ static bool text_bytes(TextState *s, const unsigned char *p, size_t n) {
   return true;
 }
 static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
-  int pipes[3][2] = {{-1, -1}, {-1, -1}, {-1, -1}};
-  FsStatus status = FS_IO;
-  for (unsigned i = 0; i < 3; i++)
-    if (pipe2(pipes[i], O_CLOEXEC))
-      goto cleanup;
-  for (unsigned i = 0; i < 3; i++)
-    for (unsigned j = 0; j < 2; j++)
-      if (pipes[i][j] < 3) {
-        int fd = fcntl(pipes[i][j], F_DUPFD_CLOEXEC, 3);
-        if (fd < 0)
-          goto cleanup;
-        close(pipes[i][j]);
-        pipes[i][j] = fd;
-      }
-  posix_spawn_file_actions_t actions;
-  posix_spawnattr_t attr;
-  if (posix_spawn_file_actions_init(&actions))
-    goto cleanup;
-  if (posix_spawnattr_init(&attr)) {
-    posix_spawn_file_actions_destroy(&actions);
-    goto cleanup;
-  }
-  int rc = 0;
-  for (unsigned i = 0; i < 3; i++)
-    rc |=
-        posix_spawn_file_actions_adddup2(&actions, pipes[i][i ? 1 : 0], (int)i);
-  rc |= posix_spawn_file_actions_addclosefrom_np(&actions, 3);
-  sigset_t empty, defaults;
-  sigemptyset(&empty);
-  sigemptyset(&defaults);
-  sigaddset(&defaults, SIGPIPE);
-  rc |= posix_spawnattr_setsigmask(&attr, &empty);
-  rc |= posix_spawnattr_setsigdefault(&attr, &defaults);
-  rc |= posix_spawnattr_setpgroup(&attr, 0);
-  rc |= posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP |
-                                            POSIX_SPAWN_SETSIGMASK |
-                                            POSIX_SPAWN_SETSIGDEF);
   char *argv[] = {q->tool,
                   "-J1",
                   q->request.mode == FS_CONTENT_LITERAL ? "-F" : "-P",
@@ -155,32 +131,17 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
                   "--",
                   "-",
                   NULL};
-  char *env[] = {"LANG=C", "LC_ALL=C", NULL};
-  pid_t child = 0;
-  if (!rc)
-    rc = posix_spawn(&child, q->tool, &actions, &attr, argv, env);
-  posix_spawnattr_destroy(&attr);
-  posix_spawn_file_actions_destroy(&actions);
-  if (rc) {
-    status = rc == ENOMEM ? FS_NOMEM : FS_IO;
-    goto cleanup;
-  }
-  cmeta_mutex_lock(&q->mutex);
-  q->info.processes_started++;
-  q->info.running_processes = 1;
-  cmeta_mutex_unlock(&q->mutex);
-  close(pipes[0][0]);
-  pipes[0][0] = -1;
-  close(pipes[1][1]);
-  pipes[1][1] = -1;
-  close(pipes[2][1]);
-  pipes[2][1] = -1;
+  FsChild child;
+  FsStatus status = fsx_child_spawn(q, q->tool, argv, false, &child);
+  if (status != FS_OK)
+    return status;
+  int rc = 0;
   sigset_t blocked, previous;
   sigemptyset(&blocked);
   sigaddset(&blocked, SIGPIPE);
   int masked = pthread_sigmask(SIG_BLOCK, &blocked, &previous);
   for (unsigned i = 0; i < 3; i++) {
-    int fd = pipes[i][i ? 0 : 1];
+    int fd = i == 0 ? child.input : i == 1 ? child.output : child.error;
     if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0)
       rc = errno;
   }
@@ -192,16 +153,16 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
   TextState utf8 = {0};
   status = masked || rc ? FS_IO : !input ? FS_NOMEM : FS_OK;
   while (status == FS_OK &&
-         (pipes[0][1] >= 0 || pipes[1][0] >= 0 || pipes[2][0] >= 0)) {
+         (child.input >= 0 || child.output >= 0 || child.error >= 0)) {
     status = fsx_content_stop(q);
     if (status != FS_OK)
       break;
-    if (pipes[0][1] >= 0 && sent == used) {
+    if (child.input >= 0 && sent == used) {
       ssize_t n = read(file, input, 65536);
       if (n < 0) {
         if (errno == EINTR)
           continue;
-        status = os_status(errno);
+        status = fsx_content_os_status(errno);
         break;
       }
       if (!n) {
@@ -209,8 +170,8 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
           status = FS_UNSUPPORTED;
           break;
         }
-        close(pipes[0][1]);
-        pipes[0][1] = -1;
+        close(child.input);
+        child.input = -1;
       } else {
         read_bytes += (uint64_t)n;
         if (read_bytes > q->request.max_file_bytes) {
@@ -228,17 +189,17 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
         }
       }
     }
-    struct pollfd fds[3] = {{pipes[0][1], POLLOUT, 0},
-                            {pipes[1][0], POLLIN, 0},
-                            {pipes[2][0], POLLIN, 0}};
+    struct pollfd fds[3] = {{child.input, POLLOUT, 0},
+                            {child.output, POLLIN, 0},
+                            {child.error, POLLIN, 0}};
     if (poll(fds, 3, 25) < 0) {
       if (errno == EINTR)
         continue;
       status = FS_IO;
       break;
     }
-    if (fds[0].revents && pipes[0][1] >= 0 && sent < used) {
-      ssize_t n = write(pipes[0][1], input + sent, used - sent);
+    if (fds[0].revents && child.input >= 0 && sent < used) {
+      ssize_t n = write(child.input, input + sent, used - sent);
       if (n > 0)
         sent += (size_t)n;
       else if (n < 0 && errno != EAGAIN && errno != EINTR) {
@@ -246,12 +207,13 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
       }
     }
     for (unsigned i = 1; i < 3 && status == FS_OK; i++) {
-      if (!fds[i].revents || pipes[i][0] < 0)
+      int *stream = i == 1 ? &child.output : &child.error;
+      if (!fds[i].revents || *stream < 0)
         continue;
-      ssize_t n = read(pipes[i][0], output, sizeof(output));
+      ssize_t n = read(*stream, output, sizeof(output));
       if (!n) {
-        close(pipes[i][0]);
-        pipes[i][0] = -1;
+        close(*stream);
+        *stream = -1;
       } else if (n < 0) {
         if (errno != EAGAIN && errno != EINTR)
           status = FS_IO;
@@ -280,27 +242,8 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
     }
   }
   fsx_free(input);
-  if (status != FS_OK)
-    kill(-child, SIGKILL);
-  int result = 0;
-  for (;;) {
-    pid_t waited = waitpid(child, &result, WNOHANG);
-    if (waited == child)
-      break;
-    if (waited < 0) {
-      if (errno == EINTR)
-        continue;
-      status = FS_IO;
-      break;
-    }
-    FsStatus stopped = fsx_content_stop(q);
-    if (stopped != FS_OK) {
-      if (status == FS_OK)
-        status = stopped;
-      kill(-child, SIGKILL);
-    }
-    cmeta_sleep_ms(1);
-  }
+  int exit_code;
+  status = fsx_child_finish(q, &child, status, &exit_code);
   if (!masked) {
     if (!sigismember(&previous, SIGPIPE)) {
       sigset_t pending;
@@ -312,19 +255,10 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
     }
     pthread_sigmask(SIG_SETMASK, &previous, NULL);
   }
-  cmeta_mutex_lock(&q->mutex);
-  q->info.running_processes = 0;
-  q->info.tool_exit_code = WIFEXITED(result) ? WEXITSTATUS(result) : -1;
-  cmeta_mutex_unlock(&q->mutex);
-  if (status == FS_OK && (!WIFEXITED(result) || WEXITSTATUS(result) > 1 ||
-                          diagnostic || (WEXITSTATUS(result) == 1 && b->used) ||
-                          (WEXITSTATUS(result) == 0 && !b->used)))
+  if (status == FS_OK &&
+      (exit_code < 0 || exit_code > 1 || diagnostic ||
+       (exit_code == 1 && b->used) || (exit_code == 0 && !b->used)))
     status = FS_IO;
-cleanup:
-  for (unsigned i = 0; i < 3; i++)
-    for (unsigned j = 0; j < 2; j++)
-      if (pipes[i][j] >= 0)
-        close(pipes[i][j]);
   return status;
 }
 FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
@@ -336,6 +270,10 @@ FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
   FsStatus status = open_file(q, entry, &fd, &before);
   if (status != FS_OK)
     return status;
+  if (q->root) {
+    b->info.key.file_id_lo = (uint64_t)before.st_ino;
+    b->info.key.file_id_hi = (uint64_t)before.st_dev;
+  }
   b->info.read_start_ns = cmeta_hrtime();
   status =
       before.st_size < 0 || (uint64_t)before.st_size > q->request.max_file_bytes
@@ -352,6 +290,8 @@ FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
       close(fd);
     }
   }
+  if (status == FS_OK && q->root)
+    status = fsx_content_check_root(q);
   b->info.read_end_ns = cmeta_hrtime();
   return status;
 }

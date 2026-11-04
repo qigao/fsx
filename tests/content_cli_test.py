@@ -6,8 +6,8 @@ import sys
 import tempfile
 import unittest
 
-FSX, UGREP = sys.argv[1:3]
-del sys.argv[1:3]
+FSX, UGREP, BFS = sys.argv[1:4]
+del sys.argv[1:4]
 
 
 class ContentCli(unittest.TestCase):
@@ -92,6 +92,49 @@ class ContentCli(unittest.TestCase):
             result = self.run_fsx('content', self.db, *args)
             self.assertEqual(result.returncode, 2, result.stderr)
             self.assertFalse(self.db.exists())
+
+    def test_live_search_needs_no_database_and_preserves_path_bytes(self):
+        name = '-e 猫\n.txt'
+        (self.root / name).write_text('needle needle\n', encoding='utf-8')
+        (self.root / '.hidden').write_text('needle\n')
+        (self.root / 'link').symlink_to(self.root, target_is_directory=True)
+        result = self.run_fsx('content-live', BFS, UGREP, '--literal', 'needle',
+                              '--', self.root)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(len(rows), 4)
+        self.assertIn(str(self.root / name), [r['path'] for r in rows[:-1]])
+        self.assertTrue(all(r['metadata_epoch'] == 0 for r in rows[:-1]))
+        self.assertEqual(rows[-1]['source'], 'bfs_live')
+        self.assertTrue(rows[-1]['complete'])
+        self.assertTrue(rows[-1]['candidates_known'])
+        self.assertEqual(rows[-1]['candidates'], 2)
+        self.assertFalse(self.db.exists())
+
+    def test_live_missing_bfs_and_invalid_root_fail_explicitly(self):
+        result = self.run_fsx('content-live', '/fsx-missing-bfs', UGREP,
+                              '--literal', 'x', '--', self.root)
+        self.assertEqual(result.returncode, 1)
+        summary = json.loads(result.stdout)
+        self.assertFalse(summary['complete'])
+        self.assertFalse(summary['candidates_known'])
+        result = self.run_fsx('content-live', BFS, UGREP, '--literal', 'x',
+                              '--', self.root / 'missing')
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(json.loads(result.stdout)['complete'])
+
+    def test_live_binary_and_empty_directory_have_distinct_completeness(self):
+        result = self.run_fsx('content-live', BFS, UGREP, '--literal', 'x',
+                              '--', self.root)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads(result.stdout)['complete'])
+        (self.root / 'binary').write_bytes(b'needle\0')
+        result = self.run_fsx('content-live', BFS, UGREP, '--literal', 'needle',
+                              '--', self.root)
+        self.assertEqual(result.returncode, 3, result.stderr)
+        summary = json.loads(result.stdout)
+        self.assertFalse(summary['complete'])
+        self.assertEqual(summary['skipped'], 1)
 
 
 if __name__ == '__main__':

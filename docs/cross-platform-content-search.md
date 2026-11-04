@@ -9,7 +9,8 @@
 候选可显式选择保留结果窗口，或提交查询表达式流式扫描固定快照中的完整范围，
 后者不受 UI 窗口限制、不预分配全量候选、不在背压期间持有 SQLite 读事务。
 一个 engine 同时执行一个任务/ugrep 进程，一个未释放文件批次形成背压。
-双进程并行和 BFS_LIVE 仍是后续目标；Windows/macOS 内容进程适配尚未实现。
+Linux BFS_LIVE 已实现，额外持有一个 bfs 子进程；同时执行两个 ugrep 仍是后续目标。
+Windows/macOS 内容进程适配尚未实现。
 
 ## 1. 选定方案与范围
 
@@ -72,7 +73,8 @@ flowchart TD
 复用 Core 的线程、条件变量和有界任务设施；CMeta 声明新配置/状态，
 不承担进程或文件所有权。内容任务使用独立有界执行队列，避免慢文件和工具启动
 占满名字查询池或单写入者。首版每个 engine 至多接收一个活动内容任务，
-每任务至多两个 ugrep 子进程；后续并行度由实测决定。
+当前每任务至多一个 ugrep，加上显式 BFS_LIVE 的一个 bfs；两个 ugrep 的目标并行度
+仍需后续实现与实测。
 
 ## 4. 跨平台扫描与监听
 
@@ -144,17 +146,24 @@ FSEvents 有历史事件能力，但首版不持久化一个看似等价于 USN 
 请求记录元数据 revision 和源覆盖范围；元数据评估的取消/截止时间与内容任务一致。
 索引较旧时可漏掉新文件，结果必须携带该覆盖状态。
 
-`BFS_LIVE` 不要求先写索引，候选来自 bfs 的 NUL 路径流；仅在 Linux/macOS
-显式启用。固定语义相当于以下 argv（示例为可读展示，执行时不经过 shell）：
+`BFS_LIVE` 不要求先写索引，候选来自 bfs 的 NUL 路径流；当前仅 Linux 实现，macOS
+仍待平台移植。固定 argv 如下（示例为可读展示，执行时不经过 shell）：
 
 ```text
-bfs -P -f ABSOLUTE_ROOT -xdev -type f -print0
+bfs -j1 -P -f ABSOLUTE_ROOT -xdev -type f -print0
 ```
 
 包括隐藏普通文件；不使用 `.gitignore`，不跟随符号链接、不跨设备。
 FSX 按 NUL 增量切分，保留原路径字节并对当前 UTF-8 API 做覆盖统计。
 工具非零退出、遍历权限错误或未闭合的路径帧均使发现范围不完整。
 发现到的路径只是候选，不能直接提供对象身份；FSX 从已打开的根逐段打开核对。[S4]
+
+实际入口为 `fsx_content_live_request(root, bfs, ugrep, pattern)` 和无需数据库参数的
+`fsx content-live BFS UGREP --literal|--regex PATTERN -- ROOT`。根要求绝对 UTF-8 路径，
+无空段、`.`、`..` 或末尾 `/`（根 `/` 除外）。路径缓冲 64 KiB、读取块 8 KiB，
+默认 stdout 总量 64 MiB、候选数 1,000,000；限制可显式调低，达到限制报告 LIMIT，
+不以成功状态截断。结果自行保留路径，记录打开对象的设备/inode；索引 epoch、
+entry key/source id 为 0，不虚构索引版本。详细预算、错误和进程生命周期见运行时契约。
 
 选择 `INDEX_SNAPSHOT` 时不自动为缺失条目再跑 bfs；选择 `BFS_LIVE` 时不因 bfs
 失败改用 native 遍历。未来若增加 Windows 实时发现，应为独立、显式能力。

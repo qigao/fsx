@@ -1,4 +1,7 @@
 #include "content.h"
+#ifdef __linux__
+#include "child_linux.h"
+#endif
 
 FsContentRequest fsx_content_request(const FsResult *candidates,
                                      const char *tool, const char *pattern) {
@@ -14,13 +17,25 @@ FsContentRequest fsx_content_request(const FsResult *candidates,
                         UINT64_MAX,
                         NULL,
                         0,
-                        0};
+                        0,
+                        NULL,
+                        NULL,
+                        1000000,
+                        64 * 1024 * 1024};
   return r;
 }
 FsContentRequest fsx_content_scope_request(const char *scope, const char *tool,
                                            const char *pattern) {
   FsContentRequest r = fsx_content_request(NULL, tool, pattern);
   r.scope = scope;
+  return r;
+}
+FsContentRequest fsx_content_live_request(const char *root, const char *bfs,
+                                          const char *tool,
+                                          const char *pattern) {
+  FsContentRequest r = fsx_content_request(NULL, tool, pattern);
+  r.root = root;
+  r.bfs_executable = bfs;
   return r;
 }
 FsStatus fsx_content_stop(FsContentQuery *q) {
@@ -39,6 +54,8 @@ static void unref(FsContentQuery *q) {
   fsx_free(q->scope_query.text);
   fsx_free(q->tool);
   fsx_free(q->pattern);
+  fsx_free(q->root);
+  fsx_free(q->bfs);
   cmeta_cond_destroy(&q->changed);
   cmeta_mutex_destroy(&q->mutex);
   fsx_free(q);
@@ -47,6 +64,7 @@ static void free_batch(FsContentBatch *b) {
   FsContentQuery *q = b->query;
   fsx_free(b->wire);
   fsx_free(b->records);
+  fsx_free(b->owned_path);
   fsx_free(b);
   cmeta_mutex_lock(&q->mutex);
   q->outstanding = false;
@@ -64,20 +82,23 @@ static FsContentBatch *new_batch(FsContentQuery *q, const FsEntry *entry) {
   b->wire = fsx_alloc(e, q->request.max_output_bytes + 1);
   b->records =
       fsx_alloc(e, (size_t)q->request.max_records * sizeof(*b->records));
-  if (!b->wire || !b->records) {
+  if (q->root)
+    b->owned_path = fsx_copy(e, entry->path, strlen(entry->path));
+  if (!b->wire || !b->records || (q->root && !b->owned_path)) {
     fsx_free(b->wire);
     fsx_free(b->records);
+    fsx_free(b->owned_path);
     fsx_free(b);
     return NULL;
   }
   atomic_fetch_add(&q->refs, 1);
   b->info.key = entry->key;
   b->info.entry_key = entry->entry_key;
-  b->info.path = entry->path;
+  b->info.path = b->owned_path ? b->owned_path : entry->path;
   b->info.metadata_epoch = q->info.metadata_epoch;
   return b;
 }
-static FsStatus visit(void *context, const FsEntry *entry) {
+FsStatus fsx_content_visit(void *context, const FsEntry *entry) {
   FsContentQuery *q = context;
   FsStatus status;
   cmeta_mutex_lock(&q->mutex);
@@ -87,10 +108,20 @@ static FsStatus visit(void *context, const FsEntry *entry) {
   cmeta_mutex_unlock(&q->mutex);
   if (status != FS_OK)
     return status;
-  if (q->request.scope) {
+  if (q->request.scope || q->root) {
     cmeta_mutex_lock(&q->mutex);
-    q->info.candidate_count++;
+    if (q->root && q->info.candidate_count == q->request.max_candidates)
+      status = FS_LIMIT;
+    else {
+      q->info.candidate_count++;
+      if (q->root && !fsx_utf8(entry->path, strlen(entry->path))) {
+        q->info.skipped_files++;
+        status = FS_UNSUPPORTED;
+      }
+    }
     cmeta_mutex_unlock(&q->mutex);
+    if (status != FS_OK)
+      return status == FS_UNSUPPORTED ? FS_OK : status;
   }
   FsContentBatch *b = new_batch(q, entry);
   if (!b)
@@ -129,14 +160,21 @@ static FsStatus visit(void *context, const FsEntry *entry) {
 static void run(void *context) {
   FsContentQuery *q = context;
   FsStatus status = fsx_content_stop(q);
-  if (status == FS_OK && q->request.scope)
-    status = fsx_query_visit(&q->scope_query, visit, q);
-  else
-    for (uint32_t i = 0;
-         status == FS_OK && i < q->candidates->info.window_count; i++)
-      status = visit(q, fsx_snapshot_entry(q->snapshot, q->candidates->ids[i]));
+  if (status == FS_OK) {
+    if (q->root) {
+#ifdef __linux__
+      status = fsx_content_discover(q);
+#endif
+    } else if (q->request.scope)
+      status = fsx_query_visit(&q->scope_query, fsx_content_visit, q);
+    else
+      for (uint32_t i = 0;
+           status == FS_OK && i < q->candidates->info.window_count; i++)
+        status = fsx_content_visit(
+            q, fsx_snapshot_entry(q->snapshot, q->candidates->ids[i]));
+  }
   cmeta_mutex_lock(&q->mutex);
-  if (q->request.scope && status == FS_OK)
+  if ((q->request.scope || q->root) && status == FS_OK)
     q->info.candidate_count_known = true;
   if (q->scope_query.info.diagnostic[0])
     memcpy(q->info.diagnostic, q->scope_query.info.diagnostic,
@@ -174,7 +212,16 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
   return FS_UNSUPPORTED;
 #else
   if (!e || !r || r->struct_size != sizeof(*r) ||
-      r->api_version != FSX_API_VERSION || ((!r->candidates) == (!r->scope)) ||
+      r->api_version != FSX_API_VERSION ||
+      (!!r->candidates + !!r->scope + !!r->root != 1) ||
+      (!r->root && r->bfs_executable) ||
+      (r->root &&
+       (!r->bfs_executable || r->bfs_executable[0] != '/' ||
+        strlen(r->bfs_executable) > 65535 || strlen(r->root) > 65535 ||
+        !fsx_content_path(r->root) || !fsx_utf8(r->root, strlen(r->root)) ||
+        r->scope_flags || r->timezone_offset_minutes || !r->max_candidates ||
+        r->max_candidates > 1000000 || !r->max_discovery_bytes ||
+        r->max_discovery_bytes > 256 * 1024 * 1024)) ||
       (r->candidates && (r->candidates->engine != e || r->scope_flags ||
                          r->timezone_offset_minutes)) ||
       (r->scope &&
@@ -197,6 +244,7 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
   atomic_init(&q->refs, 2);
   atomic_init(&q->cancelled, false);
   q->engine = e;
+  q->root_fd = -1;
   q->request = *r;
   q->candidates = (FsResult *)r->candidates;
   if (q->candidates)
@@ -208,14 +256,23 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
   q->request.ugrep_executable = q->tool;
   q->request.pattern = q->pattern;
   q->request.scope = q->scope_query.text;
+  if (r->root) {
+    q->root = fsx_copy(e, r->root, strlen(r->root));
+    q->bfs = fsx_copy(e, r->bfs_executable, strlen(r->bfs_executable));
+  }
+  q->request.root = q->root;
+  q->request.bfs_executable = q->bfs;
   cmeta_mutex_init(&q->mutex);
   cmeta_cond_init(&q->changed);
   if (!q->tool || !q->pattern || !q->mutex || !q->changed ||
-      (r->scope && !q->scope_query.text)) {
+      (r->scope && !q->scope_query.text) ||
+      (r->root && (!q->root || !q->bfs))) {
     fsx_result_unref(q->candidates);
     fsx_free(q->scope_query.text);
     fsx_free(q->tool);
     fsx_free(q->pattern);
+    fsx_free(q->root);
+    fsx_free(q->bfs);
     if (q->mutex)
       cmeta_mutex_destroy(&q->mutex);
     if (q->changed)
@@ -237,18 +294,26 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
     q->info.candidate_count_known = true;
   }
   q->info.status = FS_WAIT;
+  q->info.candidate_source = r->root    ? FS_CONTENT_BFS_LIVE
+                             : r->scope ? FS_CONTENT_SCOPE
+                                        : FS_CONTENT_WINDOW;
   cmeta_mutex_lock(&e->mutex);
   FsStatus status = FS_BUSY;
   if (!atomic_load(&e->stopping) && !e->content &&
       e->handles < e->config.max_handles) {
-    q->snapshot = q->candidates ? q->candidates->snapshot : e->current;
-    atomic_fetch_add(&q->snapshot->refs, 1);
-    q->scope_query.snapshot = q->snapshot;
-    q->info.metadata_epoch = q->snapshot->epoch;
-    q->coverage_complete = q->candidates ? q->candidates->info.coverage_complete
-                                         : q->snapshot->incomplete == 0;
-    q->needs_rescan =
-        q->candidates ? q->candidates->info.needs_rescan : e->needs_rescan;
+    if (q->root)
+      q->coverage_complete = true;
+    else {
+      q->snapshot = q->candidates ? q->candidates->snapshot : e->current;
+      atomic_fetch_add(&q->snapshot->refs, 1);
+      q->scope_query.snapshot = q->snapshot;
+      q->info.metadata_epoch = q->snapshot->epoch;
+      q->coverage_complete = q->candidates
+                                 ? q->candidates->info.coverage_complete
+                                 : q->snapshot->incomplete == 0;
+      q->needs_rescan =
+          q->candidates ? q->candidates->info.needs_rescan : e->needs_rescan;
+    }
     if (!e->content_pool) {
       cmeta_threadpool_config_t config = {1, 1};
       e->content_pool = cmeta_threadpool_create_with_config(&config);

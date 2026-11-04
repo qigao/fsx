@@ -143,6 +143,7 @@ jobs:
           -DFSX_BUILD_SEARCH_TOOLS=${{ matrix.content }}
           -DFSX_BUILD_CONTENT_TESTS=${{ matrix.content }}
           -DFSX_CONTENT_TEST_UGREP=${{ github.workspace }}/build/${{ matrix.preset }}/vcpkg_installed/${{ matrix.triplet }}/tools/ugrep/ugrep
+          -DFSX_CONTENT_TEST_BFS=${{ github.workspace }}/build/${{ matrix.preset }}/vcpkg_installed/${{ matrix.triplet }}/tools/bfs/bfs
       - name: Build
         working-directory: ${{ steps.live_source.outputs.path || github.workspace }}
         run: cmake --build --preset ${{ matrix.preset }}

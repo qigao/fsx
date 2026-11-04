@@ -183,6 +183,48 @@ New files absent from the pinned metadata snapshot are not included, even if a
 new indexing revision commits during the content task. Readers do not follow
 the engine's current snapshot after submission.
 
+`fsx_content_live_request(root, bfs, ugrep, pattern)` selects BFS_LIVE instead of
+an indexed window/scope. Exactly one of candidates, scope or root is required;
+bfs is required only with root. The root is an absolute UTF-8 path with no empty,
+dot, dot-dot or trailing components (except `/` itself). Tools are absolute paths
+copied at submission. The worker opens each root component with O_DIRECTORY and
+O_NOFOLLOW and pins its directory fd/device/inode before launching discovery:
+
+```text
+bfs -j1 -P -f ROOT -xdev -type f -print0
+```
+
+Discovery includes hidden ordinary files, preserves hardlink aliases, ignores no
+names through `.gitignore`, follows no symlinks and stays on the root device.
+FSX reads NUL-delimited path bytes incrementally with an 8 KiB read block and a
+64 KiB owned frame buffer (at most 65,535 bytes per path). Empty, out-of-root,
+dot-component or unterminated frames fail with CORRUPT; overlong frames fail
+with LIMIT. Invalid UTF-8 names are counted as skipped candidates and are not
+opened or rewritten. The default discovery stdout budget is 64 MiB (1 byte to
+256 MiB configurable); the candidate bound is 1,000,000 (1..1,000,000 configurable).
+Exceeding either terminates with LIMIT and leaves candidate_count_known=false.
+Any stderr diagnostic, nonzero exit, signal or native pipe error fails discovery;
+up to 191 diagnostic bytes and the distinct discovery exit code remain available.
+
+Every live file is opened relative to the pinned root, checking each descended
+directory and final regular file against the root device without following
+links. Object identity comes from the opened file, not bfs output. Metadata and
+path association are checked after matching; the root's pathname/device/inode
+association is also rechecked before file publication and after discovery. A
+root replacement makes the task stale; a missing/replaced candidate is counted
+as changed. In-place changes or namespace races may still escape observations,
+and bfs traversal has no global filesystem snapshot. Completeness describes a
+successful traversal and its confirmed file observations, not an immutable tree.
+
+Live batches own their original path and observed file key. `metadata_epoch`,
+`entry_key` and `key.source_id` are 0 because there is no indexed entry/snapshot;
+device/inode fields are observed native identity. BFS_LIVE neither reads index
+candidates nor writes metadata/content facts, even when the engine has an index.
+It is independent of index source health. `candidate_source` identifies WINDOW,
+SCOPE or BFS_LIVE. The `content-live` CLI uses an in-memory engine and needs no
+database argument; its summary labels the source `bfs_live` (indexed CLI:
+`index_scope`). Factory callers must recompile for the expanded request/info.
+
 A lazily created one-worker content pool is independent of the query and writer
 pools. At most one content task executes per engine. Each file uses one ugrep
 process with `-J1`, literal `-F` or explicit PCRE2 `-P`. The child receives a fixed
@@ -191,7 +233,16 @@ are opened relative to fds with O_NOFOLLOW; only regular files with the selected
 device/inode identity are read. Fds use CLOEXEC, and child stdio pipes are wired
 explicitly in a private process group. Spawn closes all inherited fds above
 stderr using glibc's close-from file action. Only this worker blocks SIGPIPE; it drains
-new pending pipe signals before restoring its previous mask.
+new pending pipe signals before restoring its previous mask. BFS_LIVE additionally
+owns one bfs child with its own process group and closed stdin. The shared native
+child adapter restricts fd inheritance and reaps every admitted child. Discovery
+stdout/stderr are polled between file visits; while a file visit or consumer
+backpressure is outstanding, bfs pipes provide bounded kernel backpressure.
+No further bfs output is required for the current file's ugrep to complete.
+Cancellation exits the current visit, kills/reaps its matcher and then kills/reaps
+discovery. A stalled discovery poll observes cancellation/deadlines every 25 ms.
+`processes_started` counts both kinds; `discovery_processes_started` is the bfs
+subset and `running_processes` counts owned children until reaping (maximum 2).
 
 Input, stdout and stderr advance together through nonblocking pipes/poll. Input
 is checked incrementally for UTF-8 (including scalars crossing read boundaries)
@@ -224,26 +275,25 @@ until release before opening the next file. Wait therefore signals a batch or
 termination, not just whole-task completion. Consumers must acquire/release
 batches while waiting. Reaching a file/output/record limit discards the current
 unconfirmed file and terminates with LIMIT; earlier acquired batches remain
-valid. Arrival order follows the selected candidate window or scope snapshot
-entry order, with native tool
-record order inside a file. There is no global content sorting/pagination.
+valid. Arrival order follows the selected candidate window, scope snapshot
+entry order or bfs path stream, with native tool record order inside a file.
+There is no global content sorting/pagination.
 
-Acquired batches retain the query and its selected snapshot and count as engine
+Acquired batches retain the query and its selected snapshot or owned live path and count as engine
 handles. Query release cancels unfinished work and discards an unacquired batch;
 acquired batches remain valid until explicitly released. Cancellation/STOPPING
-wakes consumer backpressure and kills the child process group, then reaps the
-owned child before terminal publication. Close remains retryable while tasks or
+wakes consumer backpressure and kills the child process groups, then reaps the
+owned children before terminal publication. Close remains retryable while tasks or
 external query/result/batch handles exist. Execution deadlines use monotonic
 time; a wait deadline does not itself cancel. Regular-file kernel reads and
 native cleanup are not promised hard real-time interruption.
 
-`FsContentInfo.complete` describes the selected window or full scope, subject to its captured
+`FsContentInfo.complete` describes the selected window/full scope or live traversal. Indexed selection is subject to its captured
 coverage: terminal OK, no skipped/changed candidates and no captured source
 invalidation. It does not assert that the whole current filesystem was searched.
 Published record/file counters, process start/running counts, native tool exit
 status and diagnostics remain available through poll. No PDF/Office extraction,
-bfs discovery or Windows/macOS process backend is
-claimed by this initial API.
+or Windows/macOS process backend is claimed by this API.
 
 ## Cooperative directory watches
 

@@ -15,6 +15,7 @@ static FsResult *candidates;
 static FsContentQuery *query;
 static FsContentBatch *batch;
 static char root[1024];
+static char live_root[1200];
 static void put_bytes(const char *name, const void *data, size_t n) {
   char path[1200];
   snprintf(path, sizeof(path), "%s/%s", root, name);
@@ -37,6 +38,25 @@ static void setup(void) {
   FsEngineConfig c = fsx_engine_config(":memory:");
   check_equal(fsx_engine_open(&c, &engine), FS_OK);
 }
+static void remove_tree(const char *path) {
+  DIR *dir = opendir(path);
+  check_not_null(dir);
+  struct dirent *entry;
+  while ((entry = readdir(dir))) {
+    if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+      continue;
+    char child[4096];
+    snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+    struct stat info;
+    check_equal(lstat(child, &info), 0);
+    if (S_ISDIR(info.st_mode))
+      remove_tree(child);
+    else
+      check_equal(unlink(child), 0);
+  }
+  closedir(dir);
+  check_equal(rmdir(path), 0);
+}
 static void teardown(void) {
   fsx_content_batch_release(batch);
   batch = NULL;
@@ -48,18 +68,16 @@ static void teardown(void) {
   selection = NULL;
   if (engine)
     check_equal(fsx_engine_close(&engine, UINT64_MAX), FS_OK);
-  DIR *dir = opendir(root);
-  check_not_null(dir);
-  struct dirent *entry;
-  while ((entry = readdir(dir))) {
-    if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
-      continue;
-    char path[1400];
-    snprintf(path, sizeof(path), "%s/%s", root, entry->d_name);
-    check_equal(unlink(path), 0);
-  }
-  closedir(dir);
-  check_equal(rmdir(root), 0);
+  remove_tree(root);
+}
+static FsContentRequest live_request(const char *pattern) {
+  char *absolute = realpath(root, NULL);
+  check_not_null(absolute);
+  check_true(strlen(absolute) < sizeof(live_root));
+  strcpy(live_root, absolute);
+  free(absolute);
+  return fsx_content_live_request(live_root, FSX_TEST_BFS, FSX_TEST_UGREP,
+                                  pattern);
 }
 static FsContentRequest request(const char *pattern) {
   FsScanInfo scanned;
@@ -520,5 +538,277 @@ suite("Asynchronous native ugrep content") {
     check_equal(info.status, FS_TIMEOUT);
     check_false(info.candidate_count_known);
     check_equal(info.processes_started, (uint64_t)0);
+  }
+  it("discovers unindexed UTF8 paths with bfs and retains typed file "
+     "identities") {
+    put("-e [猫]\n.txt", "needle\n");
+    put(".hidden", "needle\n");
+    char sub[1200], link_path[1200];
+    snprintf(sub, sizeof(sub), "%s/sub", root);
+    check_equal(mkdir(sub, 0700), 0);
+    put("sub/nested", "needle\n");
+    snprintf(link_path, sizeof(link_path), "%s/link", root);
+    check_equal(symlink("sub", link_path), 0);
+    FsContentRequest r = live_request("needle");
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    memset(live_root, 'x', strlen(live_root));
+    unsigned seen = 0;
+    for (unsigned i = 0; i < 3; i++) {
+      acquire();
+      FsContentFileView file;
+      check_equal(fsx_content_batch_info(batch, &file), FS_OK);
+      check_equal(file.metadata_epoch, (uint64_t)0);
+      check_equal(file.entry_key, (uint64_t)0);
+      check_equal(file.key.source_id, 0u);
+      check_true(file.key.file_id_lo != 0);
+      seen |= strstr(file.path, "-e [猫]\n.txt") ? 1u
+              : strstr(file.path, ".hidden")     ? 2u
+                                                 : 4u;
+      fsx_content_batch_release(batch);
+      batch = NULL;
+    }
+    check_equal(seen, 7u);
+    FsContentInfo info = finish();
+    check_true(info.complete);
+    check_true(info.candidate_count_known);
+    check_equal(info.candidate_source, (uint32_t)FS_CONTENT_BFS_LIVE);
+    check_equal(info.candidate_count, (uint64_t)3);
+    check_equal(info.discovery_processes_started, (uint64_t)1);
+    check_equal(info.processes_started, (uint64_t)4);
+    check_equal(info.discovery_exit_code, 0);
+    check_equal(info.running_processes, 0u);
+    FsProgress progress;
+    check_equal(fsx_engine_progress(engine, &progress), FS_OK);
+    check_equal(progress.entries, (uint64_t)0);
+    check_equal(progress.snapshot_epoch, (uint64_t)0);
+  }
+  it("keeps live hardlink aliases and owns the path after query release") {
+    put("a.txt", "needle\n");
+    char a[1200], b[1200];
+    snprintf(a, sizeof(a), "%s/a.txt", root);
+    snprintf(b, sizeof(b), "%s/b.txt", root);
+    check_equal(link(a, b), 0);
+    FsContentRequest r = live_request("needle");
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    acquire();
+    FsContentFileView first, second;
+    check_equal(fsx_content_batch_info(batch, &first), FS_OK);
+    uint64_t inode = first.key.file_id_lo;
+    char first_path[1400];
+    strcpy(first_path, first.path);
+    fsx_content_batch_release(batch);
+    batch = NULL;
+    acquire();
+    check_equal(fsx_content_batch_info(batch, &second), FS_OK);
+    check_equal(second.key.file_id_lo, inode);
+    check_true(strcmp(first_path, second.path) != 0);
+    check_true(finish().complete);
+    fsx_content_release(query);
+    query = NULL;
+    check_equal(fsx_content_batch_info(batch, &second), FS_OK);
+    check_true(strstr(second.path, ".txt") != NULL);
+    FsContentRecordView record;
+    check_equal(fsx_content_batch_record(batch, 0, &record), FS_OK);
+    check_equal(record.text, "needle");
+  }
+  it("counts invalid live names and binary input as incomplete coverage") {
+    put("invalid-\xff", "needle\n");
+    put_bytes("binary", "needle\0", 7);
+    char path[1200];
+    snprintf(path, sizeof(path), "%s/fifo", root);
+    check_equal(mkfifo(path, 0600), 0);
+    snprintf(path, sizeof(path), "%s/link", root);
+    check_equal(symlink("binary", path), 0);
+    FsContentRequest r = live_request("needle");
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info = finish();
+    check_equal(info.status, FS_OK);
+    check_false(info.complete);
+    check_true(info.candidate_count_known);
+    check_equal(info.candidate_count, (uint64_t)2);
+    check_equal(info.skipped_files, (uint64_t)2);
+    check_equal(info.match_records, (uint64_t)0);
+  }
+  it("kills and reaps discovery under file-batch backpressure on STOPPING") {
+    put("a.txt", "needle\n");
+    put("b.txt", "needle\n");
+    FsContentRequest r = live_request("needle");
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    acquire();
+    FsContentInfo info;
+    check_equal(fsx_content_poll(query, &info), FS_WAIT);
+    check_equal(info.candidate_count, (uint64_t)1);
+    check_false(info.candidate_count_known);
+    check_equal(fsx_engine_close(&engine, 0), FS_BUSY);
+    info = finish();
+    check_equal(info.status, FS_CANCELLED);
+    check_false(info.complete);
+    check_equal(info.running_processes, 0u);
+    fsx_content_release(query);
+    query = NULL;
+    FsContentFileView file;
+    check_equal(fsx_content_batch_info(batch, &file), FS_OK);
+    check_true(strstr(file.path, ".txt") != NULL);
+  }
+  it("bounds live candidate count and discovery output without truncating "
+     "success") {
+    put("a.txt", "needle\n");
+    put("b.txt", "needle\n");
+    FsContentRequest r = live_request("needle");
+    r.max_candidates = 1;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    acquire();
+    fsx_content_batch_release(batch);
+    batch = NULL;
+    FsContentInfo info = finish();
+    check_equal(info.status, FS_LIMIT);
+    check_false(info.candidate_count_known);
+    check_false(info.complete);
+    check_equal(info.candidate_count, (uint64_t)1);
+    check_equal(info.running_processes, 0u);
+    fsx_content_release(query);
+    query = NULL;
+    r.max_candidates = 100;
+    r.max_discovery_bytes = 1;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    info = finish();
+    check_equal(info.status, FS_LIMIT);
+    check_equal(info.candidate_count, (uint64_t)0);
+    check_equal(info.running_processes, 0u);
+    check_true(info.discovery_bytes > 1);
+  }
+  it("decodes NUL path frames crossing discovery pipe chunks") {
+    for (unsigned i = 0; i < 80; i++) {
+      char name[200];
+      memset(name, 'x', 150);
+      snprintf(name + 150, sizeof(name) - 150, "%u.txt", i);
+      put(name, "absent\n");
+    }
+    FsContentRequest r = live_request("needle");
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info = finish();
+    check_true(info.complete);
+    check_true(info.candidate_count_known);
+    check_equal(info.candidate_count, (uint64_t)80);
+    check_equal(info.files_scanned, (uint64_t)80);
+    check_true(info.discovery_bytes > 8192);
+  }
+  it("fails a live root replacement without reading the new root") {
+    put("a.txt", "needle\n");
+    put("b.txt", "needle\n");
+    FsContentRequest r = live_request("needle");
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    acquire();
+    char parked[1200];
+    snprintf(parked, sizeof(parked), "%s-parked", root);
+    check_equal(rename(root, parked), 0);
+    check_equal(mkdir(root, 0700), 0);
+    put("a.txt", "outside\n");
+    fsx_content_batch_release(batch);
+    batch = NULL;
+    FsContentInfo info = finish();
+    check_equal(info.status, FS_STALE);
+    check_false(info.complete);
+    check_false(info.candidate_count_known);
+    check_equal(info.files_scanned, (uint64_t)1);
+    remove_tree(root);
+    check_equal(rename(parked, root), 0);
+  }
+  it("rejects invalid live configuration and reports missing native tools") {
+    FsContentRequest r = live_request("needle");
+    r.scope = "file:";
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    r.scope = NULL;
+    r.bfs_executable = "bfs";
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    r.bfs_executable = FSX_TEST_BFS;
+    r.root = "/tmp/../tree";
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    r.root = "relative";
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    r = live_request("needle");
+    r.max_candidates = 0;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    r = live_request("needle");
+    r.bfs_executable = "/fsx-nonexistent-bfs";
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info = finish();
+    check_equal(info.status, FS_IO);
+    check_false(info.complete);
+    check_false(info.candidate_count_known);
+    check_equal(info.discovery_processes_started, (uint64_t)0);
+  }
+  it("honors live deadlines before discovery starts") {
+    FsContentRequest r = live_request("needle");
+    r.deadline_ns = 0;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info = finish();
+    check_equal(info.status, FS_TIMEOUT);
+    check_equal(info.processes_started, (uint64_t)0);
+    check_false(info.candidate_count_known);
+  }
+  it("rejects malformed discovery frames and native traversal failures") {
+    const FsStatus expected[] = {FS_CORRUPT, FS_CORRUPT, FS_CORRUPT, FS_LIMIT,
+                                 FS_IO,      FS_IO,      FS_CORRUPT};
+    const unsigned modes[] = {1, 2, 3, 4, 5, 6, 8};
+    for (unsigned i = 0; i < 7; i++) {
+      char mode[10];
+      snprintf(mode, sizeof(mode), "%u", modes[i]);
+      put("protocol-case", mode);
+      FsContentRequest r = live_request("needle");
+      r.bfs_executable = FSX_TEST_CONTENT_PEER;
+      check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+      FsContentInfo info = finish();
+      check_equal(info.status, expected[i]);
+      check_false(info.complete);
+      check_false(info.candidate_count_known);
+      check_equal(info.running_processes, 0u);
+      check_equal(info.processes_started, (uint64_t)1);
+      check_equal(info.candidate_count, (uint64_t)0);
+      if (modes[i] == 5)
+        check_true(strstr(info.diagnostic, "permission") != NULL);
+      if (modes[i] == 6)
+        check_equal(info.discovery_exit_code, 7);
+      fsx_content_release(query);
+      query = NULL;
+    }
+  }
+  it("interrupts and reaps a discovery process that makes no pipe progress") {
+    put("protocol-case", "7");
+    FsContentRequest r = live_request("needle");
+    r.bfs_executable = FSX_TEST_CONTENT_PEER;
+    r.deadline_ns = cmeta_hrtime() + UINT64_C(200000000);
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info = finish();
+    check_equal(info.status, FS_TIMEOUT);
+    check_false(info.complete);
+    check_false(info.candidate_count_known);
+    check_equal(info.processes_started, (uint64_t)1);
+    check_equal(info.running_processes, 0u);
+  }
+  it("cancels and reaps both live discovery and a running matcher") {
+    char path[1200], block[65536];
+    memset(block, 'x', sizeof(block));
+    snprintf(path, sizeof(path), "%s/large", root);
+    FILE *file = fopen(path, "wb");
+    check_not_null(file);
+    for (unsigned i = 0; i < 256; i++)
+      check_equal(fwrite(block, 1, sizeof(block), file), sizeof(block));
+    check_equal(fclose(file), 0);
+    FsContentRequest r = live_request("needle");
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info;
+    uint64_t end = cmeta_hrtime() + UINT64_C(5000000000);
+    do {
+      fsx_content_poll(query, &info);
+      check_false(info.finished);
+      check_true(cmeta_hrtime() < end);
+    } while (info.running_processes < 2);
+    fsx_content_cancel(query);
+    info = finish();
+    check_equal(info.status, FS_CANCELLED);
+    check_equal(info.processes_started, (uint64_t)2);
+    check_equal(info.running_processes, 0u);
+    check_false(info.complete);
   }
 }

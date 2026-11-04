@@ -15,12 +15,18 @@ if(FSX_BUILD_CONTENT_TESTS)
   if(NOT IS_ABSOLUTE "${FSX_CONTENT_TEST_UGREP}" OR NOT EXISTS "${FSX_CONTENT_TEST_UGREP}")
     message(FATAL_ERROR "FSX_CONTENT_TEST_UGREP must name the real native ugrep executable")
   endif()
+  if(NOT IS_ABSOLUTE "${FSX_CONTENT_TEST_BFS}" OR NOT EXISTS "${FSX_CONTENT_TEST_BFS}")
+    message(FATAL_ERROR "FSX_CONTENT_TEST_BFS must name the real native bfs executable")
+  endif()
+  cmake_add_executable(fsx_content_process_peer SOURCES content_process_peer.c FOLDER tests/content)
   cmake_add_test(fsx_content_test SOURCES content_test.c LIBS Fsx::Fsx Salts::TinyTest Salts::Platform
-    DEFS "FSX_TEST_UGREP=\"${FSX_CONTENT_TEST_UGREP}\"" FOLDER tests/content)
+    DEFS "FSX_TEST_UGREP=\"${FSX_CONTENT_TEST_UGREP}\"" "FSX_TEST_BFS=\"${FSX_CONTENT_TEST_BFS}\""
+      "FSX_TEST_CONTENT_PEER=\"$<TARGET_FILE:fsx_content_process_peer>\"" FOLDER tests/content)
+  add_dependencies(fsx_content_test fsx_content_process_peer)
   set_tests_properties(fsx_content_test PROPERTIES TIMEOUT 60 LABELS "content;integration"
     ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")
   add_test(NAME fsx_content_cli_test COMMAND "${Python3_EXECUTABLE}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/content_cli_test.py" "$<TARGET_FILE:fsx_cli>" "${FSX_CONTENT_TEST_UGREP}")
+    "${CMAKE_CURRENT_SOURCE_DIR}/content_cli_test.py" "$<TARGET_FILE:fsx_cli>" "${FSX_CONTENT_TEST_UGREP}" "${FSX_CONTENT_TEST_BFS}")
   set_tests_properties(fsx_content_cli_test PROPERTIES TIMEOUT 30 LABELS "content;cli;e2e")
 endif()
 add_test(NAME fsx_cli_test COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cli_test.py" "$<TARGET_FILE:fsx_cli>")
