@@ -608,9 +608,16 @@ after a crash; it never owns recovery facts. Explicit schema qualification preve
 main-schema tables from shadowing the work sets.
 
 `sqlite_cache_kib` controls the main connection's suggested cache size, default
-4096 KiB. It is a cache target, not a hard heap limit. Pure metadata/namespace
-algorithms otherwise retain their current semantics and full-work costs. No
-speedup claim follows from selecting memory storage or using another thread.
+4096 KiB. It is a cache target, not a hard heap limit. No speedup claim follows
+from selecting memory storage or using another thread.
+
+The alias entry-key map is captured before a rebuild clears its source, or just
+before an incremental transaction first replaces a directory's names. Pure
+metadata updates do not copy the complete alias namespace into `nt_old_keys`.
+Namespace reconciliation still captures the original edge identities once per
+transaction before enumeration, so surviving aliases and descendants keep their
+entry keys. Capture failures roll back the transaction and durable cursor; a
+retry starts with a fresh work set.
 
 A new immutable query snapshot is prepared before COMMIT and published afterward.
 Queries never read uncommitted work tables. Visible and durable revisions remain

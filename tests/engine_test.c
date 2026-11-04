@@ -2691,6 +2691,57 @@ suite("NTFS transaction protocol") {
     check_equal(count("alpha"), (uint64_t)1);
     check_equal(entry(0, NULL).size, (uint64_t)999);
   }
+  it("copies alias keys only when replacing names and rolls back a failed "
+     "capture") {
+    nt_build();
+    check_equal(count("alpha"), (uint64_t)1);
+    FsEntryView old = entry(0, NULL);
+    uint64_t key = old.entry_key;
+    retained_result = held_result;
+    held_result = NULL;
+    check_equal(sqlite3_exec(engine->db,
+                             "CREATE TEMP TRIGGER refuse_key_copy BEFORE "
+                             "INSERT ON nt_old_keys BEGIN SELECT "
+                             "RAISE(ABORT,'alias key copy'); END;",
+                             NULL, NULL, NULL),
+                SQLITE_OK);
+    unsigned lists = nt.lists;
+    nt.nodes[2].size = 77;
+    nt_event(&nt.nodes[2], 1);
+    FsNtfsInfo metadata, failed, created;
+    check_equal(fsx_ntfs_sync(native_source, &metadata), FS_OK);
+    check_equal(nt.lists, lists);
+    check_equal(nt_scalar("SELECT count(*) FROM nt_old_keys"), (int64_t)0);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).entry_key, key);
+    check_equal(entry(0, NULL).size, (uint64_t)77);
+    check_equal(old.size, (uint64_t)7);
+
+    NtNode *node = nt_add(40, 20, "created.txt", false);
+    nt_event(node, FSX_USN_CREATE);
+    check_equal(fsx_ntfs_sync(native_source, &failed), FS_CORRUPT);
+    check_equal(nt.lists, lists);
+    check_equal(nt_scalar("SELECT next_usn FROM fsx_ntfs_sources"),
+                metadata.next_usn);
+    check_equal(nt_scalar("SELECT revision FROM fsx_meta"),
+                (int64_t)metadata.snapshot_epoch);
+    check_equal(count("created"), (uint64_t)0);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).entry_key, key);
+
+    check_equal(sqlite3_exec(engine->db, "DROP TRIGGER refuse_key_copy", NULL,
+                             NULL, NULL),
+                SQLITE_OK);
+    check_equal(fsx_ntfs_close(&native_source), FS_OK);
+    nt_open(4096);
+    check_equal(fsx_ntfs_sync(native_source, &created), FS_OK);
+    check_equal(created.next_usn, nt.identity.next_usn);
+    check_equal(count("created"), (uint64_t)1);
+    check_equal(count("alpha"), (uint64_t)1);
+    check_equal(entry(0, NULL).entry_key, key);
+    check_equal(entry(0, NULL).size, (uint64_t)77);
+    check_equal(old.size, (uint64_t)7);
+  }
   it("catches changes after initial namespace enumeration before publishing "
      "U1") {
     nt.inject_create = true;

@@ -164,7 +164,8 @@ typedef struct Tx {
   uint32_t source;
   uint64_t revision, parent, enumerated, mft_records, journal_records,
       directories, dirty_parents;
-  bool all, topology_changed, structural, raw_bootstrap, stage_graph;
+  bool all, topology_changed, structural, raw_bootstrap, stage_graph,
+      keys_saved;
   uint64_t staged;
   sqlite3_stmt *statements[11];
 } Tx;
@@ -456,6 +457,21 @@ static FsStatus event(void *context, const FsNtfsRecord *r) {
   }
   return fsx_db_status(rc);
 }
+/* Alias identity needs the old edge map only when names will be replaced.
+ * Rebuild captures it before clearing the source. Incremental reconciliation
+ * captures it before its first directory enumeration; metadata patches never
+ * copy the complete namespace. */
+static FsStatus preserve_keys(Tx *t) {
+  char command[192];
+  snprintf(command, sizeof(command),
+           "INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM "
+           "fsx_ntfs_names WHERE source_id=%u;",
+           t->source);
+  FsStatus status = sql(t->e, command);
+  if (status == FS_OK)
+    t->keys_saved = true;
+  return status;
+}
 static FsStatus temp_tables(Tx *t, bool rebuild) {
   FsStatus status = sql(
       t->e,
@@ -487,14 +503,11 @@ static FsStatus temp_tables(Tx *t, bool rebuild) {
       "nt_projection(entry_key);");
   if (status != FS_OK)
     return status;
-  char command[384];
-  snprintf(command, sizeof(command),
-           "INSERT INTO nt_old_keys SELECT parent,raw,entry_key FROM "
-           "fsx_ntfs_names WHERE source_id=%u;"
-           "%s",
-           t->source, "");
-  status = sql(t->e, command);
-  if (status == FS_OK && rebuild) {
+  if (rebuild) {
+    status = preserve_keys(t);
+    if (status != FS_OK)
+      return status;
+    char command[192];
     snprintf(command, sizeof(command),
              "DELETE FROM fsx_ntfs_names WHERE source_id=%u;"
              "DELETE FROM fsx_ntfs_dirs WHERE source_id=%u;",
@@ -778,6 +791,11 @@ static FsStatus reconcile(Tx *t) {
           return status;
         continue; /* The verified directory may have left the selected scope. */
       }
+    }
+    if (!t->keys_saved) {
+      status = preserve_keys(t);
+      if (status != FS_OK)
+        return status;
     }
     t->parent = frn;
     sqlite3_stmt *clear = NULL;

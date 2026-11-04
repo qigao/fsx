@@ -235,7 +235,7 @@ before allocating. Engine limits bound indexed aliases and depth.
 ## Validation
 
 Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 103 engine cases, 25 dedicated raw
+CLI and formal tests. The current suite has 104 engine cases, 25 dedicated raw
 reader cases, two controlled-replay/measurement cases and 10 CLI cases, run
 through four ordinary CTest entries.
 Coverage includes hardlinks, Unicode full
@@ -261,7 +261,7 @@ after an unidentified failure, and a deterministic directory-to-junction swap
 during observation. Stable junctions remain searchable without traversing targets.
 The asynchronous-index runtime passed all three CTest entries on Linux Debug,
 Linux ASan/UBSan and Windows LLVM-MinGW Debug using the published Core 0.1.2 and
-CMeta 0.1.3 SDKs. Linux compiles 90 engine cases; Windows-only cases are excluded.
+CMeta 0.1.3 SDKs. Linux compiles 91 engine cases; Windows-only cases are excluded.
 The independent sanitizer runner keeps default leak detection enabled. See
 [CI validation](https://github.com/qigao/fsx/actions/runs/41598912885).
 
