@@ -1,11 +1,12 @@
 #define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
 #include <shellapi.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <wchar.h>
-#include <windows.h>
 /* Source-owned native peer for handle inheritance and job-tree cancellation. */
 int main(void) {
   int argc;
