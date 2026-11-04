@@ -289,7 +289,8 @@ atomic content version: results explicitly mean LIVE_READ observations in the
 reported read time window, not content at `metadata_epoch`. No content facts or
 FTS rows are written to SQLite.
 
-The fixed JSON record schema is decoded into typed record views. Repeated
+The fixed JSON record schema uses the tool's native `%~` terminator: LF on Linux,
+CRLF on Windows; each backend requires its exact framing. It is decoded into typed record views. Repeated
 matches on the same line produce separate records with their own byte offsets;
 record counts are not unique matching-line counts. Malformed/truncated JSON
 fails the file; exact escape decoding includes Unicode scalar/surrogate checks.

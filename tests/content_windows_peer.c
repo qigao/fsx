@@ -61,7 +61,7 @@ int main(void) {
     Sleep(INFINITE);
     return 98;
   }
-  const char frame[] = "{\"line\":1,\"offset\":0,\"text\":\"checked\"}\n";
+  const char frame[] = "{\"line\":1,\"offset\":0,\"text\":\"checked\"}\r\n";
   DWORD written;
   return WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), frame, sizeof(frame) - 1,
                    &written, NULL)

@@ -95,9 +95,15 @@ static bool string(char **p, char *end, FsContentRecordView *r) {
 FsStatus fsx_content_decode(FsContentBatch *b, uint32_t limit) {
   char *p = b->wire, *end = p + b->used;
   while (p != end) {
-    char *frame = memchr(p, '\n', (size_t)(end - p));
-    if (!frame)
+    char *newline = memchr(p, '\n', (size_t)(end - p));
+    if (!newline)
       return FS_CORRUPT;
+    char *frame = newline;
+#ifdef _WIN32
+    if (frame == p || frame[-1] != '\r')
+      return FS_CORRUPT;
+    frame--;
+#endif
     if (frame - p > 65536)
       return FS_LIMIT;
     if (b->info.record_count == limit)
@@ -110,7 +116,7 @@ FsStatus fsx_content_decode(FsContentBatch *b, uint32_t limit) {
         !token(&p, frame, "}") || p != frame)
       return FS_CORRUPT;
     b->info.record_count++;
-    p = frame + 1;
+    p = newline + 1;
   }
   return FS_OK;
 }
