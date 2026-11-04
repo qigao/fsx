@@ -62,7 +62,7 @@ static FsStatus open_file(FsContentQuery *q, const FsEntry *entry, HANDLE *out,
       NULL);
   *component = saved;
   FsStatus status =
-      parent == INVALID_HANDLE_VALUE ? native_status(GetLastError()) : FS_OK;
+      parent == INVALID_HANDLE_VALUE ? report(q, "root open", GetLastError()) : FS_OK;
   while (status == FS_OK) {
     BY_HANDLE_FILE_INFORMATION directory;
     if (!GetFileInformationByHandle(parent, &directory)) {
