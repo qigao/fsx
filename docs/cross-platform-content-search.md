@@ -1,6 +1,6 @@
 # 跨平台采集、变更监听与文件内容搜索
 
-状态：方案，尚未实现。2026-11-04。基于 FSX 合并提交
+状态：Linux inotify 已进入实现，其余新增平台/内容能力仍为方案。2026-11-04。基于 FSX 合并提交
 `0ac984784e69825011bafba97bed9bcf44e703d2`；已实现行为以
 [运行时契约](runtime-contract.md)为准。本文细化
 [主设计](FileSearch-C11-设计.md)的跨平台与内容搜索里程碑。
@@ -30,7 +30,7 @@
 | --- | --- | --- | --- |
 | Windows 本地 NTFS | 原生目录扫描、MFT/USN、RDC；异步索引 | ugrep 内容搜索，先完成 LLVM-MinGW 工具资格 | 保留现有 USN 同事务检查点 |
 | Windows 其他可枚举卷 | 通用目录采集、RDC 路径；未逐格式验收 | 同一内容 API，按实际卷验收 | RDC 无持久游标 |
-| Linux 本地普通文件系统 | POSIX 扫描、异步索引/查询、持久化 | inotify；ugrep；可选 bfs 实时发现 | inotify 无持久游标，重开需扫描 |
+| Linux 本地普通文件系统 | POSIX 扫描、异步索引/查询、持久化；本分支增加 inotify | ugrep；可选 bfs 实时发现 | inotify 无持久游标，重开需扫描 |
 | macOS APFS 等可枚举卷 | 尚无正式构建/测试资格 | 扫描移植、Clang presets/CI、FSEvents、ugrep/bfs | 首版重开扫描；FSEvents 历史续读后续独立验收 |
 | SMB/NFS、FUSE、伪文件系统、可移动卷 | 无通用监听完整性保证 | 仅公布逐项通过的能力；手动扫描为显式操作 | 不推断等同本地 NTFS |
 

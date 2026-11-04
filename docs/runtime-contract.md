@@ -80,9 +80,9 @@ Totals are exact within the indexed coverage, not the whole changing filesystem.
 
 A failed scan or consumed watch notification marks the in-process engine as
 needing rescan. Results capture that control state at submission. Cooperative
-Windows RDC watches are described below. That backend has no persistent
+Windows RDC and Linux inotify watches are described below. These backends have no persistent
 change-stream checkpoint or durable gap/retry ledger. Reopening recovers the last
-committed scan and coverage; a reopened RDC watch always requires a fresh scan.
+committed scan and coverage; a reopened watch always requires a fresh scan.
 The separate NTFS backend persists its USN checkpoint as described below.
 
 ## Snapshot page ownership
@@ -139,16 +139,17 @@ or incremental database reader; loading still visits all committed rows.
   a successful zero-match result. Regex compile offsets map to original query
   bytes. Failures do not expose partially constructed results.
 
-## Cooperative Windows directory watches
+## Cooperative directory watches
 
 `FsWatch` is an external engine handle. The host serializes all calls on a given
 watch, and closes it only after its wait/scan caller returns. Different watches
 can run concurrently; the existing single-writer admission still returns BUSY.
-There are no watch threads or filename queues. Each watch owns a canonical root,
+There are no watch threads or filename queues. On Windows each watch owns a canonical root,
 native directory handle, cancellation/completion events, one OVERLAPPED and a
 DWORD-aligned buffer (1–64 KiB, default 64 KiB), charged to the engine budget.
 Watch count shares the engine's external-handle limit; duplicate native roots
-are rejected. On non-Windows platforms opening a watch returns UNSUPPORTED.
+are rejected. Linux uses the inotify protocol below; other platforms currently
+return UNSUPPORTED.
 
 Open arms recursive ReadDirectoryChangesW before returning and starts DIRTY.
 Wait pumps bounded batches, coalescing every completion into a root-wide dirty
@@ -183,6 +184,47 @@ the remaining cached observation. Scan failures retain DIRTY; retained results
 remain valid. A monitor/root check may fail after a database commit; in that case
 the scan output identifies the committed pass and the session stays invalidated.
 Filesystem root identity checks do not turn enumeration into an OS transaction.
+
+### Linux inotify
+
+Linux exposes the same cooperative API and transactional scanner. Open registers
+the root and starts DIRTY. A watch owns one verified root fd, one nonblocking
+CLOEXEC inotify instance, an eventfd for STOPPING and the configured 1–64 KiB
+read buffer. There is no filename/watch-descriptor map: all native events are
+coalesced into root-wide reconciliation obligations.
+
+Each scan builds a fresh inotify instance, registers the root before replacing
+the old instance, then registers each verified child directory fd before
+enumerating it. The scanner drains events at directory entry and every 256
+directory records. A scan-local latch preserves events already consumed at
+those checkpoints, so an empty queue after commit cannot incorrectly clear DIRTY.
+After commit, the host repeats wait/scan until a complete pass has no consumed
+changes and the queue has been drained. An incomplete scan remains DIRTY.
+
+Directory registration uses `/proc/self/fd/<fd>` to bind inotify to the already
+opened directory; Linux therefore requires procfs at `/proc`. Missing procfs is
+an explicit failure, not a reason to reopen an unverified pathname. The new
+`FsWatchConfig.max_directories` limits registration visits per pass, including
+the root (default 65,536, accepted range 1–1,048,576). Bind aliases can count
+more than once; the number is an upper bound on native watches, not a unique
+object count. The field is unused on Windows. Callers must recompile and use
+the configuration factory with the exact current struct size.
+
+`IN_Q_OVERFLOW` increments `overflows`, retains DIRTY and requires a new complete
+watch set and scan. Root changes/unmounts fail the session; a registration limit,
+allocation or scan failure is retryable while DIRTY and cannot publish a partial
+transaction. A later explicit scan can retry with the same configuration, or the
+host can close/reopen with a different limit. Old snapshots remain valid. Closing
+the inotify instance drops all watches, including directories moved out of scope.
+No system limits are changed and no polling backend is selected automatically.
+
+Ordinary content reads do not invalidate the watch: IN_OPEN/IN_ACCESS are not
+subscribed. Symlinks are recorded without following their targets. STOPPING
+signals eventfd; wait uses poll in the existing monotonic deadline domain.
+Directory events do not cover writes through external hardlinks, all mmap
+modifications, remote filesystem changes or mount overlays. IDLE only describes
+observed obligations on this backend; there is no durable journal or atomic
+filesystem/content snapshot guarantee.
 
 See Microsoft's [directory notification contract](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-readdirectorychangesw)
 and [overlapped cancellation lifetime](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex).

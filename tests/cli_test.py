@@ -83,7 +83,8 @@ class FileSearchCli(unittest.TestCase):
         self.assertIn("query byte", result.stderr)
         self.assertIn("invalid", result.stderr)
 
-    @unittest.skipUnless(os.name == "nt", "native directory watcher is Windows-only")
+    @unittest.skipUnless(os.name == "nt" or sys.platform == "linux",
+                         "native directory watcher requires Windows or Linux")
     def test_watch_refreshes_persistent_search_after_a_new_file(self):
         (self.root / "seed.txt").write_text("x", encoding="utf-8")
         process = subprocess.Popen(
