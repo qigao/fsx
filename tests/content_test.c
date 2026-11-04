@@ -368,4 +368,157 @@ suite("Asynchronous native ugrep content") {
     check_false(info.complete);
     check_equal(info.processes_started, (uint64_t)0);
   }
+  it("streams a complete scope beyond the engine query window") {
+    check_equal(fsx_engine_close(&engine, UINT64_MAX), FS_OK);
+    FsEngineConfig config = fsx_engine_config(":memory:");
+    config.max_query_window = 1;
+    check_equal(fsx_engine_open(&config, &engine), FS_OK);
+    for (unsigned i = 0; i < 12; i++) {
+      char name[40];
+      snprintf(name, sizeof(name), "item%u.txt", i);
+      put(name, "needle\n");
+    }
+    put("excluded.bin", "needle\n");
+    put("empty.txt", "");
+    FsScanInfo scan;
+    check_equal(fsx_engine_scan(engine, root, &scan), FS_OK);
+    char scope[] = "file: ext:txt size:>0 regex:\"^item[0-9]+[.]txt$\"";
+    FsContentRequest r =
+        fsx_content_scope_request(scope, FSX_TEST_UGREP, "needle");
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    memset(scope, 'x', strlen(scope));
+    for (unsigned i = 0; i < 12; i++) {
+      acquire();
+      FsContentFileView file;
+      check_equal(fsx_content_batch_info(batch, &file), FS_OK);
+      check_equal(file.metadata_epoch, scan.snapshot_epoch);
+      check_true(strstr(file.path, ".txt") != NULL);
+      fsx_content_batch_release(batch);
+      batch = NULL;
+    }
+    FsContentInfo info = finish();
+    check_equal(info.status, FS_OK);
+    check_true(info.complete);
+    check_true(info.candidate_count_known);
+    check_equal(info.candidate_count, (uint64_t)12);
+    check_equal(info.files_scanned, (uint64_t)12);
+    check_equal(info.match_records, (uint64_t)12);
+  }
+  it("pins a full scope snapshot while a new metadata revision commits") {
+    put("a.txt", "needle\n");
+    put("b.txt", "needle\n");
+    FsScanInfo before, after;
+    check_equal(fsx_engine_scan(engine, root, &before), FS_OK);
+    FsContentRequest r =
+        fsx_content_scope_request("file:", FSX_TEST_UGREP, "needle");
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    acquire();
+    FsContentInfo info;
+    check_equal(fsx_content_poll(query, &info), FS_WAIT);
+    check_false(info.candidate_count_known);
+    check_equal(info.candidate_count, (uint64_t)1);
+    put("new.txt", "needle\n");
+    check_equal(fsx_engine_scan(engine, root, &after), FS_OK);
+    check_true(after.snapshot_epoch > before.snapshot_epoch);
+    for (unsigned i = 0; i < 2; i++) {
+      FsContentFileView file;
+      check_equal(fsx_content_batch_info(batch, &file), FS_OK);
+      check_equal(file.metadata_epoch, before.snapshot_epoch);
+      check_null(strstr(file.path, "new.txt"));
+      fsx_content_batch_release(batch);
+      batch = NULL;
+      if (!i)
+        acquire();
+    }
+    info = finish();
+    check_true(info.complete);
+    check_true(info.candidate_count_known);
+    check_equal(info.candidate_count, (uint64_t)2);
+  }
+  it("supports explicit case-sensitive scope predicates and an empty scope") {
+    put("CASE.txt", "needle\n");
+    FsScanInfo scan;
+    check_equal(fsx_engine_scan(engine, root, &scan), FS_OK);
+    FsContentRequest r =
+        fsx_content_scope_request("case.txt", FSX_TEST_UGREP, "needle");
+    r.scope_flags = FS_QUERY_CASE_SENSITIVE;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info = finish();
+    check_true(info.complete);
+    check_true(info.candidate_count_known);
+    check_equal(info.candidate_count, (uint64_t)0);
+    check_equal(info.processes_started, (uint64_t)0);
+    fsx_content_release(query);
+    query = NULL;
+    r = fsx_content_scope_request("", FSX_TEST_UGREP, "needle");
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    acquire();
+    check_true(finish().complete);
+  }
+  it("reports malformed scope predicates before starting a content process") {
+    put("a.txt", "needle\n");
+    FsScanInfo scan;
+    check_equal(fsx_engine_scan(engine, root, &scan), FS_OK);
+    const char *scopes[] = {"<", "regex:\"[\""};
+    for (unsigned i = 0; i < 2; i++) {
+      FsContentRequest r =
+          fsx_content_scope_request(scopes[i], FSX_TEST_UGREP, "needle");
+      check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+      FsContentInfo info = finish();
+      check_equal(info.status, FS_INVALID);
+      check_false(info.complete);
+      check_false(info.candidate_count_known);
+      check_equal(info.processes_started, (uint64_t)0);
+      check_true(info.diagnostic[0] != 0);
+      fsx_content_release(query);
+      query = NULL;
+    }
+  }
+  it("cancels scope enumeration under backpressure and retains acquired "
+     "records") {
+    put("a.txt", "needle\n");
+    put("b.txt", "needle\n");
+    FsScanInfo scan;
+    check_equal(fsx_engine_scan(engine, root, &scan), FS_OK);
+    FsContentRequest r =
+        fsx_content_scope_request("file:", FSX_TEST_UGREP, "needle");
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    acquire();
+    fsx_content_cancel(query);
+    FsContentInfo info = finish();
+    check_equal(info.status, FS_CANCELLED);
+    check_false(info.complete);
+    check_false(info.candidate_count_known);
+    check_equal(info.candidate_count, (uint64_t)1);
+    check_equal(info.processes_started, (uint64_t)1);
+    fsx_content_release(query);
+    query = NULL;
+    FsContentRecordView record;
+    check_equal(fsx_content_batch_record(batch, 0, &record), FS_OK);
+    check_equal(record.text, "needle");
+    check_equal(fsx_engine_close(&engine, 0), FS_BUSY);
+  }
+  it("validates explicit scope selection and deadlines without a fallback") {
+    FsContentRequest r = request("needle");
+    r.scope = "file:";
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    r.candidates = NULL;
+    r.scope_flags = FS_QUERY_DESCENDING;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    r.scope_flags = 0;
+    r.timezone_offset_minutes = 841;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    r.timezone_offset_minutes = 0;
+    r.scope = "\xff";
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    r.scope = NULL;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    r.scope = "file:";
+    r.deadline_ns = 0;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info = finish();
+    check_equal(info.status, FS_TIMEOUT);
+    check_false(info.candidate_count_known);
+    check_equal(info.processes_started, (uint64_t)0);
+  }
 }

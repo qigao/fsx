@@ -213,29 +213,12 @@ static FsStatus ntfs_command(FsEngine *engine, const char *command,
 }
 static FsStatus content_search(FsEngine *engine, const char *tool,
                                 const char *pattern, const char *scope,
-                                bool regex, uint32_t capacity, int *exit_code) {
-  FsQueryOptions options = fsx_query_options();
-  options.limit = capacity;
-  FsQueryRequest select = {sizeof(select), FSX_API_VERSION, scope, strlen(scope), options};
-  FsQuery *selection = NULL;
-  FsResult *candidates = NULL;
+                                bool regex, int *exit_code) {
   FsContentQuery *query = NULL;
-  FsStatus status = fsx_query_submit(engine, &select, &selection);
-  if (status == FS_OK) status = fsx_query_wait(selection, UINT64_MAX);
-  if (status == FS_OK) status = fsx_query_result_acquire(selection, &candidates);
-  FsResultInfo selected = {0};
-  if (status == FS_OK) {
-    fsx_result_info(candidates, &selected);
-    if (selected.window_count != selected.total_count) status = FS_LIMIT;
-  }
-  if (status == FS_OK) {
-    FsContentRequest request = fsx_content_request(candidates, tool, pattern);
-    request.mode = regex ? FS_CONTENT_PCRE2 : FS_CONTENT_LITERAL;
-    request.deadline_ns = fsx_engine_now_ns(engine) + UINT64_C(30000000000);
-    status = fsx_content_submit(engine, &request, &query);
-  }
-  fsx_result_release(candidates);
-  fsx_query_release(selection);
+  FsContentRequest request = fsx_content_scope_request(scope, tool, pattern);
+  request.mode = regex ? FS_CONTENT_PCRE2 : FS_CONTENT_LITERAL;
+  request.deadline_ns = fsx_engine_now_ns(engine) + UINT64_C(30000000000);
+  FsStatus status = fsx_content_submit(engine, &request, &query);
   if (status != FS_OK) return status;
   interrupted = 0;
   void (*previous)(int) = signal(SIGINT, interrupt_watch);
@@ -264,9 +247,10 @@ static FsStatus content_search(FsEngine *engine, const char *tool,
   signal(SIGINT, previous);
   if (status == FS_OK) status = info.status;
   printf("{\"type\":\"summary\",\"semantics\":\"live_read\",\"complete\":%s,"
-         "\"records\":%" PRIu64 ",\"candidates\":%" PRIu64 ",\"changed\":%" PRIu64
+         "\"records\":%" PRIu64 ",\"candidates\":%" PRIu64 ",\"candidates_known\":%s,\"changed\":%" PRIu64
          ",\"skipped\":%" PRIu64 "}\n", info.complete ? "true" : "false",
-         info.match_records, info.candidate_count, info.changed_files, info.skipped_files);
+         info.match_records, info.candidate_count, info.candidate_count_known ? "true" : "false",
+         info.changed_files, info.skipped_files);
   if (info.diagnostic[0]) fprintf(stderr, "%s\n", info.diagnostic);
   if (status == FS_OK && !info.complete) *exit_code = 3;
   fsx_content_release(query);
@@ -403,7 +387,7 @@ static int run(int argc, char **argv) {
   int exit_code = 0;
   if (!strcmp(argv[1], "content")) {
     status = content_search(engine, argv[3], argv[5], argv[7],
-                             !strcmp(argv[4], "--regex"), config.max_query_window, &exit_code);
+                             !strcmp(argv[4], "--regex"), &exit_code);
   } else if (!strcmp(argv[1], "ntfs-index") || !strcmp(argv[1], "ntfs-sync") ||
       !strcmp(argv[1], "ntfs-watch")) {
     status = ntfs_command(engine, argv[1], argv[3], watch_duration,

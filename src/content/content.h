@@ -6,6 +6,9 @@ struct FsContentQuery {
   atomic_bool cancelled;
   FsEngine *engine;
   FsResult *candidates;
+  FsSnapshot *snapshot;
+  FsQuery scope_query;
+  bool coverage_complete, needs_rescan;
   FsContentRequest request;
   char *tool, *pattern;
   cmeta_mutex_t mutex;

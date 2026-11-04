@@ -150,13 +150,38 @@ provenance/version selection. The existing pinned Linux 7.8.5 tool uses the
 protocol qualified in vcpkg-cache PR #282; this does not select an unreleased
 Windows package or update the infrastructure pin.
 
-`FsContentRequest` selects exactly the supplied retained `FsResult` window,
+The expanded request/info structures require callers to recompile and use the
+request factories. `FsContentRequest` selects exactly the supplied retained `FsResult` window,
 including its original source coverage and metadata epoch. Submission copies
 the tool and pattern and retains the result; the caller can release its query
-and result immediately afterward. This is not an all-query candidate iterator:
-an offset/limit intentionally selects that window. The CLI asks for the full
-admitted window and returns LIMIT before content submission if the selection
-would be truncated. New files absent from the metadata snapshot are not included.
+and result immediately afterward. An offset/limit intentionally selects that
+window.
+
+`fsx_content_scope_request(scope, tool, pattern)` explicitly selects the entire
+metadata query scope. Exactly one of `candidates` or `scope` must be provided;
+an empty scope matches all entries. Submission copies the scope and captures
+the current immutable snapshot and source health under the engine mutex.
+The content worker compiles the existing query language once and scans that
+snapshot in entry order, invoking the per-file pipeline for each match. It
+allocates no all-candidate ID/path array, applies no sorting/window limit and
+opens no SQLite reader or FTS cursor across consumer backpressure. This is a
+fixed snapshot scan, not an automatic backend fallback. The query plan and
+PCRE2 limits use the engine heap budget. Scope regex callouts and each entry
+visit observe the content cancellation flag and execution deadline.
+
+`scope_flags` accepts CASE_SENSITIVE and ALLOW_PARTIAL_TEXT; the explicit timezone
+offset has the same -840..840 minute bounds as ordinary queries. Other scope
+flags and scope options on a result-window request are rejected. Syntax/regex
+compilation errors are asynchronous task failures, before any content process
+starts, with diagnostics retained in `FsContentInfo`. Scope counts increase as
+matching candidates enter the file pipeline; `candidate_count_known` becomes
+true only after successful exhaustion. Failure/cancellation leaves a partial
+count with known=false; result-window counts are known at submission. The CLI
+uses this full scope entry and emits the flag as `candidates_known`.
+
+New files absent from the pinned metadata snapshot are not included, even if a
+new indexing revision commits during the content task. Readers do not follow
+the engine's current snapshot after submission.
 
 A lazily created one-worker content pool is independent of the query and writer
 pools. At most one content task executes per engine. Each file uses one ugrep
@@ -199,7 +224,8 @@ until release before opening the next file. Wait therefore signals a batch or
 termination, not just whole-task completion. Consumers must acquire/release
 batches while waiting. Reaching a file/output/record limit discards the current
 unconfirmed file and terminates with LIMIT; earlier acquired batches remain
-valid. Arrival order follows the selected candidate window, with native tool
+valid. Arrival order follows the selected candidate window or scope snapshot
+entry order, with native tool
 record order inside a file. There is no global content sorting/pagination.
 
 Acquired batches retain the query and its selected snapshot and count as engine
@@ -211,12 +237,12 @@ external query/result/batch handles exist. Execution deadlines use monotonic
 time; a wait deadline does not itself cancel. Regular-file kernel reads and
 native cleanup are not promised hard real-time interruption.
 
-`FsContentInfo.complete` describes this selected window, subject to its original
+`FsContentInfo.complete` describes the selected window or full scope, subject to its captured
 coverage: terminal OK, no skipped/changed candidates and no captured source
 invalidation. It does not assert that the whole current filesystem was searched.
 Published record/file counters, process start/running counts, native tool exit
 status and diagnostics remain available through poll. No PDF/Office extraction,
-bfs discovery, unbounded candidate iterator or Windows/macOS process backend is
+bfs discovery or Windows/macOS process backend is
 claimed by this initial API.
 
 ## Cooperative directory watches

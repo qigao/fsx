@@ -53,6 +53,7 @@ void fsx_result_unref(FsResult *r) {
 }
 FsStatus fsx_query_stop(FsQuery *q) {
   if (atomic_load_explicit(&q->cancelled, memory_order_relaxed) ||
+      (q->parent_cancelled && atomic_load(q->parent_cancelled)) ||
       atomic_load_explicit(&q->engine->stopping, memory_order_relaxed))
     return FS_CANCELLED;
   if (q->options.deadline_ns && q->options.deadline_ns != UINT64_MAX &&

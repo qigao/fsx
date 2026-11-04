@@ -20,10 +20,18 @@ typedef struct FsContentRequest {
   const char *ugrep_executable, *pattern;
   uint32_t mode, max_records, max_output_bytes;
   uint64_t max_file_bytes, deadline_ns;
+  /* Exactly one of candidates/scope is supplied. Scope visits every matching
+   * entry in the submission snapshot, in snapshot order, without a UI window.
+   */
+  const char *scope;
+  uint32_t scope_flags; /* CASE_SENSITIVE | ALLOW_PARTIAL_TEXT only. */
+  int32_t timezone_offset_minutes;
 } FsContentRequest;
 typedef struct FsContentInfo {
   FsStatus status;
-  bool finished, complete;
+  /* Scope counts grow as candidates are visited; known only after enumeration
+   * finishes successfully. Window counts are known at submission. */
+  bool finished, complete, candidate_count_known;
   uint64_t metadata_epoch, candidate_count, files_scanned, changed_files;
   uint64_t skipped_files, match_records, processes_started;
   uint32_t running_processes;
@@ -161,21 +169,27 @@ typedef struct FsEntryView {
 
 FsEngineConfig fsx_engine_config(const char *database_path);
 FsContentRequest fsx_content_request(const FsResult *, const char *ugrep,
-                                      const char *pattern);
+                                     const char *pattern);
+FsContentRequest fsx_content_scope_request(const char *scope, const char *ugrep,
+                                           const char *pattern);
 /* Linux native backend. Other platforms explicitly return UNSUPPORTED.
  * One active content task per engine, independent of query/index pools.
  * LIVE_READ observations, not content at metadata_epoch. Only UTF-8 text
  * without NUL is searched; a leading UTF-8 BOM is removed before matching.
  * Wait wakes for a batch or termination; consume/release batches before waiting
  * again. One outstanding file batch applies backpressure until released.
- * Release cancels and discards an unacquired batch; acquired batches remain live.
+ * Release cancels and discards an unacquired batch; acquired batches remain
+ * live.
+ * Serialize release against other calls using the same query handle.
  */
-FsStatus fsx_content_submit(FsEngine *, const FsContentRequest *, FsContentQuery **);
+FsStatus fsx_content_submit(FsEngine *, const FsContentRequest *,
+                            FsContentQuery **);
 FsStatus fsx_content_poll(FsContentQuery *, FsContentInfo *);
 FsStatus fsx_content_wait(FsContentQuery *, uint64_t deadline_ns);
 FsStatus fsx_content_batch_acquire(FsContentQuery *, FsContentBatch **);
 FsStatus fsx_content_batch_info(const FsContentBatch *, FsContentFileView *);
-FsStatus fsx_content_batch_record(const FsContentBatch *, uint32_t, FsContentRecordView *);
+FsStatus fsx_content_batch_record(const FsContentBatch *, uint32_t,
+                                  FsContentRecordView *);
 void fsx_content_batch_release(FsContentBatch *);
 void fsx_content_cancel(FsContentQuery *);
 void fsx_content_release(FsContentQuery *);
