@@ -55,7 +55,7 @@ The [cross-platform and content-search proposal](docs/cross-platform-content-sea
 defines Linux inotify/macOS FSEvents and explicit bfs/ugrep content jobs. These
 milestones include Linux inotify, Linux/macOS/Windows indexed content jobs, and
 Linux/macOS bfs live discovery with an explicit separate request/CLI command.
-macOS FSEvents now has a native dispatch-queue backend under formal qualification;
+macOS FSEvents uses a native dispatch-queue backend;
 wait/scan consume a bounded event-flag bridge and reconcile the root.
 
 ## Build policy
@@ -120,9 +120,9 @@ content jobs and native FSEvents watching. `macos-x64-debug` and
 `macos-x64-release` select the published Intel SDKs and x64-osx triplet; a separate
 macos-15-intel CI job runs the same native suite. The selected SDK dylibs require macOS 15, matching
 the explicit deployment baseline in the presets.
-The FSEvents follow-up is pending native macOS CI. ARM64 jobs have been cancelled
-before startup because GitHub reports hosted runner capacity constraints. Intel
-qualification is independent; it does not substitute for an ARM64 result.
+CI records native ARM64 and Intel results independently. Each profile runs scans,
+queries, persistence, content processes and FSEvents against its selected SDKs;
+results from one architecture do not substitute for the other.
 
 `windows-release` builds the library and CLI without tests. Linux exposes
 `linux-debug`, `linux-release`, `linux-asan-ubsan` and `linux-tsan`; Debug/sanitizer
@@ -208,7 +208,8 @@ watching has no durable cursor or automatic polling backend. The
 coverage and resource limits.
 macOS delivers native FSEvents on a serial dispatch queue into a bounded flag
 bridge; wait/scan consume it, and close waits for final stream-context release.
-The new backend awaits native macOS CI. It has no history replay cursor.
+It has no history replay cursor. Every successful reconciliation advances the
+snapshot epoch; delayed events can require additional passes after an observed IDLE.
 
 The NTFS commands use a separate native backend:
 

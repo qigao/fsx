@@ -1462,7 +1462,7 @@ suite("FileSearch engine") {
     config.max_entries = 1;
     check_equal(fsx_engine_open(&config, &engine), FS_OK);
     open_watch(&watch, root, 65536);
-    settle_watch(watch);
+    FsWatchInfo initial = settle_watch(watch);
     check_equal(count("seed"), (uint64_t)1);
     FsEntryView old = entry(0, NULL);
     retained_result = held_result;
@@ -1482,10 +1482,12 @@ suite("FileSearch engine") {
     char path[2048];
     snprintf(path, sizeof(path), "%s/overflow.txt", root);
     remove_utf8(path);
-    settle_watch(watch);
+    info = settle_watch(watch);
     fsx_engine_progress(engine, &after);
     check_false(after.needs_rescan);
-    check_equal(after.snapshot_epoch, before.snapshot_epoch + 1);
+    check_true(info.rescans > initial.rescans);
+    check_equal(after.snapshot_epoch,
+                before.snapshot_epoch + info.rescans - initial.rescans);
     check_equal(old.name, "seed.txt");
     check_equal(count("overflow"), (uint64_t)0);
   }

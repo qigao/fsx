@@ -142,7 +142,7 @@ or incremental database reader; loading still visits all committed rows.
 ## Content jobs
 
 The content runtime supports Linux/glibc 2.34+ (the selected Ubuntu 24.04 CI
-profile), native macOS 15 ARM64 and Windows 10+ (native x64 LLVM-MinGW qualification). Other platforms
+profile), native macOS 15 ARM64/x64 and Windows 10+ (native x64 LLVM-MinGW qualification). Other platforms
 return UNSUPPORTED at submission, even when a native ugrep package is available. FSX remains C11;
 ugrep executes as an explicitly supplied absolute executable, with no shell,
 PATH search, filter commands, archives or matcher fallback. The caller owns tool
@@ -192,12 +192,13 @@ profile uses runner Apple Clang and the fixed released Core/CMeta SDKs, whose
 Mach-O minimum deployment versions are 15.0. The versioned presets match that
 baseline. Intel macOS now has separate macos-x64 presets and a macos-15-intel CI
 job, using the same published packages and their x64 SDKs. Intel qualification is
-independent from ARM64; both are pending native results. Older OS releases remain
+recorded independently from ARM64. Older OS releases remain
 unqualified.
 The APFS fixture explicitly verifies rejection of an ill-formed UTF-8 filename
 at creation; Linux exercises discovered invalid-name skips. File content remains
 UTF-8/NUL validated on both. macOS FSEvents uses the bounded native bridge
-described below; its new source-owned cases await native macOS qualification.
+described below; each native architecture runs the source-owned scan, content
+and watcher cases.
 
 The expanded request/info structures require callers to recompile and use the
 request factories. `FsContentRequest` selects exactly the supplied retained `FsResult` window,
@@ -416,7 +417,10 @@ signals the same semaphore. Scan flushes before enumeration, consumes delivered
 flags at directory entry/every 256 records, then flushes again after commit.
 A scan-local latch retains every change consumed during the pass. Only a complete
 pass with no observed intervening events can clear DIRTY; IDLE is not a durable
-journal position or atomic filesystem snapshot. Native flush and stop calls are
+journal position or atomic filesystem snapshot. Delayed events can require
+additional successful passes, each advancing the snapshot epoch. Test quiescence
+waits for an actual bounded quiet interval and checks epoch advancement against
+the successful rescan count. Native flush and stop calls are
 not hard real-time operations. Independent watches retain independent obligations.
 
 Database placement is checked by walking actual parent directory identities;
@@ -425,8 +429,8 @@ invalidates and releases the stream on its serial queue, then waits for its
 context release callback before freeing bridge storage and its engine handle.
 Callers must join wait/scan before close. Native CoreFoundation/dispatch allocations
 and OS buffers are outside the managed-byte counter, like kernel inotify/RDC
-state. This backend still requires native macOS CI qualification; FSEvents
-history replay and nonlocal filesystem completeness are not claimed.
+state. Native CI records ARM64 and Intel results separately. FSEvents history
+replay and nonlocal filesystem completeness are not claimed.
 
 ### Linux inotify
 
