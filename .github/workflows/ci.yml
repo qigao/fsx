@@ -28,9 +28,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-debug, triplet: x64-linux, content: 'ON'}
-          - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-asan-ubsan, triplet: x64-linux, content: 'ON'}
-          - {runner: windows-2025, rid: windows-x64, preset: windows-debug, triplet: qigao-x64-windows-llvm-mingw, content: 'OFF'}
+          - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-debug, triplet: x64-linux, content: 'ON', search_tools: 'ON', ugrep: 'build/linux-debug/vcpkg_installed/x64-linux/tools/ugrep/ugrep'}
+          - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-asan-ubsan, triplet: x64-linux, content: 'ON', search_tools: 'ON', ugrep: 'build/linux-asan-ubsan/vcpkg_installed/x64-linux/tools/ugrep/ugrep'}
+          - {runner: windows-2025, rid: windows-x64, preset: windows-debug, triplet: qigao-x64-windows-llvm-mingw, content: 'ON', search_tools: 'OFF', ugrep: 'build/windows-tool-candidate/build-search-tools/installed/qigao-x64-windows-llvm-mingw-static/tools/ugrep/ugrep.exe'}
     env: &native_environment
       VCPKG_BINARY_CACHE: ${{ github.workspace }}/build/vcpkg-binary-cache
       VCPKG_DOWNLOADS: ${{ github.workspace }}/build/vcpkg-downloads
@@ -125,6 +125,19 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { throw 'ccache extraction failed' }
           (Join-Path $env:RUNNER_TEMP $name) >> $env:GITHUB_PATH
+      # Test-only tool qualification from cache PR #282; production pins stay released.
+      - uses: actions/checkout@v4
+        if: runner.os == 'Windows' && matrix.content == 'ON'
+        with:
+          repository: qigao/vcpkg-cache
+          ref: b247d9c4cf738fbf5640cd4ad82832e74929e756
+          path: build/windows-tool-candidate
+          persist-credentials: false
+      - name: Build and qualify the exact static Windows ugrep candidate
+        if: runner.os == 'Windows' && matrix.content == 'ON'
+        env:
+          TOOL_TRIPLET: qigao-x64-windows-llvm-mingw-static
+        run: python build/windows-tool-candidate/tests/search-tools/run.py
       - name: Stage the live source on the existing system-volume journal
         if: matrix.live
         id: live_source
@@ -140,9 +153,9 @@ jobs:
         working-directory: ${{ steps.live_source.outputs.path || github.workspace }}
         run: >-
           cmake --preset ${{ matrix.preset }} -DCMAKE_C_COMPILER_LAUNCHER=ccache
-          -DFSX_BUILD_SEARCH_TOOLS=${{ matrix.content }}
+          -DFSX_BUILD_SEARCH_TOOLS=${{ matrix.search_tools }}
           -DFSX_BUILD_CONTENT_TESTS=${{ matrix.content }}
-          -DFSX_CONTENT_TEST_UGREP=${{ github.workspace }}/build/${{ matrix.preset }}/vcpkg_installed/${{ matrix.triplet }}/tools/ugrep/ugrep
+          -DFSX_CONTENT_TEST_UGREP=${{ github.workspace }}/${{ matrix.ugrep }}
           -DFSX_CONTENT_TEST_BFS=${{ github.workspace }}/build/${{ matrix.preset }}/vcpkg_installed/${{ matrix.triplet }}/tools/bfs/bfs
       - name: Build
         working-directory: ${{ steps.live_source.outputs.path || github.workspace }}
@@ -224,6 +237,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - {runner: windows-2025, rid: windows-x64, preset: windows-native-release, triplet: qigao-x64-windows-llvm-mingw, live: true, content: 'OFF'}
+          - {runner: windows-2025, rid: windows-x64, preset: windows-native-release, triplet: qigao-x64-windows-llvm-mingw, live: true, content: 'OFF', search_tools: 'OFF', ugrep: 'build/windows-native-release/vcpkg_installed/qigao-x64-windows-llvm-mingw/tools/ugrep/ugrep.exe'}
     env: *native_environment
     steps: *native_steps

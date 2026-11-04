@@ -5,12 +5,13 @@
 [运行时契约](runtime-contract.md)为准。本文细化
 [主设计](FileSearch-C11-设计.md)的跨平台与内容搜索里程碑。
 
-首个内容运行时的实际契约见[运行时文档](runtime-contract.md#linux-content-jobs)：
+首个内容运行时的实际契约见[运行时文档](runtime-contract.md#content-jobs)：
 候选可显式选择保留结果窗口，或提交查询表达式流式扫描固定快照中的完整范围，
 后者不受 UI 窗口限制、不预分配全量候选、不在背压期间持有 SQLite 读事务。
 一个 engine 同时执行一个任务/ugrep 进程，一个未释放文件批次形成背压。
 Linux BFS_LIVE 已实现，额外持有一个 bfs 子进程；同时执行两个 ugrep 仍是后续目标。
-Windows/macOS 内容进程适配尚未实现。
+Windows 索引候选内容后端已进入实现/验收，使用 cache #282 的精确候选工具；
+该工具仍未发布，生产依赖固定版本不变。macOS 内容进程适配尚未实现。
 
 ## 1. 选定方案与范围
 

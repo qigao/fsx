@@ -93,6 +93,7 @@ class ContentCli(unittest.TestCase):
             self.assertEqual(result.returncode, 2, result.stderr)
             self.assertFalse(self.db.exists())
 
+    @unittest.skipUnless(sys.platform == 'linux', 'BFS_LIVE requires Linux')
     def test_live_search_needs_no_database_and_preserves_path_bytes(self):
         name = '-e 猫\n.txt'
         (self.root / name).write_text('needle needle\n', encoding='utf-8')
@@ -111,6 +112,7 @@ class ContentCli(unittest.TestCase):
         self.assertEqual(rows[-1]['candidates'], 2)
         self.assertFalse(self.db.exists())
 
+    @unittest.skipUnless(sys.platform == 'linux', 'BFS_LIVE requires Linux')
     def test_live_missing_bfs_and_invalid_root_fail_explicitly(self):
         result = self.run_fsx('content-live', '/fsx-missing-bfs', UGREP,
                               '--literal', 'x', '--', self.root)
@@ -123,6 +125,7 @@ class ContentCli(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertFalse(json.loads(result.stdout)['complete'])
 
+    @unittest.skipUnless(sys.platform == 'linux', 'BFS_LIVE requires Linux')
     def test_live_binary_and_empty_directory_have_distinct_completeness(self):
         result = self.run_fsx('content-live', BFS, UGREP, '--literal', 'x',
                               '--', self.root)

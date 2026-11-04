@@ -34,4 +34,10 @@ FsStatus fsx_content_file(FsContentQuery *, const FsEntry *, FsContentBatch *);
 FsStatus fsx_content_decode(FsContentBatch *, uint32_t limit);
 FsStatus fsx_content_visit(void *, const FsEntry *);
 FsStatus fsx_content_discover(FsContentQuery *);
+typedef struct FsTextState {
+  uint32_t scalar, minimum;
+  unsigned remaining;
+} FsTextState;
+bool fsx_content_text(FsTextState *, const unsigned char *, size_t);
+bool fsx_content_tool_path(const char *);
 #endif

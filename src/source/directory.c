@@ -174,13 +174,13 @@ FsStatus fsx_native_volume(FsEngine *e, const char *root, uint64_t *out) {
   fsx_free(w);
   if (h == INVALID_HANDLE_VALUE)
     return win_status(GetLastError());
-  BY_HANDLE_FILE_INFORMATION info;
-  BOOL ok = GetFileInformationByHandle(h, &info);
+  FILE_ID_INFO info;
+  BOOL ok = GetFileInformationByHandleEx(h, FileIdInfo, &info, sizeof(info));
   DWORD err = GetLastError();
   CloseHandle(h);
   if (!ok)
     return win_status(err);
-  *out = info.dwVolumeSerialNumber;
+  *out = info.VolumeSerialNumber;
   return FS_OK;
 }
 

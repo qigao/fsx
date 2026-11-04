@@ -75,13 +75,15 @@ static FsStatus query(void *context, FsNtfsIdentity *out) {
     return status == FS_END ? FS_STALE : status;
   }
   BY_HANDLE_FILE_INFORMATION info;
-  BOOL ok = GetFileInformationByHandle(root, &info);
+  FILE_ID_INFO volume;
+  BOOL ok = GetFileInformationByHandle(root, &info) &&
+    GetFileInformationByHandleEx(root, FileIdInfo, &volume, sizeof(volume));
   DWORD error = GetLastError();
   CloseHandle(root);
   if (!ok)
     return error_status(n, error);
   if (file_id(&info) != n->identity.root_frn ||
-      info.dwVolumeSerialNumber != n->identity.common_volume ||
+      volume.VolumeSerialNumber != n->identity.common_volume ||
       !(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
       info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
     return FS_STALE;
@@ -593,7 +595,7 @@ FsStatus fsx_ntfs_native_open(FsEngine *e, const char *root,
     goto failed;
   }
   n->identity.volume_serial = id.VolumeSerialNumber;
-  n->identity.common_volume = basic.dwVolumeSerialNumber;
+  n->identity.common_volume = id.VolumeSerialNumber;
   n->identity.root_frn = file_id(&basic);
   phase = "volume GUID";
   if (!GetVolumePathNameW(n->root, mount, 32768) ||

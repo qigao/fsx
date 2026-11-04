@@ -139,16 +139,47 @@ or incremental database reader; loading still visits all committed rows.
   a successful zero-match result. Regex compile offsets map to original query
   bytes. Failures do not expose partially constructed results.
 
-## Linux content jobs
+## Content jobs
 
-The current content runtime requires Linux/glibc 2.34 or newer (the selected
-Ubuntu 24.04 CI profile). Other platforms return UNSUPPORTED
-at submission, even when a native ugrep package is available. FSX remains C11;
+The content runtime supports Linux/glibc 2.34+ (the selected Ubuntu 24.04 CI
+profile) and Windows 10+ (native x64 LLVM-MinGW qualification). Other platforms
+return UNSUPPORTED at submission, even when a native ugrep package is available. FSX remains C11;
 ugrep executes as an explicitly supplied absolute executable, with no shell,
 PATH search, filter commands, archives or matcher fallback. The caller owns tool
 provenance/version selection. The existing pinned Linux 7.8.5 tool uses the
 protocol qualified in vcpkg-cache PR #282; this does not select an unreleased
-Windows package or update the infrastructure pin.
+Windows package or update the infrastructure pin. Windows runtime CI builds and
+qualifies the exact static tool candidate from cache PR #282 at
+`b247d9c4cf738fbf5640cd4ad82832e74929e756`; that is test-only qualification,
+not a production dependency release. The caller supplies the absolute executable.
+
+Windows uses CreateProcessW with explicit UTF-16 application/argv conversion and
+CRT quote/backslash escaping. It inherits only the three selected stdio handles,
+via STARTUPINFOEX's handle list, and receives a fixed C locale plus SystemRoot.
+It creates the suspended process directly in a private kill-on-close Job Object
+with the job-list attribute, then resumes it. Three byte-mode named pipes have
+overlapped parent I/O and synchronous child ends. Input, stdout and stderr advance
+through per-pipe events with 25 ms cancellation/deadline checks; pending I/O is
+cancelled and joined before buffers/events are released. Native failures and tool
+errors remain explicit; no synchronous-pipe or alternate-process fallback exists.
+Cleanup terminates the Job Object, waits for the root process and confirms zero
+active descendants before publishing terminal state. The Windows tests use the
+actual static ugrep and a source-owned process peer for handle exclusion and
+descendant cancellation. BFS_LIVE is unsupported on Windows.
+
+Windows opens canonical drive/UNC roots and then each component through
+NtCreateFile relative to a verified directory handle. Reparse points, offline or
+recall-marked files and alternate data stream components are not read. Read checks
+bind the selected source's full 64-bit volume serial and existing 64-bit file key;
+before/after checks also compare the native 128-bit opened-file identity, size,
+LastWriteTime and ChangeTime, and then reopen the pathname association. This is
+still LIVE_READ, not a byte snapshot. Source identities are retained inside each
+immutable metadata snapshot, including page-patched NTFS revisions, without a
+content-time database reader. New Windows scans and NTFS sources use full 64-bit
+volume serials. Existing databases recording the former 32-bit serial require a
+fresh index database; mismatch reports stale and does not select a compatibility
+identity. Local NTFS is the qualified Windows profile; other volumes need their
+own acceptance.
 
 The expanded request/info structures require callers to recompile and use the
 request factories. `FsContentRequest` selects exactly the supplied retained `FsResult` window,
@@ -293,7 +324,7 @@ coverage: terminal OK, no skipped/changed candidates and no captured source
 invalidation. It does not assert that the whole current filesystem was searched.
 Published record/file counters, process start/running counts, native tool exit
 status and diagnostics remain available through poll. No PDF/Office extraction,
-or Windows/macOS process backend is claimed by this API.
+or macOS process backend is claimed by this API.
 
 ## Cooperative directory watches
 

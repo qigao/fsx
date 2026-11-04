@@ -183,7 +183,8 @@ FsContentRequest fsx_content_scope_request(const char *scope, const char *ugrep,
                                            const char *pattern);
 FsContentRequest fsx_content_live_request(const char *root, const char *bfs,
                                           const char *ugrep, const char *pattern);
-/* Linux native backend. Other platforms explicitly return UNSUPPORTED.
+/* Linux / Windows native backends. BFS_LIVE currently requires Linux.
+ * Other platforms explicitly return UNSUPPORTED.
  * One active content task per engine, independent of query/index pools.
  * LIVE_READ observations, not content at metadata_epoch. Only UTF-8 text
  * without NUL is searched; a leading UTF-8 BOM is removed before matching.
