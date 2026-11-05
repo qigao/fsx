@@ -34,7 +34,7 @@ if(FSX_BUILD_CONTENT_TESTS)
   file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/content_benchmark_test.c" content_benchmark_sha256)
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS content_benchmark_test.c)
   cmake_add_test(fsx_content_benchmark_test SOURCES content_benchmark_test.c
-    LIBS Fsx::Fsx Salts::TinyTest Salts::Platform
+    LIBS Fsx::Fsx Salts::TinyTest Salts::Platform unofficial::sqlite3::sqlite3
     DEFS "FSX_TEST_UGREP=\"${FSX_CONTENT_TEST_UGREP}\"" "FSX_TEST_BFS=\"${FSX_CONTENT_TEST_BFS}\""
       "FSX_TEST_BUILD_TYPE=\"${CMAKE_BUILD_TYPE}\""
       "FSX_TEST_PLATFORM=\"${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}\""

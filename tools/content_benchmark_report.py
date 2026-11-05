@@ -25,7 +25,7 @@ def read_measurements(path):
     rows = list(csv.DictReader(line for line in lines if not line.startswith("#")))
     if len(accepted) != 1 or int(accepted[0].split("operations=")[1]) != len(rows):
         raise ValueError("incomplete native acceptance or incorrect operation count")
-    if metadata["format"] != "fsx-content-benchmark-v1":
+    if metadata["format"] != "fsx-content-benchmark-v2":
         raise ValueError("unsupported measurement format")
     text = {"corpus", "source", "pattern", "phase", "input_hash"}
     return metadata, [{k: v if k in text else int(v) for k, v in row.items()} for row in rows]
@@ -36,13 +36,17 @@ def schedule(sources):
     for corpus in ("small", "large"):
         expected.append((corpus, "none", "none", "baseline", 0, 0, 0))
         for source in sources:
+            variants = [(source, 1), (source, 2)]
+            if source == "scope" and "live" in sources:
+                variants += [("direct", 1), ("direct", 2)]
             for pattern in (("anchor", "needle", "absent") if corpus == "small"
                             else ("anchor", "absent")):
-                expected.extend((corpus, source, pattern, "warmup", 0, mode - 1, mode)
-                                for mode in (1, 2))
-                expected.extend((corpus, source, pattern, "measure", rnd, pos,
-                                 1 + (rnd + pos) % 2)
-                                for rnd in range(1, 5) for pos in (0, 1))
+                expected.extend((corpus, origin, pattern, "warmup", 0, pos, mode)
+                                for pos, (origin, mode) in enumerate(variants))
+                expected.extend((corpus, variants[(rnd - 1 + pos) % len(variants)][0],
+                                 pattern, "measure", rnd, pos,
+                                 variants[(rnd - 1 + pos) % len(variants)][1])
+                                for rnd in range(1, 5) for pos in range(len(variants)))
             expected.extend((corpus, source, "anchor", "cancel", 0, mode - 1, mode)
                             for mode in (1, 2))
     return Counter(expected)
@@ -83,6 +87,15 @@ def summarize(measurement_path, query_path):
             raise ValueError("candidate queue exceeded its bound")
         if row["running_sampled_peak"] > row["parallel_files"] + (row["source"] == "live"):
             raise ValueError("native process count exceeded its bound")
+        if row["source"] == "direct":
+            if (row["queued_sampled_peak"] or row["spawn_call_ns"] <= 0
+                    or row["child_lifetime_ns"] < row["spawn_call_ns"]
+                    or row["collect_decode_ns"] <= 0
+                    or row["child_lifetime_ns"] + row["collect_decode_ns"] >
+                       row["parallel_files"] * (row["end_ns"] - row["start_ns"])):
+                raise ValueError("invalid direct-process stages or concurrency bounds")
+        elif any(row[k] for k in ("spawn_call_ns", "child_lifetime_ns", "collect_decode_ns")):
+            raise ValueError("direct-process stages attached to a different backend")
         if baseline:
             if any(row[k] for k in ("records", "processes", "cancel_ns", "first_batch_ns")):
                 raise ValueError("baseline unexpectedly ran a content process")
@@ -143,6 +156,12 @@ def summarize(measurement_path, query_path):
                       sampled_owned_increase_bytes=max(r["owned_sampled_peak"] - r["owned_base"] for r in batch),
                       sampled_running_peak=max(r["running_sampled_peak"] for r in batch),
                       sampled_queued_peak=max(r["queued_sampled_peak"] for r in batch))
+        if source == "direct":
+            result["spawn_call_per_process_ms"] = distribution([r["spawn_call_ns"] / r["files"] for r in batch], 1e6)
+            result["child_lifetime_per_process_ms"] = distribution([r["child_lifetime_ns"] / r["files"] for r in batch], 1e6)
+            result["collect_decode_per_process_ms"] = distribution([r["collect_decode_ns"] / r["files"] for r in batch], 1e6)
+            result["first_checked_output_ms"] = result.pop("first_batch_ms")
+            result["process_peak_semantics"] = "exact admitted/unreaped roots, not sampled"
         if phase == "measure":
             result["files_per_second"] = statistics.median(r["files"] * 1e9 / duration
                                                             for r, duration in zip(batch, durations))
@@ -156,15 +175,27 @@ def summarize(measurement_path, query_path):
     ratios = [{"corpus": key[0], "source": key[1], "pattern": key[2],
                "serial_median_wall_div_parallel": modes[1]["wall_ms"]["median"] / modes[2]["wall_ms"]["median"]}
               for key, modes in sorted(pairs.items())]
+    direct_comparisons = []
+    indexed = {(g["corpus"], g["source"], g["pattern"], g["parallel_files"]): g
+               for g in groups if g["phase"] == "measure"}
+    for (corpus, source, pattern, parallel), direct in indexed.items():
+        if source == "direct":
+            scoped = indexed[corpus, "scope", pattern, parallel]
+            direct_comparisons.append({"corpus": corpus, "pattern": pattern,
+                                       "parallel_files": parallel,
+                                       "fsx_scope_wall_div_direct": scoped["wall_ms"]["median"] / direct["wall_ms"]["median"]})
     return {"metadata": metadata, "operations": len(rows), "matched_inputs": True,
             "balanced_positions": True, "groups": groups, "observed_ratios": ratios,
+            "direct_comparisons": direct_comparisons,
             "limitations": ["Warm uncontrolled OS cache; fixed small corpus; four measured samples per mode/case.",
                             "Native validation and observer overhead are included in content wall time.",
                             "Query quantiles use only wholly contained observations; P50/P95/P99 are nearest-rank.",
                             "Allocation/process/queue peaks are sampled lower bounds, not RSS or child memory limits.",
-                            "No cold-cache, 100k-file, direct-ugrep, CPU/RSS or production-tail-latency acceptance.",
+                            "No cold-cache, 100k-file, batch-ugrep, CPU/RSS or production-tail-latency acceptance.",
                             "Cancellation starts at the first acquired confirmed file; these are not hung-child timings.",
-                            "Hosted profiles and sanitizer timings must be analyzed separately; no speed threshold."]}
+                            "Hosted profiles and sanitizer timings must be analyzed separately; no speed threshold.",
+                            "POSIX direct controls reopen immutable fixture paths, use regular temporary output files and blocking waitpid; omit FSX identity/text/post-read checks, streaming backpressure and cooperative cancellation.",
+                            "Direct spawn-call time is not a ready-to-match metric; child lifetime includes spawn, matching and reaping. Stage sums overlap across parallel workers and are not wall-time components. Per-process stage quantiles describe four per-run averages, not individual child samples."]}
 
 
 def sha256(path):
