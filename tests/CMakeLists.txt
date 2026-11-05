@@ -9,19 +9,25 @@ set_tests_properties(fsx_ntfs_benchmark_test PROPERTIES TIMEOUT 300 LABELS "engi
   RUN_SERIAL TRUE)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 if(FSX_BUILD_CONTENT_TESTS)
-  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(FATAL_ERROR "Content runtime tests currently require Linux")
-  endif()
   if(NOT IS_ABSOLUTE "${FSX_CONTENT_TEST_UGREP}" OR NOT EXISTS "${FSX_CONTENT_TEST_UGREP}")
     message(FATAL_ERROR "FSX_CONTENT_TEST_UGREP must name the real native ugrep executable")
   endif()
-  if(NOT IS_ABSOLUTE "${FSX_CONTENT_TEST_BFS}" OR NOT EXISTS "${FSX_CONTENT_TEST_BFS}")
-    message(FATAL_ERROR "FSX_CONTENT_TEST_BFS must name the real native bfs executable")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(NOT IS_ABSOLUTE "${FSX_CONTENT_TEST_BFS}" OR NOT EXISTS "${FSX_CONTENT_TEST_BFS}")
+      message(FATAL_ERROR "FSX_CONTENT_TEST_BFS must name the real native bfs executable")
+    endif()
+    cmake_add_executable(fsx_content_process_peer SOURCES content_process_peer.c FOLDER tests/content)
+    cmake_add_test(fsx_content_test SOURCES content_test.c LIBS Fsx::Fsx Salts::TinyTest Salts::Platform
+      DEFS "FSX_TEST_UGREP=\"${FSX_CONTENT_TEST_UGREP}\"" "FSX_TEST_BFS=\"${FSX_CONTENT_TEST_BFS}\""
+        "FSX_TEST_CONTENT_PEER=\"$<TARGET_FILE:fsx_content_process_peer>\"" FOLDER tests/content)
+  elseif(WIN32)
+    cmake_add_executable(fsx_content_process_peer SOURCES content_windows_peer.c LIBS shell32 FOLDER tests/content)
+    cmake_add_test(fsx_content_test SOURCES content_windows_test.c LIBS Fsx::Fsx Salts::TinyTest Salts::Platform
+      DEFS "FSX_TEST_UGREP=\"${FSX_CONTENT_TEST_UGREP}\""
+        "FSX_TEST_CONTENT_PEER=\"$<TARGET_FILE:fsx_content_process_peer>\"" FOLDER tests/content)
+  else()
+    message(FATAL_ERROR "Content tests require Linux or Windows")
   endif()
-  cmake_add_executable(fsx_content_process_peer SOURCES content_process_peer.c FOLDER tests/content)
-  cmake_add_test(fsx_content_test SOURCES content_test.c LIBS Fsx::Fsx Salts::TinyTest Salts::Platform
-    DEFS "FSX_TEST_UGREP=\"${FSX_CONTENT_TEST_UGREP}\"" "FSX_TEST_BFS=\"${FSX_CONTENT_TEST_BFS}\""
-      "FSX_TEST_CONTENT_PEER=\"$<TARGET_FILE:fsx_content_process_peer>\"" FOLDER tests/content)
   add_dependencies(fsx_content_test fsx_content_process_peer)
   set_tests_properties(fsx_content_test PROPERTIES TIMEOUT 60 LABELS "content;integration"
     ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")

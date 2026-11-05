@@ -291,6 +291,33 @@ FsStatus fsx_snapshot_load(FsEngine *e, FsSnapshot **out) {
   snap->sources = (uint32_t)sqlite3_column_int(q, 0);
   snap->incomplete = (uint32_t)sqlite3_column_int(q, 1);
   snap->unsupported = (uint64_t)sqlite3_column_int64(q, 2);
+  if (snap->sources) {
+    snap->identities = fsx_alloc(e, snap->sources * sizeof(*snap->identities));
+    if (!snap->identities) { status = FS_NOMEM; goto done; }
+  }
+  sqlite3_finalize(q);
+  q = NULL;
+  rc = sqlite3_prepare_v2(e->db, "SELECT source_id,volume FROM sources ORDER BY source_id",
+                          -1, &q, NULL);
+  if (rc != SQLITE_OK) {
+    status = fsx_db_status(rc);
+    goto done;
+  }
+  uint32_t source = 0;
+  while ((rc = sqlite3_step(q)) == SQLITE_ROW) {
+    sqlite3_int64 id = sqlite3_column_int64(q, 0);
+    if (source == snap->sources || id <= 0 || id > UINT32_MAX ||
+        sqlite3_column_bytes(q, 1) != 8) {
+      status = FS_CORRUPT;
+      goto done;
+    }
+    snap->identities[source].id = (uint32_t)id;
+    snap->identities[source++].volume = decode64(sqlite3_column_blob(q, 1));
+  }
+  if (rc != SQLITE_DONE || source != snap->sources) {
+    status = rc == SQLITE_DONE ? FS_CORRUPT : fsx_db_status(rc);
+    goto done;
+  }
   sqlite3_finalize(q);
   q = NULL;
   snap->page_count = count ? (uint32_t)((count - 1) / FSX_PAGE_ENTRIES + 1) : 0;
@@ -432,6 +459,12 @@ FsStatus fsx_snapshot_patch(FsEngine *e, uint64_t epoch, sqlite3_stmt *rows,
   next->unsupported = base->unsupported;
   next->page_count = base->page_count;
   FsStatus status = FS_OK;
+  if (next->sources) {
+    size_t bytes = next->sources * sizeof(*next->identities);
+    next->identities = fsx_alloc(e, bytes);
+    if (!next->identities) { status = FS_NOMEM; goto done; }
+    memcpy(next->identities, base->identities, bytes);
+  }
   if (next->page_count) {
     if (sizeof(*next->pages) > SIZE_MAX / next->page_count) {
       status = FS_LIMIT;

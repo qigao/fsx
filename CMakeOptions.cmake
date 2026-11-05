@@ -4,7 +4,7 @@ option(FSX_BUILD_PARSER_TOOLS "Build host Lemon and resolve re2c for query parse
 set(FSX_HOST_LEMON_EXECUTABLE "" CACHE FILEPATH
   "Native host Lemon executable for cross compilation")
 option(FSX_BUILD_SEARCH_TOOLS "Resolve optional native ugrep/bfs command-line tools" OFF)
-option(FSX_BUILD_CONTENT_TESTS "Run formal Linux content tests with real ugrep" OFF)
+option(FSX_BUILD_CONTENT_TESTS "Run formal native content tests with real ugrep" OFF)
 set(FSX_CONTENT_TEST_UGREP "" CACHE FILEPATH "Exact native ugrep for content tests")
 set(FSX_CONTENT_TEST_BFS "" CACHE FILEPATH "Exact native bfs for content tests")
 option(FSX_ENABLE_ASAN "Enable AddressSanitizer" OFF)

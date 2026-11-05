@@ -22,11 +22,13 @@ typedef struct FsPage {
   uint32_t count, capacity;
   FsEntry entries[];
 } FsPage;
+typedef struct FsSourceIdentity { uint32_t id; uint64_t volume; } FsSourceIdentity;
 typedef struct FsSnapshot {
   atomic_uint refs;
   FsEngine *engine;
   uint64_t epoch, unsupported;
   uint32_t count, sources, incomplete;
+  FsSourceIdentity *identities;
   uint32_t page_count, reused_pages;
   FsPage **pages;
 } FsSnapshot;

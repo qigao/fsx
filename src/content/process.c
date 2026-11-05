@@ -83,41 +83,6 @@ static bool same_version(const struct stat *a, const struct stat *b) {
          a->st_ctim.tv_sec == b->st_ctim.tv_sec &&
          a->st_ctim.tv_nsec == b->st_ctim.tv_nsec;
 }
-typedef struct TextState {
-  uint32_t scalar, minimum;
-  unsigned remaining;
-} TextState;
-static bool text_bytes(TextState *s, const unsigned char *p, size_t n) {
-  for (size_t i = 0; i < n; i++) {
-    unsigned c = p[i];
-    if (!c)
-      return false;
-    if (s->remaining) {
-      if ((c & 0xc0) != 0x80)
-        return false;
-      s->scalar = s->scalar * 64 + (c & 63);
-      if (!--s->remaining && (s->scalar < s->minimum || s->scalar > 0x10ffff ||
-                              (s->scalar >= 0xd800 && s->scalar <= 0xdfff)))
-        return false;
-    } else if (c >= 0x80) {
-      if (c >= 0xc2 && c <= 0xdf) {
-        s->remaining = 1;
-        s->scalar = c & 31;
-        s->minimum = 0x80;
-      } else if (c >= 0xe0 && c <= 0xef) {
-        s->remaining = 2;
-        s->scalar = c & 15;
-        s->minimum = 0x800;
-      } else if (c >= 0xf0 && c <= 0xf4) {
-        s->remaining = 3;
-        s->scalar = c & 7;
-        s->minimum = 0x10000;
-      } else
-        return false;
-    }
-  }
-  return true;
-}
 static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
   char *argv[] = {q->tool,
                   "-J1",
@@ -150,7 +115,7 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
   size_t used = 0, sent = 0, diagnostic = 0;
   uint64_t read_bytes = 0;
   bool first = true;
-  TextState utf8 = {0};
+  FsTextState utf8 = {0};
   status = masked || rc ? FS_IO : !input ? FS_NOMEM : FS_OK;
   while (status == FS_OK &&
          (child.input >= 0 || child.output >= 0 || child.error >= 0)) {
@@ -183,7 +148,7 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
         if (first && used >= 3 && !memcmp(input, "\xef\xbb\xbf", 3))
           sent = 3;
         first = false;
-        if (!text_bytes(&utf8, input + sent, used - sent)) {
+        if (!fsx_content_text(&utf8, input + sent, used - sent)) {
           status = FS_UNSUPPORTED;
           break;
         }

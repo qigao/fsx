@@ -155,5 +155,6 @@ void fsx_snapshot_release(FsSnapshot *s) {
     for (uint32_t i = 0; i < s->page_count; i++)
       fsx_page_release(s->pages[i]);
   fsx_free(s->pages);
+  fsx_free(s->identities);
   fsx_free(s);
 }

@@ -16,7 +16,7 @@ milestones remain on the roadmap.
   bounded owned NTFS batches, and page-limited SQLite memory work sets.
 - Asynchronous queries on SaltsCore's bounded thread pool, retained results,
   cancellation, deadlines, STOPPING/close and allocation/admission limits.
-- Linux asynchronous UTF-8 content jobs over a retained result window or a full
+- Linux/Windows asynchronous UTF-8 content jobs over a retained result window or a full
   metadata scope streamed from a pinned snapshot, using
   an explicit native ugrep executable, per-file batches and consumer backpressure.
 - Explicit Linux bfs live discovery for unindexed directories, with root-relative
@@ -54,7 +54,7 @@ status declarations are in [types.h](include/fsx/types.h).
 The [cross-platform and content-search proposal](docs/cross-platform-content-search.md)
 defines Linux inotify/macOS FSEvents and explicit bfs/ugrep content jobs. These
 milestones include Linux inotify and the initial Linux content runtime. macOS
-FSEvents and Windows/macOS content processes remain planned. Linux bfs live
+FSEvents and macOS content processes remain planned. Linux bfs live
 discovery is implemented with an explicit separate request/CLI command.
 
 ## Build policy
@@ -253,11 +253,15 @@ before allocating. Engine limits bound indexed aliases and depth.
 
 ## Validation
 
-The Linux content API and CLI use the actual ugrep stdin/JSON protocol. Enable
+The native content API and CLI use the actual ugrep stdin/JSON protocol. Enable
 their formal tests with `FSX_BUILD_CONTENT_TESTS=ON` and an absolute
-`FSX_CONTENT_TEST_UGREP` and `FSX_CONTENT_TEST_BFS` executable paths; Linux CI builds
-the pinned optional search-tools manifest feature and supplies those paths. Windows content submission
-explicitly returns UNSUPPORTED. There is no automatic tool discovery or fallback.
+`FSX_CONTENT_TEST_UGREP` and (Linux only) `FSX_CONTENT_TEST_BFS` executable paths.
+Linux CI builds the pinned optional search-tools manifest feature. Windows CI
+qualifies the exact static LLVM-MinGW candidate from cache PR #282, commit
+`b247d9c4cf738fbf5640cd4ad82832e74929e756`, and runs FSX against that tool.
+That package is unreleased; production dependency/Action pins are unchanged.
+Windows supports indexed windows/scopes; BFS_LIVE remains explicitly UNSUPPORTED.
+There is no automatic tool discovery or fallback.
 
 ```sh
 fsx content index.db /absolute/path/to/ugrep --literal 'sqlite3_open' -- 'file: ext:c'
@@ -273,7 +277,7 @@ continues to select exactly the supplied result window. Scope candidate totals
 are incremental until `candidates_known` becomes true after enumeration.
 Missing/skipped/changed files make coverage incomplete (CLI exit 3); tool errors,
 resource limits or timeout are failures (exit 1). The database is not modified.
-See [content ownership and limits](docs/runtime-contract.md#linux-content-jobs).
+See [content ownership and limits](docs/runtime-contract.md#content-jobs).
 
 `content-live` needs no database or prior indexing. It uses an in-memory engine,
 discovers hidden and ordinary files with `bfs -j1 -P -f ROOT -xdev -type f -print0`,
@@ -293,6 +297,12 @@ through four ordinary CTest entries. Enabled Linux content profiles add two
 CTest entries with 33 native API cases and nine CLI cases using real ugrep/bfs.
 A source-owned native process peer injects malformed path frames, traversal
 errors and stalled discovery for failure/cancellation cases; it does not link FSX.
+Windows content profiles run 13 native API cases and six CLI cases (three Linux
+bfs CLI cases are explicitly skipped), including UTF-16 argv quoting, overlapped
+pipe traffic, restricted handle inheritance and actual descendant cancellation.
+Windows 10+ is required for the Job Object process-creation attribute. New indexes
+record full 64-bit volume serials; recreate databases with older 32-bit Windows
+source identities. They are reported stale rather than silently reinterpreted.
 Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.

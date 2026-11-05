@@ -3,6 +3,26 @@
 #include "child_linux.h"
 #endif
 
+bool fsx_content_tool_path(const char *path) {
+#ifdef _WIN32
+  return path && ((strlen(path) >= 3 &&
+                   ((path[0] >= 'A' && path[0] <= 'Z') ||
+                    (path[0] >= 'a' && path[0] <= 'z')) &&
+                   path[1] == ':' && (path[2] == '/' || path[2] == '\\')) ||
+                  (strlen(path) >= 3 && (path[0] == '/' || path[0] == '\\') &&
+                   (path[1] == '/' || path[1] == '\\')));
+#else
+  return path && path[0] == '/';
+#endif
+}
+static bool fsx_content_root_path(const char *path) {
+#ifdef __linux__
+  return fsx_content_path(path);
+#else
+  (void)path;
+  return false;
+#endif
+}
 FsContentRequest fsx_content_request(const FsResult *candidates,
                                      const char *tool, const char *pattern) {
   FsContentRequest r = {sizeof(r),
@@ -206,22 +226,26 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
   if (!out)
     return FS_INVALID;
   *out = NULL;
-#ifndef __linux__
+#if !defined(__linux__) && !defined(_WIN32)
   (void)e;
   (void)r;
   return FS_UNSUPPORTED;
 #else
+#ifdef _WIN32
+  if (r && r->struct_size == sizeof(*r) && r->root)
+    return FS_UNSUPPORTED;
+#endif
   if (!e || !r || r->struct_size != sizeof(*r) ||
       r->api_version != FSX_API_VERSION ||
       (!!r->candidates + !!r->scope + !!r->root != 1) ||
       (!r->root && r->bfs_executable) ||
-      (r->root &&
-       (!r->bfs_executable || r->bfs_executable[0] != '/' ||
-        strlen(r->bfs_executable) > 65535 || strlen(r->root) > 65535 ||
-        !fsx_content_path(r->root) || !fsx_utf8(r->root, strlen(r->root)) ||
-        r->scope_flags || r->timezone_offset_minutes || !r->max_candidates ||
-        r->max_candidates > 1000000 || !r->max_discovery_bytes ||
-        r->max_discovery_bytes > 256 * 1024 * 1024)) ||
+      (r->root && (!r->bfs_executable || r->bfs_executable[0] != '/' ||
+                   strlen(r->bfs_executable) > 65535 ||
+                   strlen(r->root) > 65535 || !fsx_content_root_path(r->root) ||
+                   !fsx_utf8(r->root, strlen(r->root)) || r->scope_flags ||
+                   r->timezone_offset_minutes || !r->max_candidates ||
+                   r->max_candidates > 1000000 || !r->max_discovery_bytes ||
+                   r->max_discovery_bytes > 256 * 1024 * 1024)) ||
       (r->candidates && (r->candidates->engine != e || r->scope_flags ||
                          r->timezone_offset_minutes)) ||
       (r->scope &&
@@ -229,7 +253,7 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
       r->scope_flags &
           ~(FS_QUERY_CASE_SENSITIVE | FS_QUERY_ALLOW_PARTIAL_TEXT) ||
       r->timezone_offset_minutes < -840 || r->timezone_offset_minutes > 840 ||
-      !r->ugrep_executable || r->ugrep_executable[0] != '/' ||
+      !r->ugrep_executable || !fsx_content_tool_path(r->ugrep_executable) ||
       strlen(r->ugrep_executable) > 65535 || !r->pattern ||
       strlen(r->pattern) > 4096 || strchr(r->pattern, '\n') ||
       !fsx_utf8(r->pattern, strlen(r->pattern)) || r->mode > FS_CONTENT_PCRE2 ||
