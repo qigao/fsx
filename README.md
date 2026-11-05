@@ -127,6 +127,8 @@ results from one architecture do not substitute for the other.
 with Apple Clang AddressSanitizer/UndefinedBehaviorSanitizer. It runs the same
 FSEvents lifecycle and actual bfs/ugrep cases as the ordinary Intel profile.
 No sanitizer runtime options or child diagnostics are suppressed.
+UBSan profiles compile with `-fno-sanitize-recover=undefined`, so a reported
+violation terminates the process and fails its formal test.
 
 `windows-release` builds the library and CLI without tests. Linux exposes
 `linux-debug`, `linux-release`, `linux-asan-ubsan` and `linux-tsan`; Debug/sanitizer
