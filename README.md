@@ -123,6 +123,10 @@ the explicit deployment baseline in the presets.
 CI records native ARM64 and Intel results independently. Each profile runs scans,
 queries, persistence, content processes and FSEvents against its selected SDKs;
 results from one architecture do not substitute for the other.
+`macos-x64-asan-ubsan` instruments the library, CLI and source-owned native tests
+with Apple Clang AddressSanitizer/UndefinedBehaviorSanitizer. It runs the same
+FSEvents lifecycle and actual bfs/ugrep cases as the ordinary Intel profile.
+No sanitizer runtime options or child diagnostics are suppressed.
 
 `windows-release` builds the library and CLI without tests. Linux exposes
 `linux-debug`, `linux-release`, `linux-asan-ubsan` and `linux-tsan`; Debug/sanitizer

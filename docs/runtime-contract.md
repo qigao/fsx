@@ -429,7 +429,11 @@ invalidates and releases the stream on its serial queue, then waits for its
 context release callback before freeing bridge storage and its engine handle.
 Callers must join wait/scan before close. Native CoreFoundation/dispatch allocations
 and OS buffers are outside the managed-byte counter, like kernel inotify/RDC
-state. Native CI records ARM64 and Intel results separately. FSEvents history
+state. Native CI records ARM64 and Intel results separately. A dedicated Intel
+ASan/UBSan profile instruments FSX, the CLI and its native fixtures, including
+pending-callback close/reopen and thread handoff; it does not instrument the
+prebuilt SDKs or external bfs/ugrep binaries. Sanitizer defaults and protocol
+diagnostics remain intact. FSEvents history
 replay and nonlocal filesystem completeness are not claimed.
 
 ### Linux inotify
