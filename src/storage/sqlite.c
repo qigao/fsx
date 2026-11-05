@@ -609,7 +609,8 @@ static FsStatus observe(void *ctx, const FsObserved *o) {
   fsx_free(path_fold);
   return fsx_db_status(rc);
 }
-FsStatus fsx_db_scan(FsEngine *e, const char *root, FsScanInfo *out) {
+FsStatus fsx_db_scan(FsEngine *e, const char *root, FsScanInfo *out,
+                     const FsScanHooks *hooks) {
   FsStatus st = sql(e, "BEGIN IMMEDIATE");
   if (st != FS_OK)
     return st;
@@ -714,7 +715,7 @@ FsStatus fsx_db_scan(FsEngine *e, const char *root, FsScanInfo *out) {
     st = fsx_db_status(rc);
     goto done;
   }
-  FsWalk walk = {e, observe, &s, 0, 0};
+  FsWalk walk = {e, observe, &s, 0, 0, hooks};
   st = fsx_walk(&walk, root);
   if (st != FS_OK)
     goto done;

@@ -27,9 +27,10 @@ milestones remain on the roadmap.
   scanner fallback. Results report the selected strategy and entries evaluated.
 - Immutable 4096-entry pages shared across snapshots. Changed pages are copied
   before commit; retained results keep their original metadata and strings.
-- Cooperative Windows directory watches, armed before scanning, with bounded
-  notification buffers, root identity checks, overflow/interruption recovery and
-  retryable shutdown. The CLI runs the wait/rescan loop.
+- Cooperative Windows RDC and Linux inotify directory watches, armed before
+  enumeration, with bounded notification buffers, root identity checks,
+  overflow reconciliation and retryable shutdown. Linux registers each opened
+  directory before listing it; the CLI runs the wait/rescan loop.
 
 - Cooperative Windows NTFS sources: MFT directory topology, complete directory
   aliases, U0/U1 journal handoff, bounded USN batches, durable cursor recovery,
@@ -44,6 +45,11 @@ NTFS sources use the strict profile described below.
 See the [runtime and ownership contract](docs/runtime-contract.md) for precise
 boundaries and limits. The C API is in [api.h](include/fsx/api.h); CMeta value and
 status declarations are in [types.h](include/fsx/types.h).
+
+The [cross-platform and content-search proposal](docs/cross-platform-content-search.md)
+defines Linux inotify/macOS FSEvents and explicit bfs/ugrep content jobs. These
+milestones include the implemented Linux inotify backend; macOS FSEvents and
+content search remain planned.
 
 ## Build policy
 
@@ -160,8 +166,9 @@ boundaries. Admitted NTFS metadata-only batches patch affected pages directly.
 Reuse counts describe that engine's last snapshot build; a newly opened `info`
 process loads its initial snapshot and reports zero reused pages.
 
-`watch` arms recursive Windows directory notifications before its first scan,
-then rescans whenever notifications invalidate the root. It prints and flushes
+`watch` supports Windows RDC and Linux inotify. It arms the root before its first
+scan and registers Linux descendants before enumeration, then rescans whenever
+notifications invalidate the root. It prints and flushes
 one revision summary per successful pass. Ctrl+C stops between waits/scans;
 `--duration-ms` and `--updates` bound the run, with the initial pass counting as
 one update. The database must be outside the watched tree. Unsupported platforms
@@ -175,6 +182,12 @@ info also reports overflows, native interruptions and reconciliation counts.
 Keep the event-loop thread alive to avoid Windows canceling its pending I/O on
 thread exit; serialized handoffs recover by marking a gap and rescanning.
 Every reopened watch requires validation, and partial coverage remains explicit.
+Linux requires `/proc/self/fd` for registration against verified directory fds.
+`FsWatchConfig.max_directories` bounds registrations per reconciliation (default
+65,536); exhaustion returns LIMIT and preserves the committed snapshot. Linux
+watching has no durable cursor or automatic polling backend. The
+[runtime contract](docs/runtime-contract.md#linux-inotify) documents notification
+coverage and resource limits.
 
 The NTFS commands use a separate native backend:
 
@@ -235,7 +248,7 @@ before allocating. Engine limits bound indexed aliases and depth.
 ## Validation
 
 Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 104 engine cases, 25 dedicated raw
+CLI and formal tests. The current suite has 104 Windows / 102 Linux engine cases, 25 dedicated raw
 reader cases, two controlled-replay/measurement cases and 10 CLI cases, run
 through four ordinary CTest entries.
 Coverage includes hardlinks, Unicode full
@@ -261,7 +274,8 @@ after an unidentified failure, and a deterministic directory-to-junction swap
 during observation. Stable junctions remain searchable without traversing targets.
 The asynchronous-index runtime passed all three CTest entries on Linux Debug,
 Linux ASan/UBSan and Windows LLVM-MinGW Debug using the published Core 0.1.2 and
-CMeta 0.1.3 SDKs. Linux compiles 91 engine cases; Windows-only cases are excluded.
+CMeta 0.1.3 SDKs. That earlier Linux revision compiled 91 engine cases;
+Windows-only cases were excluded. Current platform case counts are listed above.
 The independent sanitizer runner keeps default leak detection enabled. See
 [CI validation](https://github.com/qigao/fsx/actions/runs/41598912885).
 

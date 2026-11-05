@@ -1,7 +1,7 @@
 #include "internal.h"
 
 FsWatchConfig fsx_watch_config(void) {
-  FsWatchConfig config = {sizeof(config), FSX_API_VERSION, 65536};
+  FsWatchConfig config = {sizeof(config), FSX_API_VERSION, 65536, 65536};
   return config;
 }
 
@@ -180,7 +180,8 @@ FsStatus fsx_watch_open(FsEngine *e, const char *root,
       !fsx_utf8(root, strlen(root)) || !config ||
       config->struct_size != sizeof(*config) ||
       config->api_version != FSX_API_VERSION || config->buffer_bytes < 1024 ||
-      config->buffer_bytes > 65536 || config->buffer_bytes % 4)
+      config->buffer_bytes > 65536 || config->buffer_bytes % 4 ||
+      !config->max_directories || config->max_directories > 1048576)
     return FS_INVALID;
   FsWatch *w = fsx_alloc(e, sizeof(*w));
   if (!w)
@@ -390,7 +391,7 @@ FsStatus fsx_watch_close(FsWatch **owner) {
   cmeta_mutex_unlock(&e->mutex);
   return FS_OK;
 }
-#else
+#elif !defined(__linux__)
 FsStatus fsx_watch_open(FsEngine *e, const char *root,
                         const FsWatchConfig *config, FsWatch **out) {
   (void)e;

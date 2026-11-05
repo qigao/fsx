@@ -493,7 +493,20 @@ static FsStatus walk_dir(FsWalk *walk, int descriptor, const char *root,
     return posix_status(error);
   }
   FsStatus status = FS_OK;
+  if (walk->hooks) {
+    status = walk->hooks->directory(walk->hooks->context, descriptor, depth);
+    if (status != FS_OK) {
+      closedir(dir);
+      return status;
+    }
+  }
+  unsigned visited = 0;
   for (;;) {
+    if (walk->hooks && visited++ % 256 == 0) {
+      status = walk->hooks->checkpoint(walk->hooks->context);
+      if (status != FS_OK)
+        break;
+    }
     errno = 0;
     struct dirent *d = readdir(dir);
     if (!d) {

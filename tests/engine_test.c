@@ -124,6 +124,16 @@ static void remove_utf8(const char *s) {
   check_equal(unlink(s), 0);
 #endif
 }
+static void move_utf8(const char *from, const char *to) {
+#ifdef _WIN32
+  wchar_t a[2048], b[2048];
+  wide(from, a, 2048);
+  wide(to, b, 2048);
+  check(MoveFileW(a, b) != 0, "move owned fixture path");
+#else
+  check_equal(rename(from, to), 0);
+#endif
+}
 static void put_path(const char *path, const char *content) {
   size_t prefix = strlen(fixture);
   check(fixture_ready && prefix && !strncmp(path, fixture, prefix) &&
@@ -348,7 +358,7 @@ static FsResultInfo equivalent(const char *text, FsQueryOptions options) {
     check_equal(entry(i, NULL).entry_key, keys[i]);
   return accelerated;
 }
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__linux__)
 static void open_watch(FsWatch **out, const char *path, uint32_t bytes) {
   FsWatchConfig config = fsx_watch_config();
   config.buffer_bytes = bytes;
@@ -380,7 +390,7 @@ static FsWatchInfo wait_change(FsWatch *w) {
 typedef struct WatchWaiter {
   FsWatch *watch;
   FsStatus status;
-  DWORD native_error;
+  unsigned long native_error;
 } WatchWaiter;
 static void watch_waiter(void *arg) {
   WatchWaiter *waiter = arg;
@@ -391,13 +401,19 @@ static void watch_scanner(void *arg) {
   WatchWaiter *waiter = arg;
   FsScanInfo scanned;
   waiter->status = fsx_watch_scan(waiter->watch, &scanned);
+#ifdef _WIN32
   waiter->native_error = GetLastError();
+#else
+  waiter->native_error = (unsigned long)errno;
+#endif
 }
+#ifdef _WIN32
 static void watch_opener(void *arg) {
   WatchWaiter *waiter = arg;
   FsWatchConfig config = fsx_watch_config();
   waiter->status = fsx_watch_open(engine, root, &config, &watch);
 }
+#endif
 #endif
 typedef struct ReplacedDirectory {
   char victim[2048], parked[2048], outside[2048];
@@ -960,7 +976,7 @@ suite("FileSearch engine") {
     put("victim/safe.txt", "inside");
     open_engine();
     state.replace = true;
-    FsWalk walk = {engine, replace_observed_directory, &state, 0, 0};
+    FsWalk walk = {engine, replace_observed_directory, &state, 0, 0, NULL};
     FsStatus status = fsx_walk(&walk, root);
     check(status == FS_OK, "walk status=%s native=%lu", fsx_status_name(status),
           state.native_error);
@@ -1215,7 +1231,7 @@ suite("FileSearch engine") {
     check_equal(old.name, "removed.txt");
     check_equal(count(""), (uint64_t)0);
   }
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__linux__)
   it("watches create, metadata, rename and delete through retained snapshots") {
     put("seed.txt", "x");
     open_engine();
@@ -1257,10 +1273,7 @@ suite("FileSearch engine") {
     char from[2048], to[2048];
     snprintf(from, sizeof(from), "%s/nested/created.txt", root);
     snprintf(to, sizeof(to), "%s/nested/renamed.txt", root);
-    wchar_t a[2048], b[2048];
-    wide(from, a, 2048);
-    wide(to, b, 2048);
-    check(MoveFileW(a, b) != 0, "rename watched fixture file");
+    move_utf8(from, to);
     wait_change(watch);
     settle_watch(watch);
     check_equal(count("created"), (uint64_t)0);
@@ -1281,6 +1294,7 @@ suite("FileSearch engine") {
     check_equal(count("offline"), (uint64_t)1);
     check_equal(old.name, "seed.txt");
   }
+#ifdef _WIN32
   it("turns notification overflow into a full reconciliation obligation") {
     open_engine();
     open_watch(&watch, root, 1024);
@@ -1304,6 +1318,7 @@ suite("FileSearch engine") {
     fsx_engine_progress(engine, &progress);
     check_false(progress.needs_rescan);
   }
+#endif
   it("keeps independent watch invalidations across successful source scans") {
     subdir("child");
     open_engine();
@@ -1338,6 +1353,9 @@ suite("FileSearch engine") {
     config = fsx_watch_config();
     config.api_version++;
     check_equal(fsx_watch_open(engine, root, &config, &watch), FS_INVALID);
+    config = fsx_watch_config();
+    config.max_directories = 0;
+    check_equal(fsx_watch_open(engine, root, &config, &watch), FS_INVALID);
     open_watch(&watch, root, 65536);
     FsProgress before, after;
     fsx_engine_progress(engine, &before);
@@ -1370,6 +1388,7 @@ suite("FileSearch engine") {
     check_equal(fsx_query_submit(engine, &request, &held_query), FS_OK);
     check_equal(fsx_query_wait(held_query, FSX_DEADLINE_INFINITE), FS_OK);
   }
+#ifdef _WIN32
   it("retains invalidation from a change arriving during a watch scan") {
     open_engine();
     open_watch(&watch, root, 65536);
@@ -1429,6 +1448,7 @@ suite("FileSearch engine") {
     fsx_engine_progress(engine, &progress);
     check_false(progress.needs_rescan);
   }
+#endif
   it("keeps a failed watch scan dirty and recovers without losing old "
      "results") {
     put("seed.txt", "x");
@@ -1463,6 +1483,7 @@ suite("FileSearch engine") {
     check_equal(old.name, "seed.txt");
     check_equal(count("overflow"), (uint64_t)0);
   }
+#ifdef _WIN32
   it("rearms an interrupted watch after its serialized issuing thread exits") {
     open_engine();
     WatchWaiter opened = {NULL, FS_WAIT};
@@ -1480,6 +1501,7 @@ suite("FileSearch engine") {
     check_equal(info.state, FS_WATCH_IDLE);
     check_equal(info.interruptions, (uint64_t)1);
   }
+#endif
   it("fails a moved or replaced watch root without acknowledging its "
      "snapshot") {
     put("original.txt", "x");
@@ -1494,10 +1516,7 @@ suite("FileSearch engine") {
     check_true(fixture_ready);
     check_true(!strncmp(root, fixture, strlen(fixture)) &&
                !strncmp(moved, fixture, strlen(fixture)));
-    wchar_t a[2048], b[2048];
-    wide(root, a, 2048);
-    wide(moved, b, 2048);
-    check(MoveFileW(a, b) != 0, "move owned fixture directory");
+    move_utf8(root, moved);
     mkdir_utf8(root);
     put("replacement.txt", "y");
     FsWatchInfo info;
@@ -1532,6 +1551,160 @@ suite("FileSearch engine") {
     check_null(watch);
     check_equal(fsx_engine_close(&engine, FSX_DEADLINE_INFINITE), FS_OK);
   }
+#ifdef __linux__
+  it("registers a populated subtree moved into the watched root") {
+    open_engine();
+    open_watch(&watch, root, 65536);
+    settle_watch(watch);
+    char incoming[2048], nested[2048], file[2048], destination[2048];
+    snprintf(incoming, sizeof(incoming), "%s/incoming", fixture);
+    mkdir_utf8(incoming);
+    snprintf(nested, sizeof(nested), "%s/incoming/deep", fixture);
+    mkdir_utf8(nested);
+    snprintf(file, sizeof(file), "%s/incoming/deep/populated.txt", fixture);
+    put_path(file, "initial");
+    snprintf(destination, sizeof(destination), "%s/arrived", root);
+    move_utf8(incoming, destination);
+    wait_change(watch);
+    settle_watch(watch);
+    check_equal(count("populated"), (uint64_t)1);
+    put("arrived/deep/populated.txt", "updated content");
+    wait_change(watch);
+    settle_watch(watch);
+    check_equal(count("populated"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)15);
+    move_utf8(destination, incoming);
+    wait_change(watch);
+    settle_watch(watch);
+    check_equal(count("populated"), (uint64_t)0);
+    put_path(file, "outside changes are no longer watched");
+    FsWatchInfo info;
+    check_equal(fsx_watch_wait(watch, 0, &info), FS_WAIT);
+  }
+  it("leaves ordinary reads and symlink targets outside Linux watch scope") {
+    put("readable.txt", "content");
+    char outside[2048], link[2048], source[2048];
+    snprintf(outside, sizeof(outside), "%s/outside", fixture);
+    mkdir_utf8(outside);
+    snprintf(source, sizeof(source), "%s/outside/secret.txt", fixture);
+    put_path(source, "secret");
+    snprintf(link, sizeof(link), "%s/alias", root);
+    check_equal(symlink("../outside", link), 0);
+    open_engine();
+    open_watch(&watch, root, 65536);
+    settle_watch(watch);
+    check_equal(count("secret"), (uint64_t)0);
+    check_equal(count("alias"), (uint64_t)1);
+    check_true((entry(0, NULL).flags & FS_ENTRY_LINK) != 0);
+    snprintf(source, sizeof(source), "%s/readable.txt", root);
+    FILE *file = fopen(source, "rb");
+    check_not_null(file);
+    check_equal(fgetc(file), (int)'c');
+    check_equal(fclose(file), 0);
+    snprintf(source, sizeof(source), "%s/outside/secret.txt", fixture);
+    put_path(source, "changed outside");
+    FsWatchInfo info;
+    check_equal(fsx_watch_wait(watch, 0, &info), FS_WAIT);
+  }
+  it("reconciles a real Linux inotify queue overflow without advancing early") {
+    FILE *limit = fopen("/proc/sys/fs/inotify/max_queued_events", "r");
+    check_not_null(limit);
+    unsigned queued = 0;
+    int parsed = fscanf(limit, "%u", &queued);
+    fclose(limit);
+    check_equal(parsed, 1);
+    check_true(queued > 0 && queued <= 1048576);
+    put("burst.txt", "old");
+    open_engine();
+    open_watch(&watch, root, 1024);
+    settle_watch(watch);
+    check_equal(count("burst"), (uint64_t)1);
+    FsEntryView old = entry(0, NULL);
+    retained_result = held_result;
+    held_result = NULL;
+    /* MODIFY and CLOSE_WRITE alternate, so identical-event coalescing cannot
+     * hide this overflow. The kernel limit is read, never changed. */
+    for (unsigned i = 0; i <= queued; i++)
+      put("burst.txt", "updated");
+    FsWatchInfo info = wait_change(watch);
+    /* Wait deliberately drains at most 16 buffers. The overflow marker is
+     * behind the already queued records, so pump without reconciling first. */
+    for (unsigned pass = 0; !info.overflows && pass <= queued / 16 + 1; pass++)
+      check_equal(fsx_watch_wait(watch, 0, &info), FS_OK);
+    check_true(info.overflows > 0);
+    check_equal(old.size, (uint64_t)3);
+    scan();
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_true(progress.needs_rescan);
+    info = settle_watch(watch);
+    check_true(info.overflows > 0);
+    check_equal(info.state, FS_WATCH_IDLE);
+    check_equal(count("burst"), (uint64_t)1);
+    check_equal(entry(0, NULL).size, (uint64_t)7);
+  }
+  it("retains the committed snapshot when Linux directory registration is limited") {
+    put("seed.txt", "old");
+    open_engine();
+    scan();
+    check_equal(count("seed"), (uint64_t)1);
+    FsEntryView old = entry(0, NULL);
+    retained_result = held_result;
+    held_result = NULL;
+    FsProgress before, after;
+    fsx_engine_progress(engine, &before);
+    FsWatchConfig config = fsx_watch_config();
+    config.max_directories = 1;
+    check_equal(fsx_watch_open(engine, root, &config, &watch), FS_OK);
+    subdir("child");
+    put("child/new.txt", "new");
+    FsScanInfo scanned;
+    check_equal(fsx_watch_scan(watch, &scanned), FS_LIMIT);
+    check_equal(scanned.snapshot_epoch, (uint64_t)0);
+    FsWatchInfo info = wait_change(watch);
+    check_equal(info.status, FS_LIMIT);
+    check_equal(info.state, FS_WATCH_DIRTY);
+    fsx_engine_progress(engine, &after);
+    check_equal(after.snapshot_epoch, before.snapshot_epoch);
+    check_equal(count("new"), (uint64_t)0);
+    check_equal(old.size, (uint64_t)3);
+    check_equal(fsx_watch_close(&watch), FS_OK);
+    open_watch(&watch, root, 65536);
+    settle_watch(watch);
+    check_equal(count("new"), (uint64_t)1);
+    check_equal(old.name, "seed.txt");
+  }
+  it("keeps events consumed during Linux scan checkpoints dirty after commit") {
+    for (unsigned i = 0; i < 512; i++) {
+      char name[64];
+      snprintf(name, sizeof(name), "existing-%04u.txt", i);
+      put(name, "x");
+    }
+    open_engine();
+    open_watch(&watch, root, 65536);
+    settle_watch(watch);
+    gate_start(false);
+    engine->sql_observer = pause_index;
+    WatchWaiter scanning = {watch, FS_WAIT, 0};
+    cmeta_thread_t thread = {0};
+    check_equal(cmeta_thread_create(&thread, watch_scanner, &scanning), 0);
+    gate_wait();
+    put("midscan.txt", "x");
+    gate_release();
+    int joined = cmeta_thread_join(&thread);
+    cmeta_thread_destroy(&thread);
+    engine->sql_observer = NULL;
+    check_equal(joined, 0);
+    check_equal(scanning.status, FS_OK);
+    FsWatchInfo info = wait_change(watch);
+    check_true(info.change_batches > 0);
+    settle_watch(watch);
+    check_equal(count("midscan"), (uint64_t)1);
+    FsProgress progress;
+    fsx_engine_progress(engine, &progress);
+    check_false(progress.needs_rescan);
+  }
+#endif
 #endif
 #ifdef _WIN32
   it("reports an unrepresentable native name as partial coverage") {

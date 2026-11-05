@@ -225,7 +225,13 @@ FsStatus fsx_engine_progress(FsEngine *e, FsProgress *out) {
   cmeta_mutex_unlock(&e->budget_mutex);
   return FS_OK;
 }
+static FsStatus scan_admitted(FsEngine *e, const char *root, FsScanInfo *out,
+                              const FsScanHooks *hooks);
 FsStatus fsx_engine_scan(FsEngine *e, const char *root, FsScanInfo *out) {
+  return fsx_engine_scan_watched(e, root, out, NULL);
+}
+FsStatus fsx_engine_scan_watched(FsEngine *e, const char *root, FsScanInfo *out,
+                                const FsScanHooks *hooks) {
   if (!out)
     return FS_INVALID;
   *out = (FsScanInfo){0};
@@ -240,10 +246,14 @@ FsStatus fsx_engine_scan(FsEngine *e, const char *root, FsScanInfo *out) {
   e->writer = true;
   atomic_store(&e->writer_cancelled, false);
   cmeta_mutex_unlock(&e->mutex);
-  return fsx_engine_scan_admitted(e, root, out);
+  return scan_admitted(e, root, out, hooks);
 }
 FsStatus fsx_engine_scan_admitted(FsEngine *e, const char *root,
                                   FsScanInfo *out) {
+  return scan_admitted(e, root, out, NULL);
+}
+static FsStatus scan_admitted(FsEngine *e, const char *root, FsScanInfo *out,
+                              const FsScanHooks *hooks) {
   char *canonical = NULL;
   FsRootHealth *health = NULL;
   FsStatus s = fsx_writer_stopping(e) ? FS_CANCELLED
@@ -251,7 +261,7 @@ FsStatus fsx_engine_scan_admitted(FsEngine *e, const char *root,
   if (s == FS_OK)
     s = fsx_health_prepare(e, canonical, &health);
   if (s == FS_OK)
-    s = fsx_db_scan(e, canonical, out);
+    s = fsx_db_scan(e, canonical, out, hooks);
   fsx_free(canonical);
   cmeta_mutex_lock(&e->mutex);
   e->writer = false;

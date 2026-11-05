@@ -96,11 +96,17 @@ typedef struct FsObserved {
   uint32_t flags;
 } FsObserved;
 typedef FsStatus (*FsObserve)(void *, const FsObserved *);
+typedef struct FsScanHooks {
+  FsStatus (*directory)(void *, int descriptor, unsigned depth);
+  FsStatus (*checkpoint)(void *);
+  void *context;
+} FsScanHooks;
 typedef struct FsWalk {
   FsEngine *engine;
   FsObserve observe;
   void *context;
   uint64_t skipped, unsupported;
+  const FsScanHooks *hooks;
 } FsWalk;
 
 bool fsx_reserve(FsEngine *, size_t);
@@ -129,7 +135,9 @@ typedef struct FsCandidates {
 FsStatus fsx_candidates_open(FsQuery *, const char *, FsCandidates *);
 FsStatus fsx_candidates_next(FsCandidates *, uint32_t *);
 void fsx_candidates_close(FsCandidates *);
-FsStatus fsx_db_scan(FsEngine *, const char *, FsScanInfo *);
+FsStatus fsx_db_scan(FsEngine *, const char *, FsScanInfo *, const FsScanHooks *);
+FsStatus fsx_engine_scan_watched(FsEngine *, const char *, FsScanInfo *,
+                                const FsScanHooks *);
 /* Caller owns the writer admission, including an optional joined producer. */
 bool fsx_writer_stopping(FsEngine *);
 FsStatus fsx_engine_scan_admitted(FsEngine *, const char *, FsScanInfo *);

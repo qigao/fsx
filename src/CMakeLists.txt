@@ -6,6 +6,8 @@ target_link_libraries(fsx PUBLIC CMeta::CMeta PRIVATE Salts::Core Salts::Platfor
   Salts::Concurrency Salts::Unicode unofficial::sqlite3::sqlite3 PCRE2::8BIT)
 if(WIN32)
   target_link_libraries(fsx PRIVATE ntdll)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_sources(fsx PRIVATE source/watch_linux.c)
 endif()
 add_subdirectory(query)
 add_subdirectory(source/ntfs)

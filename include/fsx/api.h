@@ -70,6 +70,9 @@ typedef struct FsProgress {
 } FsProgress;
 typedef struct FsWatchConfig {
   uint32_t struct_size, api_version, buffer_bytes;
+  /* Linux directory registrations per reconciliation, including the root.
+   * Windows uses one native recursive watch. */
+  uint32_t max_directories;
 } FsWatchConfig;
 typedef struct FsWatchInfo {
   FsWatchState state;
@@ -152,7 +155,8 @@ FsStatus fsx_index_wait(FsIndexJob *, uint64_t deadline_ns);
 void fsx_index_cancel(FsIndexJob *);
 void fsx_index_release(FsIndexJob *);
 FsWatchConfig fsx_watch_config(void);
-/* Host serializes calls per watch. Open arms monitoring before the first scan.
+/* Windows RDC / Linux inotify. Host serializes calls per watch. Open arms
+ * the root before the first scan; Linux registers descendants before enumeration.
  * Wait pumps notifications; 0 polls, UINT64_MAX waits. Scan reconciles one
  * pass. Repeat wait/scan while dirty. No background thread or durable journal
  * cursor. */
