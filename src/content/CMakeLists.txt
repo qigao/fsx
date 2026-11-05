@@ -1,4 +1,4 @@
-target_sources(fsx PRIVATE api.c json.c text.c)
+target_sources(fsx PRIVATE api.c parallel.c json.c text.c)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   target_compile_definitions(fsx PRIVATE FSX_POSIX_CONTENT=1)
   target_sources(fsx PRIVATE process.c child_posix.c discovery_posix.c)

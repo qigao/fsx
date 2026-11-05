@@ -1,13 +1,42 @@
 #define _POSIX_C_SOURCE 200809L
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
+
+static int parallel(const char *root, bool fail) {
+  int first = getchar();
+  unsigned char input[8192];
+  while (fread(input, 1, sizeof(input), stdin)) {
+  }
+  char path[4096];
+  snprintf(path, sizeof(path), "%s/%ld.ready", root, (long)getpid());
+  FILE *ready = fopen(path, "wb");
+  if (!ready)
+    return 94;
+  fclose(ready);
+  snprintf(path, sizeof(path), "%s/go", root);
+  struct timespec delay = {0, 1000000};
+  while ((fail && first != 'A') || access(path, F_OK))
+    nanosleep(&delay, NULL);
+  if (fail) {
+    fputs("injected parallel failure\n", stderr);
+    return 2;
+  }
+  fputs("{\"line\":1,\"offset\":0,\"text\":\"checked\"}\n", stdout);
+  return 0;
+}
 
 /* Native fault-injection peer, only for the formal content protocol tests.
  * argv is the exact bfs invocation; the selected fixture root owns its mode. */
 int main(int argc, char **argv) {
+  if (argc == 11 && !strncmp(argv[8], "parallel:", 9))
+    return parallel(argv[8] + 9, false);
+  if (argc == 11 && !strncmp(argv[8], "parallel-fail:", 14))
+    return parallel(argv[8] + 14, true);
   if (argc != 9)
     return 90;
   char path[4096];

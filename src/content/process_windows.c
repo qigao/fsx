@@ -16,8 +16,9 @@ static FsStatus native_status(DWORD error) {
 }
 static FsStatus report(FsContentQuery *q, const char *phase, DWORD error) {
   cmeta_mutex_lock(&q->mutex);
-  snprintf(q->info.diagnostic, sizeof(q->info.diagnostic), "Windows %s: %lu",
-           phase, (unsigned long)error);
+  if (!q->info.diagnostic[0])
+    snprintf(q->info.diagnostic, sizeof(q->info.diagnostic), "Windows %s: %lu",
+             phase, (unsigned long)error);
   cmeta_mutex_unlock(&q->mutex);
   return native_status(error);
 }
@@ -61,8 +62,9 @@ static FsStatus open_file(FsContentQuery *q, const FsEntry *entry, HANDLE *out,
       OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
       NULL);
   *component = saved;
-  FsStatus status =
-      parent == INVALID_HANDLE_VALUE ? report(q, "root open", GetLastError()) : FS_OK;
+  FsStatus status = parent == INVALID_HANDLE_VALUE
+                        ? report(q, "root open", GetLastError())
+                        : FS_OK;
   while (status == FS_OK) {
     BY_HANDLE_FILE_INFORMATION directory;
     if (!GetFileInformationByHandle(parent, &directory)) {
@@ -97,7 +99,8 @@ static FsStatus open_file(FsContentQuery *q, const FsEntry *entry, HANDLE *out,
         &attributes, &io, NULL, 0,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
         FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT |
-            (end ? FILE_DIRECTORY_FILE : FILE_NON_DIRECTORY_FILE | FILE_OPEN_NO_RECALL),
+            (end ? FILE_DIRECTORY_FILE
+                 : FILE_NON_DIRECTORY_FILE | FILE_OPEN_NO_RECALL),
         NULL, 0);
     CloseHandle(parent);
     parent = next;
@@ -252,16 +255,14 @@ static FsStatus output_bytes(FsContentQuery *q, FsContentBatch *b,
     memcpy(b->wire + b->used, bytes, n);
     b->used += n;
   } else {
-    cmeta_mutex_lock(&q->mutex);
-    size_t copy = sizeof(q->info.diagnostic) - 1;
+    size_t copy = sizeof(b->diagnostic) - 1;
     if (*diagnostic < copy) {
       copy -= *diagnostic;
       if (copy > n)
         copy = n;
-      memcpy(q->info.diagnostic + *diagnostic, bytes, copy);
-      q->info.diagnostic[*diagnostic + copy] = 0;
+      memcpy(b->diagnostic + *diagnostic, bytes, copy);
+      b->diagnostic[*diagnostic + copy] = 0;
     }
-    cmeta_mutex_unlock(&q->mutex);
     *diagnostic += n;
     if (*diagnostic > 65536)
       return FS_LIMIT;

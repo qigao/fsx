@@ -292,7 +292,8 @@ No further bfs output is required for the current file's ugrep to complete.
 Cancellation exits the current visit, kills/reaps its matcher and then kills/reaps
 discovery. A stalled discovery poll observes cancellation/deadlines every 25 ms.
 `processes_started` counts both kinds; `discovery_processes_started` is the bfs
-subset and `running_processes` counts owned children until reaping (maximum 2).
+subset and `running_processes` counts owned children until reaping: at most
+`parallel_files` matchers, plus one bfs for live traversal.
 
 Input, stdout and stderr advance together through nonblocking pipes/poll. Input
 is checked incrementally for UTF-8 (including scalars crossing read boundaries)
@@ -320,15 +321,40 @@ at 32 MiB (configurable downward). Stderr is drained with a 64 KiB cap and a
 192-byte diagnostic. These managed allocations use the engine heap budget;
 child RSS is separate and has no portable hard cap in this milestone.
 
-At most one complete file batch is outstanding per task. Publication wakes
-`content_wait`; acquiring it transfers batch ownership, and the worker waits
-until release before opening the next file. Wait therefore signals a batch or
-termination, not just whole-task completion. Consumers must acquire/release
-batches while waiting. Reaching a file/output/record limit discards the current
-unconfirmed file and terminates with LIMIT; earlier acquired batches remain
-valid. Arrival order follows the selected candidate window, scope snapshot
-entry order or bfs path stream, with native tool record order inside a file.
-There is no global content sorting/pagination.
+`FsContentRequest.parallel_files` accepts exactly 1 or 2 and defaults to 1 in
+all request factories. Mode 1 preserves serial file processing and backpressure:
+an acquired batch must be released before another file opens. Explicit mode 2
+runs two CMeta worker threads, each with at most one matcher. The producer stays
+on the independent content pool. No failed thread/process admission retries in
+serial mode. The producer queues at most 128 candidates. Live paths are copied
+and limited to 1 MiB of queued bytes (including NULs); indexed paths borrow the
+pinned immutable snapshot. Up to two active candidate paths are additional to
+that queue budget. `queued_candidates`/`queued_path_bytes` expose waiting storage
+and return to zero at termination. A full queue blocks production; it never drops
+candidates or allocates an unbounded spool. The live root fd remains pinned until
+both workers have joined, including after bfs finishes producing.
+
+Active files, completed unpublished files, the single pending publication and
+caller-retained batches share exactly `parallel_files` result slots. Each slot
+allocates up to `max_output_bytes + 1` raw bytes and `max_records` record views;
+mode 2 can therefore consume twice these per-file budgets, all charged to the
+engine's owned allocation budget. Holding both acquired batches stops further
+file reads. Publication wakes `content_wait`; acquiring transfers ownership and
+allows another completed slot to publish. Wait signals a batch or termination;
+consumers must acquire/release batches while waiting.
+
+Decode/publication serializes the task-wide record count: at most `max_records`
+records are published across all files. Exceeding a file/output/record limit
+discards that entire unconfirmed file and terminates with LIMIT; earlier acquired
+batches remain valid. Mode 1 follows candidate order; mode 2 has unspecified
+cross-file arrival order. Both preserve native record order within a file.
+There is no global content sorting/pagination. The first fatal worker/producer
+status stops its peers and wakes queue/result waits; all started workers and
+owned children are joined before terminal publication. Diagnostics capture the
+first available native/tool text without mixing concurrent stderr streams;
+`tool_exit_code` is the most recently reaped matcher, not a per-file error list.
+This concurrency option makes no throughput or latency improvement claim;
+performance acceptance still requires same-machine measurements.
 
 Acquired batches retain the query and its selected snapshot or owned live path and count as engine
 handles. Query release cancels unfinished work and discards an unacquired batch;

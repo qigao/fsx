@@ -200,16 +200,14 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
           b->used += (size_t)n;
         }
       } else {
-        cmeta_mutex_lock(&q->mutex);
-        size_t copy = sizeof(q->info.diagnostic) - 1;
+        size_t copy = sizeof(b->diagnostic) - 1;
         if (diagnostic < copy) {
           copy -= diagnostic;
           if (copy > (size_t)n)
             copy = (size_t)n;
-          memcpy(q->info.diagnostic + diagnostic, output, copy);
-          q->info.diagnostic[diagnostic + copy] = 0;
+          memcpy(b->diagnostic + diagnostic, output, copy);
+          b->diagnostic[diagnostic + copy] = 0;
         }
-        cmeta_mutex_unlock(&q->mutex);
         diagnostic += (size_t)n;
         if (diagnostic > 65536)
           status = FS_LIMIT;

@@ -1,9 +1,15 @@
 #ifndef FSX_CONTENT_H
 #define FSX_CONTENT_H
 #include "../internal.h"
+enum { FSX_CONTENT_QUEUE = 128, FSX_CONTENT_PATH_BYTES = 1024 * 1024 };
+typedef struct FsContentCandidate {
+  FsEntry entry;
+  char *owned_path;
+} FsContentCandidate;
 struct FsContentQuery {
   atomic_uint refs;
   atomic_bool cancelled;
+  atomic_int failure;
   FsEngine *engine;
   FsResult *candidates;
   FsSnapshot *snapshot;
@@ -18,7 +24,10 @@ struct FsContentQuery {
   cmeta_cond_t changed;
   FsContentInfo info;
   FsContentBatch *pending;
-  bool outstanding;
+  uint32_t in_flight;
+  FsContentCandidate *queue;
+  uint32_t queue_head, queue_count, queue_bytes;
+  bool producer_done;
 };
 struct FsContentBatch {
   FsContentQuery *query;
@@ -28,11 +37,16 @@ struct FsContentBatch {
   size_t used;
   FsContentRecordView *records;
   bool acquired;
+  char diagnostic[192];
 };
 FsStatus fsx_content_stop(FsContentQuery *);
 FsStatus fsx_content_file(FsContentQuery *, const FsEntry *, FsContentBatch *);
 FsStatus fsx_content_decode(FsContentBatch *, uint32_t limit);
 FsStatus fsx_content_visit(void *, const FsEntry *);
+FsStatus fsx_content_process(FsContentQuery *, const FsEntry *, bool);
+FsStatus fsx_content_count_candidate(FsContentQuery *, const FsEntry *);
+FsStatus fsx_content_enqueue(FsContentQuery *, const FsEntry *);
+FsStatus fsx_content_parallel(FsContentQuery *, FsStatus (*)(FsContentQuery *));
 FsStatus fsx_content_discover(FsContentQuery *);
 typedef struct FsTextState {
   uint32_t scalar, minimum;

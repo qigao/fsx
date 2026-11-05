@@ -1,6 +1,7 @@
 #include "content.h"
 #ifdef FSX_POSIX_CONTENT
 #include "child_posix.h"
+#include <unistd.h>
 #endif
 
 bool fsx_content_tool_path(const char *path) {
@@ -41,7 +42,8 @@ FsContentRequest fsx_content_request(const FsResult *candidates,
                         NULL,
                         NULL,
                         1000000,
-                        64 * 1024 * 1024};
+                        64 * 1024 * 1024,
+                        1};
   return r;
 }
 FsContentRequest fsx_content_scope_request(const char *scope, const char *tool,
@@ -59,6 +61,9 @@ FsContentRequest fsx_content_live_request(const char *root, const char *bfs,
   return r;
 }
 FsStatus fsx_content_stop(FsContentQuery *q) {
+  FsStatus failure = (FsStatus)atomic_load(&q->failure);
+  if (failure != FS_OK)
+    return failure;
   if (atomic_load(&q->cancelled) || atomic_load(&q->engine->stopping))
     return FS_CANCELLED;
   return q->request.deadline_ns != UINT64_MAX &&
@@ -76,6 +81,7 @@ static void unref(FsContentQuery *q) {
   fsx_free(q->pattern);
   fsx_free(q->root);
   fsx_free(q->bfs);
+  fsx_free(q->queue);
   cmeta_cond_destroy(&q->changed);
   cmeta_mutex_destroy(&q->mutex);
   fsx_free(q);
@@ -87,7 +93,7 @@ static void free_batch(FsContentBatch *b) {
   fsx_free(b->owned_path);
   fsx_free(b);
   cmeta_mutex_lock(&q->mutex);
-  q->outstanding = false;
+  q->in_flight--;
   cmeta_cond_broadcast(&q->changed);
   cmeta_mutex_unlock(&q->mutex);
   unref(q);
@@ -118,16 +124,8 @@ static FsContentBatch *new_batch(FsContentQuery *q, const FsEntry *entry) {
   b->info.metadata_epoch = q->info.metadata_epoch;
   return b;
 }
-FsStatus fsx_content_visit(void *context, const FsEntry *entry) {
-  FsContentQuery *q = context;
-  FsStatus status;
-  cmeta_mutex_lock(&q->mutex);
-  while (q->outstanding && (status = fsx_content_stop(q)) == FS_OK)
-    cmeta_cond_timedwait(&q->changed, &q->mutex, 25000000);
-  status = fsx_content_stop(q);
-  cmeta_mutex_unlock(&q->mutex);
-  if (status != FS_OK)
-    return status;
+FsStatus fsx_content_count_candidate(FsContentQuery *q, const FsEntry *entry) {
+  FsStatus status = FS_OK;
   if (q->request.scope || q->root) {
     cmeta_mutex_lock(&q->mutex);
     if (q->root && q->info.candidate_count == q->request.max_candidates)
@@ -140,33 +138,65 @@ FsStatus fsx_content_visit(void *context, const FsEntry *entry) {
       }
     }
     cmeta_mutex_unlock(&q->mutex);
-    if (status != FS_OK)
+  }
+  return status;
+}
+static void release_slot(FsContentQuery *q) {
+  cmeta_mutex_lock(&q->mutex);
+  q->in_flight--;
+  cmeta_cond_broadcast(&q->changed);
+  cmeta_mutex_unlock(&q->mutex);
+}
+FsStatus fsx_content_process(FsContentQuery *q, const FsEntry *entry,
+                             bool count) {
+  cmeta_mutex_lock(&q->mutex);
+  while (q->in_flight == q->request.parallel_files &&
+         fsx_content_stop(q) == FS_OK)
+    cmeta_cond_timedwait(&q->changed, &q->mutex, 25000000);
+  FsStatus status = fsx_content_stop(q);
+  if (status == FS_OK)
+    q->in_flight++;
+  cmeta_mutex_unlock(&q->mutex);
+  if (status != FS_OK)
+    return status;
+  if (count) {
+    status = fsx_content_count_candidate(q, entry);
+    if (status != FS_OK) {
+      release_slot(q);
       return status == FS_UNSUPPORTED ? FS_OK : status;
+    }
   }
   FsContentBatch *b = new_batch(q, entry);
-  if (!b)
+  if (!b) {
+    release_slot(q);
     return FS_NOMEM;
+  }
   status = fsx_content_file(q, entry, b);
   cmeta_mutex_lock(&q->mutex);
-  if (status == FS_STALE)
-    q->info.changed_files++;
-  else if (status == FS_DENIED || status == FS_UNSUPPORTED)
-    q->info.skipped_files++;
-  else if (status == FS_OK) {
-    status = fsx_content_decode(b, q->request.max_records -
-                                       (uint32_t)q->info.match_records);
-  }
+  if (b->diagnostic[0] && !q->info.diagnostic[0])
+    memcpy(q->info.diagnostic, b->diagnostic, sizeof(b->diagnostic));
+  /* Only publication/decode is serialized. A second worker may own a fully
+   * checked file while the consumer retains the other bounded batch slot. */
+  while (status == FS_OK && b->used && q->pending &&
+         fsx_content_stop(q) == FS_OK)
+    cmeta_cond_timedwait(&q->changed, &q->mutex, 25000000);
   FsStatus stopped = fsx_content_stop(q);
   if (stopped != FS_OK && (status == FS_OK || status == FS_STALE ||
                            status == FS_DENIED || status == FS_UNSUPPORTED))
     status = stopped;
+  if (status == FS_STALE)
+    q->info.changed_files++;
+  else if (status == FS_DENIED || status == FS_UNSUPPORTED)
+    q->info.skipped_files++;
+  else if (status == FS_OK)
+    status = fsx_content_decode(b, q->request.max_records -
+                                       (uint32_t)q->info.match_records);
   if (status == FS_OK) {
     q->info.files_scanned++;
     q->info.match_records += b->info.record_count;
   }
   bool publish = status == FS_OK && b->info.record_count != 0;
   if (publish) {
-    q->outstanding = true;
     q->pending = b;
     cmeta_cond_broadcast(&q->changed);
   }
@@ -177,22 +207,41 @@ FsStatus fsx_content_visit(void *context, const FsEntry *entry) {
     status = FS_OK;
   return status;
 }
+FsStatus fsx_content_visit(void *context, const FsEntry *entry) {
+  FsContentQuery *q = context;
+  return q->request.parallel_files == 2 ? fsx_content_enqueue(q, entry)
+                                        : fsx_content_process(q, entry, true);
+}
+static FsStatus produce(FsContentQuery *q) {
+  FsStatus status = fsx_content_stop(q);
+  if (status != FS_OK)
+    return status;
+  if (q->root) {
+#ifdef FSX_POSIX_CONTENT
+    status = fsx_content_discover(q);
+#endif
+  } else if (q->request.scope)
+    status = fsx_query_visit(&q->scope_query, fsx_content_visit, q);
+  else
+    for (uint32_t i = 0;
+         status == FS_OK && i < q->candidates->info.window_count; i++)
+      status = fsx_content_visit(
+          q, fsx_snapshot_entry(q->snapshot, q->candidates->ids[i]));
+  return status;
+}
 static void run(void *context) {
   FsContentQuery *q = context;
-  FsStatus status = fsx_content_stop(q);
-  if (status == FS_OK) {
-    if (q->root) {
+  FsStatus status = q->request.parallel_files == 2
+                        ? fsx_content_parallel(q, produce)
+                        : produce(q);
 #ifdef FSX_POSIX_CONTENT
-      status = fsx_content_discover(q);
-#endif
-    } else if (q->request.scope)
-      status = fsx_query_visit(&q->scope_query, fsx_content_visit, q);
-    else
-      for (uint32_t i = 0;
-           status == FS_OK && i < q->candidates->info.window_count; i++)
-        status = fsx_content_visit(
-            q, fsx_snapshot_entry(q->snapshot, q->candidates->ids[i]));
+  if (q->root_fd >= 0) {
+    if (status == FS_OK)
+      status = fsx_content_check_root(q);
+    close(q->root_fd);
+    q->root_fd = -1;
   }
+#endif
   cmeta_mutex_lock(&q->mutex);
   if ((q->request.scope || q->root) && status == FS_OK)
     q->info.candidate_count_known = true;
@@ -259,7 +308,8 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
       !fsx_utf8(r->pattern, strlen(r->pattern)) || r->mode > FS_CONTENT_PCRE2 ||
       !r->max_records || r->max_records > 10000 || r->max_output_bytes < 1024 ||
       r->max_output_bytes > 8 * 1024 * 1024 || !r->max_file_bytes ||
-      r->max_file_bytes > 32 * 1024 * 1024)
+      r->max_file_bytes > 32 * 1024 * 1024 || !r->parallel_files ||
+      r->parallel_files > 2)
     return FS_INVALID;
   FsContentQuery *q = fsx_alloc(e, sizeof(*q));
   if (!q)
@@ -267,6 +317,7 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
   memset(q, 0, sizeof(*q));
   atomic_init(&q->refs, 2);
   atomic_init(&q->cancelled, false);
+  atomic_init(&q->failure, FS_OK);
   q->engine = e;
   q->root_fd = -1;
   q->request = *r;
@@ -288,7 +339,10 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
   q->request.bfs_executable = q->bfs;
   cmeta_mutex_init(&q->mutex);
   cmeta_cond_init(&q->changed);
+  if (r->parallel_files == 2)
+    q->queue = fsx_alloc(e, FSX_CONTENT_QUEUE * sizeof(*q->queue));
   if (!q->tool || !q->pattern || !q->mutex || !q->changed ||
+      (r->parallel_files == 2 && !q->queue) ||
       (r->scope && !q->scope_query.text) ||
       (r->root && (!q->root || !q->bfs))) {
     fsx_result_unref(q->candidates);
@@ -297,6 +351,7 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
     fsx_free(q->pattern);
     fsx_free(q->root);
     fsx_free(q->bfs);
+    fsx_free(q->queue);
     if (q->mutex)
       cmeta_mutex_destroy(&q->mutex);
     if (q->changed)
@@ -414,6 +469,7 @@ FsStatus fsx_content_batch_acquire(FsContentQuery *q, FsContentBatch **out) {
     else {
       *out = q->pending;
       q->pending = NULL;
+      cmeta_cond_broadcast(&q->changed);
       (*out)->acquired = true;
       e->handles++;
       status = FS_OK;

@@ -7,6 +7,41 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <wchar.h>
+static int parallel(const wchar_t *root, bool fail) {
+  unsigned char bytes[8192];
+  DWORD count;
+  int first = -1;
+  while (ReadFile(GetStdHandle(STD_INPUT_HANDLE), bytes, sizeof(bytes), &count,
+                  NULL) &&
+         count) {
+    if (first < 0)
+      first = bytes[0];
+  }
+  wchar_t path[4096];
+  swprintf(path, 4096, L"%ls\\%lu.ready", root,
+           (unsigned long)GetCurrentProcessId());
+  HANDLE ready = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, NULL,
+                             CREATE_ALWAYS, 0, NULL);
+  if (ready == INVALID_HANDLE_VALUE)
+    return 100;
+  CloseHandle(ready);
+  swprintf(path, 4096, L"%ls\\go", root);
+  while ((fail && first != 'A') ||
+         GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES)
+    Sleep(1);
+  DWORD written;
+  if (fail) {
+    const char error[] = "injected parallel failure\n";
+    WriteFile(GetStdHandle(STD_ERROR_HANDLE), error, sizeof(error) - 1,
+              &written, NULL);
+    return 2;
+  }
+  const char frame[] = "{\"line\":1,\"offset\":0,\"text\":\"checked\"}\r\n";
+  return WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), frame, sizeof(frame) - 1,
+                   &written, NULL)
+             ? 0
+             : 101;
+}
 /* Source-owned native peer for handle inheritance and job-tree cancellation. */
 int main(void) {
   int argc;
@@ -21,6 +56,13 @@ int main(void) {
   if (argc != 11) {
     LocalFree(argv);
     return 92;
+  }
+  if (!wcsncmp(argv[8], L"parallel:", 9) ||
+      !wcsncmp(argv[8], L"parallel-fail:", 14)) {
+    bool fail = !wcsncmp(argv[8], L"parallel-fail:", 14);
+    int status = parallel(argv[8] + (fail ? 14 : 9), fail);
+    LocalFree(argv);
+    return status;
   }
   bool tree = !wcsncmp(argv[8], L"tree:", 5);
   if (tree) {

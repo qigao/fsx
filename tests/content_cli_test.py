@@ -43,6 +43,7 @@ class ContentCli(unittest.TestCase):
         self.assertTrue(rows[-1]['complete'])
         self.assertEqual(rows[-1]['records'], 2)
         self.assertTrue(rows[-1]['candidates_known'])
+        self.assertEqual(rows[-1]['parallel_files'], 1)
 
     def test_full_scope_uses_metadata_predicates(self):
         for i in range(105):
@@ -57,6 +58,42 @@ class ContentCli(unittest.TestCase):
         self.assertEqual(rows[-1]['candidates'], 105)
         self.assertTrue(rows[-1]['candidates_known'])
         self.assertTrue(rows[-1]['complete'])
+
+    def test_parallel_scope_reports_exact_global_results(self):
+        for i in range(20):
+            (self.root / f'item{i}.txt').write_text('needle needle\n')
+        self.index()
+        result = self.run_fsx('content', self.db, UGREP, '--parallel-files', '2',
+                              '--literal', 'needle', '--', 'file:')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(len(rows), 41)
+        self.assertEqual(len({r['path'] for r in rows[:-1]}), 20)
+        self.assertEqual(rows[-1]['parallel_files'], 2)
+        self.assertEqual(rows[-1]['records'], 40)
+        self.assertEqual(rows[-1]['candidates'], 20)
+        self.assertTrue(rows[-1]['complete'])
+
+    def test_invalid_parallelism_is_rejected_before_opening_database(self):
+        for value in ('0', '3', '-1', '', 'two'):
+            result = self.run_fsx('content', self.db, UGREP, '--parallel-files',
+                                  value, '--literal', 'x', '--', 'file:')
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertFalse(self.db.exists())
+
+    @unittest.skipUnless(sys.platform in ('linux', 'darwin'), 'BFS_LIVE requires POSIX')
+    def test_parallel_live_search_reports_exact_global_results(self):
+        for i in range(20):
+            (self.root / f'item{i}.txt').write_text('needle\n')
+        result = self.run_fsx('content-live', BFS, UGREP, '--parallel-files', '2',
+                              '--literal', 'needle', '--', self.root)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(len(rows), 21)
+        self.assertEqual(rows[-1]['parallel_files'], 2)
+        self.assertEqual(rows[-1]['candidates'], 20)
+        self.assertTrue(rows[-1]['complete'])
+        self.assertFalse(self.db.exists())
 
     def test_invalid_scope_has_no_confirmed_candidate_total(self):
         self.index()
