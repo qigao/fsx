@@ -32,6 +32,9 @@ typedef struct FsContentRequest {
   const char *root, *bfs_executable;
   uint32_t max_candidates;
   uint64_t max_discovery_bytes;
+  /* Explicit 1 or 2 file workers; factory default is 1. Output/record storage
+   * is bounded per worker, including batches retained by the caller. */
+  uint32_t parallel_files;
 } FsContentRequest;
 typedef struct FsContentInfo {
   FsStatus status;
@@ -46,6 +49,8 @@ typedef struct FsContentInfo {
   uint64_t discovery_bytes, discovery_processes_started;
   int discovery_exit_code;
   char diagnostic[192];
+  /* Waiting candidates only; excludes the at most two active file paths. */
+  uint32_t queued_candidates, queued_path_bytes;
 } FsContentInfo;
 typedef struct FsContentFileView {
   FsFileKey key;
@@ -190,7 +195,8 @@ FsContentRequest fsx_content_live_request(const char *root, const char *bfs,
  * LIVE_READ observations, not content at metadata_epoch. Only UTF-8 text
  * without NUL is searched; a leading UTF-8 BOM is removed before matching.
  * Wait wakes for a batch or termination; consume/release batches before waiting
- * again. One outstanding file batch applies backpressure until released.
+ * again. parallel_files bounds active/retained file batches together. With 2,
+ * cross-file arrival order is unspecified; record order within a file is kept.
  * Release cancels and discards an unacquired batch; acquired batches remain
  * live.
  * Serialize release against other calls using the same query handle.

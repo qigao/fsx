@@ -79,6 +79,7 @@ static FsStatus path_frame(FsContentQuery *q, char *path) {
   return fsx_content_visit(q, &entry);
 }
 FsStatus fsx_content_discover(FsContentQuery *q) {
+  char diagnostic_text[192] = {0};
   FsStatus status = fsx_content_open_root(q, &q->root_fd);
   if (status != FS_OK)
     return status;
@@ -133,16 +134,14 @@ FsStatus fsx_content_discover(FsContentQuery *q) {
         if (errno != EAGAIN && errno != EINTR)
           status = FS_IO;
       } else if (i) {
-        cmeta_mutex_lock(&q->mutex);
-        size_t copy = sizeof(q->info.diagnostic) - 1;
+        size_t copy = sizeof(diagnostic_text) - 1;
         if (diagnostic < copy) {
           copy -= diagnostic;
           if (copy > (size_t)n)
             copy = (size_t)n;
-          memcpy(q->info.diagnostic + diagnostic, bytes, copy);
-          q->info.diagnostic[diagnostic + copy] = 0;
+          memcpy(diagnostic_text + diagnostic, bytes, copy);
+          diagnostic_text[diagnostic + copy] = 0;
         }
-        cmeta_mutex_unlock(&q->mutex);
         diagnostic += (size_t)n;
         /* Any traversal diagnostic makes discovery fail explicitly. */
         status = FS_IO;
@@ -176,7 +175,9 @@ FsStatus fsx_content_discover(FsContentQuery *q) {
 frame_cleanup:
   fsx_free(frame);
 root_cleanup:
-  close(q->root_fd);
-  q->root_fd = -1;
+  cmeta_mutex_lock(&q->mutex);
+  if (diagnostic_text[0] && !q->info.diagnostic[0])
+    memcpy(q->info.diagnostic, diagnostic_text, sizeof(diagnostic_text));
+  cmeta_mutex_unlock(&q->mutex);
   return status;
 }

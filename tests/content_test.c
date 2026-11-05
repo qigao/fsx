@@ -18,9 +18,10 @@ static FsEngine *engine;
 static FsQuery *selection;
 static FsResult *candidates;
 static FsContentQuery *query;
-static FsContentBatch *batch;
+static FsContentBatch *batch, *held_batch;
 static char root[1024];
 static char live_root[1200];
+static char gate[1400], gate_pattern[1600];
 static void put_bytes(const char *name, const void *data, size_t n) {
   char path[1200];
   snprintf(path, sizeof(path), "%s/%s", root, name);
@@ -35,11 +36,12 @@ static void put(const char *name, const char *text) {
 static void setup(void) {
   strcpy(root, "./fsx-content-XXXXXX");
   check_not_null(mkdtemp(root));
+  gate[0] = 0;
   engine = NULL;
   selection = NULL;
   candidates = NULL;
   query = NULL;
-  batch = NULL;
+  batch = held_batch = NULL;
   FsEngineConfig c = fsx_engine_config(":memory:");
   check_equal(fsx_engine_open(&c, &engine), FS_OK);
 }
@@ -63,6 +65,8 @@ static void remove_tree(const char *path) {
   check_equal(rmdir(path), 0);
 }
 static void teardown(void) {
+  fsx_content_batch_release(held_batch);
+  held_batch = NULL;
   fsx_content_batch_release(batch);
   batch = NULL;
   fsx_content_release(query);
@@ -74,6 +78,8 @@ static void teardown(void) {
   if (engine)
     check_equal(fsx_engine_close(&engine, UINT64_MAX), FS_OK);
   remove_tree(root);
+  if (gate[0])
+    remove_tree(gate);
 }
 static FsContentRequest live_request(const char *pattern) {
   char *absolute = realpath(root, NULL);
@@ -109,6 +115,78 @@ static void acquire(void) {
   check_equal(fsx_content_wait(query, cmeta_hrtime() + UINT64_C(5000000000)),
               FS_OK);
   check_equal(fsx_content_batch_acquire(query, &batch), FS_OK);
+}
+static void gate_request(FsContentRequest *r, bool fail) {
+  char relative[1200];
+  snprintf(relative, sizeof(relative), "%s-gate", root);
+  check_equal(mkdir(relative, 0700), 0);
+  char *absolute = realpath(relative, NULL);
+  check_not_null(absolute);
+  snprintf(gate, sizeof(gate), "%s", absolute);
+  free(absolute);
+  snprintf(gate_pattern, sizeof(gate_pattern), "%s%s",
+           fail ? "parallel-fail:" : "parallel:", gate);
+  r->ugrep_executable = FSX_TEST_CONTENT_PEER;
+  r->pattern = gate_pattern;
+  r->parallel_files = 2;
+  r->max_output_bytes = 1024;
+}
+static FsContentInfo two_ready(bool full_queue) {
+  FsContentInfo info;
+  uint64_t end = cmeta_hrtime() + UINT64_C(5000000000);
+  for (;;) {
+    fsx_content_poll(query, &info);
+    check_false(info.finished);
+    check_true(info.running_processes <= 3);
+    check_true(info.queued_candidates <= 128);
+    check_true(info.queued_path_bytes <= 1024 * 1024);
+    DIR *dir = opendir(gate);
+    check_not_null(dir);
+    unsigned ready = 0;
+    struct dirent *item;
+    while ((item = readdir(dir)))
+      if (strstr(item->d_name, ".ready"))
+        ready++;
+    closedir(dir);
+    if (ready == 2 && (!full_queue || info.queued_candidates == 128))
+      return info;
+    check_true(cmeta_hrtime() < end);
+    cmeta_sleep_ms(1);
+  }
+}
+static void release_gate(void) {
+  char path[1600];
+  snprintf(path, sizeof(path), "%s/go", gate);
+  FILE *file = fopen(path, "wb");
+  check_not_null(file);
+  check_equal(fclose(file), 0);
+}
+static FsContentInfo collect_all(uint64_t *records) {
+  uint64_t end = cmeta_hrtime() + UINT64_C(10000000000);
+  *records = 0;
+  FsContentInfo info;
+  for (;;) {
+    fsx_content_wait(query, end);
+    FsStatus acquired;
+    while ((acquired = fsx_content_batch_acquire(query, &batch)) == FS_OK) {
+      FsContentFileView file;
+      check_equal(fsx_content_batch_info(batch, &file), FS_OK);
+      check_true(file.read_end_ns >= file.read_start_ns);
+      *records += file.record_count;
+      fsx_content_batch_release(batch);
+      batch = NULL;
+    }
+    check_true(acquired == FS_END || acquired == FS_WAIT);
+    fsx_content_poll(query, &info);
+    if (info.finished && acquired == FS_END)
+      break;
+    check_true(cmeta_hrtime() < end);
+  }
+  check_equal(info.running_processes, 0u);
+  check_equal(info.queued_candidates, 0u);
+  check_equal(info.queued_path_bytes, 0u);
+  check_equal(info.match_records, *records);
+  return info;
 }
 suite("Asynchronous native ugrep content") {
   before_each() { setup(); }
@@ -866,4 +944,161 @@ suite("Asynchronous native ugrep content") {
     FsScanInfo scan;
     check_equal(fsx_engine_scan(engine, root, &scan), FS_OK);
   }
+  it("requires explicit one or two file workers") {
+    put("a.txt", "needle\n");
+    FsContentRequest r = request("needle");
+    check_equal(r.parallel_files, 1u);
+    r.parallel_files = 0;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    check_null(query);
+    r.parallel_files = 3;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_INVALID);
+    check_null(query);
+  }
+  it("runs two native matcher roots while metadata queries and indexing advance") {
+    put("a.txt", "A");
+    put("b.txt", "B");
+    FsContentRequest r = request("needle");
+    gate_request(&r, false);
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo held = two_ready(false);
+    check_equal(held.running_processes, 2u);
+    check_equal(held.processes_started, (uint64_t)2);
+    put("new.txt", "new");
+    FsScanInfo scanned;
+    check_equal(fsx_engine_scan(engine, root, &scanned), FS_OK);
+    check_true(scanned.snapshot_epoch > held.metadata_epoch);
+    FsQueryRequest names = {sizeof(names), FSX_API_VERSION, "new", 3,
+                            fsx_query_options()};
+    FsQuery *metadata = NULL;
+    FsResult *result = NULL;
+    check_equal(fsx_query_submit(engine, &names, &metadata), FS_OK);
+    check_equal(fsx_query_wait(metadata, cmeta_hrtime() + UINT64_C(5000000000)), FS_OK);
+    check_equal(fsx_query_result_acquire(metadata, &result), FS_OK);
+    FsResultInfo info;
+    check_equal(fsx_result_info(result, &info), FS_OK);
+    check_equal(info.total_count, (uint64_t)1);
+    fsx_result_release(result);
+    fsx_query_release(metadata);
+    release_gate();
+    uint64_t records;
+    FsContentInfo done = collect_all(&records);
+    check_equal(done.status, FS_OK);
+    check_true(done.complete);
+    check_equal(done.metadata_epoch, held.metadata_epoch);
+    check_equal(records, (uint64_t)2);
+  }
+  it("bounds a full metadata candidate queue and cancels both native matchers") {
+    for (unsigned i = 0; i < 140; i++) {
+      char name[40];
+      snprintf(name, sizeof(name), "item-%03u.txt", i);
+      put(name, "A");
+    }
+    FsScanInfo scan;
+    check_equal(fsx_engine_scan(engine, root, &scan), FS_OK);
+    FsContentRequest r = fsx_content_scope_request("file:", FSX_TEST_UGREP, "needle");
+    gate_request(&r, false);
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info = two_ready(true);
+    check_equal(info.running_processes, 2u);
+    check_equal(info.queued_path_bytes, 0u);
+    fsx_content_cancel(query);
+    info = finish();
+    check_equal(info.status, FS_CANCELLED);
+    check_equal(info.running_processes, 0u);
+    check_equal(info.queued_candidates, 0u);
+  }
+  it("owns queued BFS paths and joins discovery and two workers on STOPPING") {
+    for (unsigned i = 0; i < 140; i++) {
+      char name[40];
+      snprintf(name, sizeof(name), "item-%03u.txt", i);
+      put(name, "A");
+    }
+    FsContentRequest r = live_request("needle");
+    gate_request(&r, false);
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info = two_ready(true);
+    check_equal(info.running_processes, 3u);
+    check_true(info.queued_path_bytes > 0);
+    check_equal(fsx_engine_close(&engine, 0), FS_BUSY);
+    info = finish();
+    check_equal(info.status, FS_CANCELLED);
+    check_equal(info.running_processes, 0u);
+    check_equal(info.queued_candidates, 0u);
+    check_equal(info.queued_path_bytes, 0u);
+  }
+  it("propagates one matcher error and kills its blocked sibling") {
+    put("a.txt", "A");
+    put("b.txt", "B");
+    FsContentRequest r = request("needle");
+    gate_request(&r, true);
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    two_ready(false);
+    release_gate();
+    FsContentInfo info = finish();
+    check_equal(info.status, FS_IO);
+    check_equal(info.running_processes, 0u);
+    check_not_null(strstr(info.diagnostic, "injected parallel failure"));
+  }
+  it("keeps the BFS root alive after producer exhaustion with real parallel ugrep") {
+    for (unsigned i = 0; i < 20; i++) {
+      char name[40];
+      snprintf(name, sizeof(name), "item-%03u.txt", i);
+      put(name, "needle needle\n");
+    }
+    FsContentRequest r = live_request("needle");
+    r.parallel_files = 2;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    uint64_t records;
+    FsContentInfo info = collect_all(&records);
+    check_equal(info.status, FS_OK);
+    check_true(info.complete);
+    check_true(info.candidate_count_known);
+    check_equal(info.candidate_count, (uint64_t)20);
+    check_equal(info.files_scanned, (uint64_t)20);
+    check_equal(info.processes_started, (uint64_t)21);
+    check_equal(records, (uint64_t)40);
+  }
+  it("applies the record limit globally across parallel file results") {
+    put("a.txt", "needle\n");
+    put("b.txt", "needle\n");
+    FsContentRequest r = request("needle");
+    r.parallel_files = 2;
+    r.max_records = 1;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    uint64_t records;
+    FsContentInfo info = collect_all(&records);
+    check_equal(info.status, FS_LIMIT);
+    check_false(info.complete);
+    check_equal(records, (uint64_t)1);
+  }
+  it("bounds retained parallel batches and preserves them across query release") {
+    put("a.txt", "needle\n");
+    put("b.txt", "needle\n");
+    put("c.txt", "needle\n");
+    FsContentRequest r = request("needle");
+    r.parallel_files = 2;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    acquire();
+    held_batch = batch;
+    batch = NULL;
+    acquire();
+    FsContentInfo info;
+    fsx_content_poll(query, &info);
+    check_equal(info.processes_started, (uint64_t)2);
+    check_false(info.finished);
+    fsx_content_cancel(query);
+    info = finish();
+    check_equal(info.status, FS_CANCELLED);
+    fsx_content_release(query);
+    query = NULL;
+    FsContentRecordView record;
+    check_equal(fsx_content_batch_record(held_batch, 0, &record), FS_OK);
+    check_equal(record.text, "needle");
+    fsx_content_batch_release(held_batch);
+    held_batch = NULL;
+    check_equal(fsx_content_batch_record(batch, 0, &record), FS_OK);
+    check_equal(record.text, "needle");
+  }
+
 }

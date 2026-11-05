@@ -287,7 +287,7 @@ There is no automatic tool discovery or fallback.
 
 ```sh
 fsx content index.db /absolute/path/to/ugrep --literal 'sqlite3_open' -- 'file: ext:c'
-fsx content-live /absolute/path/to/bfs /absolute/path/to/ugrep --literal 'TODO' -- /work/src
+fsx content-live /absolute/path/to/bfs /absolute/path/to/ugrep --parallel-files 2 --literal 'TODO' -- /work/src
 ```
 
 The CLI emits match records and a final `live_read` summary; repeated matches on
@@ -299,6 +299,10 @@ continues to select exactly the supplied result window. Scope candidate totals
 are incremental until `candidates_known` becomes true after enumeration.
 Missing/skipped/changed files make coverage incomplete (CLI exit 3); tool errors,
 resource limits or timeout are failures (exit 1). The database is not modified.
+`--parallel-files 1|2` immediately after UGREP selects bounded file concurrency;
+the default is 1. With 2, batches can arrive in either file order, and at most two
+active or retained batches share the per-file output budgets. The final summary
+reports `parallel_files`. This option carries no measured speedup claim.
 See [content ownership and limits](docs/runtime-contract.md#content-jobs).
 
 `content-live` needs no database or prior indexing. It uses an in-memory engine,
@@ -316,7 +320,7 @@ Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native
 CLI and formal tests. The current suite has 104 Windows / 102 Linux engine cases, 25 dedicated raw
 reader cases, two controlled-replay/measurement cases and 10 CLI cases, run
 through four ordinary CTest entries. Enabled POSIX content profiles add two
-CTest entries with 35 native API cases and nine CLI cases using real ugrep/bfs.
+CTest entries with 43 native API cases and 12 CLI cases using real ugrep/bfs.
 A source-owned native process peer injects malformed path frames, traversal
 errors and stalled discovery for failure/cancellation cases; it does not link FSX.
 The POSIX suite also checks unrelated non-CLOEXEC fd exclusion and survival after
@@ -324,7 +328,7 @@ a matcher closes stdin early. macOS uses POSIX_SPAWN_CLOEXEC_DEFAULT and per-fd
 F_SETNOSIGPIPE; Linux keeps close-from spawn actions and worker-local signal handling.
 The APFS fixture expects illegal UTF-8 names to be rejected at creation; Linux
 tests their discovered-path skip behavior. No substitute names are generated.
-Windows content profiles run 13 native API cases and six CLI cases (three POSIX
+Windows content profiles run 20 native API cases and eight CLI cases (four POSIX
 bfs CLI cases are explicitly skipped), including UTF-16 argv quoting, overlapped
 pipe traffic, restricted handle inheritance and actual descendant cancellation.
 Windows 10+ is required for the Job Object process-creation attribute. New indexes
