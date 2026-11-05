@@ -16,7 +16,8 @@ milestones remain on the roadmap.
   bounded owned NTFS batches, and page-limited SQLite memory work sets.
 - Asynchronous queries on SaltsCore's bounded thread pool, retained results,
   cancellation, deadlines, STOPPING/close and allocation/admission limits.
-- Linux asynchronous UTF-8 content jobs over a retained result window, using
+- Linux asynchronous UTF-8 content jobs over a retained result window or a full
+  metadata scope streamed from a pinned snapshot, using
   an explicit native ugrep executable, per-file batches and consumer backpressure.
 - Unicode 17 full-fold substring search, scalar-aware glob matching, scoped
   `case:`/`path:`, AND/OR/NOT/groups, `file:`/`folder:`, extension sets, checked
@@ -260,9 +261,12 @@ fsx content index.db /absolute/path/to/ugrep --literal 'sqlite3_open' -- 'file: 
 ```
 
 The CLI emits match records and a final `live_read` summary; repeated matches on
-one line remain separate records. It searches the metadata-selected candidates
-and refuses a candidate set larger than the configured query window. The API
-accepts exactly a retained result window, not an implicit all-index iterator.
+one line remain separate records. It searches the complete metadata scope on a
+snapshot pinned at submission, independent of the configured query window.
+`fsx_content_scope_request(scope, ugrep, pattern)` uses the same query language
+without sorting or pagination; `fsx_content_request(result, ugrep, pattern)`
+continues to select exactly the supplied result window. Scope candidate totals
+are incremental until `candidates_known` becomes true after enumeration.
 Missing/skipped/changed files make coverage incomplete (CLI exit 3); tool errors,
 resource limits or timeout are failures (exit 1). The database is not modified.
 See [content ownership and limits](docs/runtime-contract.md#linux-content-jobs).
@@ -271,7 +275,7 @@ Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native
 CLI and formal tests. The current suite has 104 Windows / 102 Linux engine cases, 25 dedicated raw
 reader cases, two controlled-replay/measurement cases and 10 CLI cases, run
 through four ordinary CTest entries. Enabled Linux content profiles add two
-CTest entries with 15 native API cases and four CLI cases using real ugrep.
+CTest entries with 21 native API cases and six CLI cases using real ugrep.
 Coverage includes hardlinks, Unicode full
 folding and glob boundaries, regex/JIT/limits, timezone days, snapshot retention,
 rollback, persistence, FTS maintenance and concurrent senders/writer publication.

@@ -78,6 +78,7 @@ struct FsResult {
 struct FsQuery {
   atomic_uint refs;
   atomic_bool cancelled;
+  const atomic_bool *parent_cancelled;
   FsEngine *engine;
   FsSnapshot *snapshot;
   FsQuery *next;
@@ -148,6 +149,9 @@ FsStatus fsx_native_root(FsEngine *, const char *, char **);
 FsStatus fsx_walk(FsWalk *, const char *);
 FsStatus fsx_native_volume(FsEngine *, const char *, uint64_t *);
 FsStatus fsx_query_execute(FsQuery *, FsResult **);
+typedef FsStatus (*FsVisitEntry)(void *, const FsEntry *);
+/* Full immutable-snapshot scan; no sorting, result window or SQLite reader. */
+FsStatus fsx_query_visit(FsQuery *, FsVisitEntry, void *);
 FsStatus fsx_query_stop(FsQuery *);
 FsStatus fsx_health_prepare(FsEngine *, const char *, FsRootHealth **);
 FsStatus fsx_health_load(FsEngine *);

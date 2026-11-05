@@ -42,6 +42,31 @@ class ContentCli(unittest.TestCase):
         self.assertEqual(rows[-1]['semantics'], 'live_read')
         self.assertTrue(rows[-1]['complete'])
         self.assertEqual(rows[-1]['records'], 2)
+        self.assertTrue(rows[-1]['candidates_known'])
+
+    def test_full_scope_uses_metadata_predicates(self):
+        for i in range(105):
+            (self.root / f'item{i}.txt').write_text('needle\n')
+        (self.root / 'excluded.bin').write_text('needle\n')
+        self.index()
+        result = self.run_fsx('content', self.db, UGREP, '--literal', 'needle',
+                              '--', 'file: ext:txt size:>0')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(len(rows), 106)
+        self.assertEqual(rows[-1]['candidates'], 105)
+        self.assertTrue(rows[-1]['candidates_known'])
+        self.assertTrue(rows[-1]['complete'])
+
+    def test_invalid_scope_has_no_confirmed_candidate_total(self):
+        self.index()
+        result = self.run_fsx('content', self.db, UGREP, '--literal', 'needle',
+                              '--', 'regex:"["')
+        self.assertEqual(result.returncode, 1)
+        summary = json.loads(result.stdout)
+        self.assertFalse(summary['candidates_known'])
+        self.assertFalse(summary['complete'])
+        self.assertEqual(summary['records'], 0)
 
     def test_no_match_and_pcre2_error_are_distinct(self):
         (self.root / 'text.txt').write_text('aXb\n')

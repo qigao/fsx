@@ -755,7 +755,7 @@ static FsStatus candidate_expression(Plan *p, char **expression) {
   *expression = bytes;
   return FS_OK;
 }
-FsStatus fsx_query_execute(FsQuery *q, FsResult **out) {
+static FsStatus compile(FsQuery *q, Plan **out) {
   *out = NULL;
   FsEngine *e = q->engine;
   Plan *p = fsx_alloc(e, sizeof(*p));
@@ -809,6 +809,37 @@ FsStatus fsx_query_execute(FsQuery *q, FsResult **out) {
     }
     pcre2_jit_stack_assign(p->match_context, NULL, p->jit_stack);
   }
+  *out = p;
+  return FS_OK;
+}
+FsStatus fsx_query_visit(FsQuery *q, FsVisitEntry visit, void *context) {
+  Plan *p = NULL;
+  FsStatus status = fsx_query_stop(q);
+  if (status == FS_OK)
+    status = compile(q, &p);
+  for (uint32_t i = 0; status == FS_OK && i < q->snapshot->count; i++) {
+    status = fsx_query_stop(q);
+    if (status != FS_OK)
+      break;
+    const FsEntry *entry = fsx_snapshot_entry(q->snapshot, i);
+    bool match = false;
+    status = evaluate(p, p->root, entry, &match);
+    if (status == FS_OK && match)
+      status = visit(context, entry);
+  }
+  if (status == FS_OK)
+    status = fsx_query_stop(q);
+  if (p)
+    destroy(p);
+  return status;
+}
+FsStatus fsx_query_execute(FsQuery *q, FsResult **out) {
+  *out = NULL;
+  FsEngine *e = q->engine;
+  Plan *p = NULL;
+  FsStatus compiled = compile(q, &p);
+  if (compiled != FS_OK)
+    return compiled;
   uint32_t cap = q->options.offset + q->options.limit, used = 0;
   uint32_t *ids = cap ? fsx_alloc(e, (size_t)cap * sizeof(*ids)) : NULL;
   if (cap && !ids) {
