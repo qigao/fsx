@@ -14,18 +14,24 @@ typedef struct FsIndexJob FsIndexJob;
 typedef struct FsContentQuery FsContentQuery;
 typedef struct FsContentBatch FsContentBatch;
 enum { FS_CONTENT_LITERAL, FS_CONTENT_PCRE2 };
+enum { FS_CONTENT_WINDOW, FS_CONTENT_SCOPE, FS_CONTENT_BFS_LIVE };
 typedef struct FsContentRequest {
   uint32_t struct_size, api_version;
   const FsResult *candidates; /* Exactly this retained result window. */
   const char *ugrep_executable, *pattern;
   uint32_t mode, max_records, max_output_bytes;
   uint64_t max_file_bytes, deadline_ns;
-  /* Exactly one of candidates/scope is supplied. Scope visits every matching
+  /* Indexed input selects candidates or scope. Scope visits every matching
    * entry in the submission snapshot, in snapshot order, without a UI window.
    */
   const char *scope;
   uint32_t scope_flags; /* CASE_SENSITIVE | ALLOW_PARTIAL_TEXT only. */
   int32_t timezone_offset_minutes;
+  /* BFS_LIVE is mutually exclusive with candidates/scope. Root must be an
+   * absolute UTF-8 path with no '.', '..', empty or trailing components. */
+  const char *root, *bfs_executable;
+  uint32_t max_candidates;
+  uint64_t max_discovery_bytes;
 } FsContentRequest;
 typedef struct FsContentInfo {
   FsStatus status;
@@ -36,6 +42,9 @@ typedef struct FsContentInfo {
   uint64_t skipped_files, match_records, processes_started;
   uint32_t running_processes;
   int tool_exit_code;
+  uint32_t candidate_source;
+  uint64_t discovery_bytes, discovery_processes_started;
+  int discovery_exit_code;
   char diagnostic[192];
 } FsContentInfo;
 typedef struct FsContentFileView {
@@ -172,6 +181,8 @@ FsContentRequest fsx_content_request(const FsResult *, const char *ugrep,
                                      const char *pattern);
 FsContentRequest fsx_content_scope_request(const char *scope, const char *ugrep,
                                            const char *pattern);
+FsContentRequest fsx_content_live_request(const char *root, const char *bfs,
+                                          const char *ugrep, const char *pattern);
 /* Linux native backend. Other platforms explicitly return UNSUPPORTED.
  * One active content task per engine, independent of query/index pools.
  * LIVE_READ observations, not content at metadata_epoch. Only UTF-8 text

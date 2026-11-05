@@ -6,6 +6,7 @@ set(FSX_HOST_LEMON_EXECUTABLE "" CACHE FILEPATH
 option(FSX_BUILD_SEARCH_TOOLS "Resolve optional native ugrep/bfs command-line tools" OFF)
 option(FSX_BUILD_CONTENT_TESTS "Run formal Linux content tests with real ugrep" OFF)
 set(FSX_CONTENT_TEST_UGREP "" CACHE FILEPATH "Exact native ugrep for content tests")
+set(FSX_CONTENT_TEST_BFS "" CACHE FILEPATH "Exact native bfs for content tests")
 option(FSX_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(FSX_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(FSX_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
