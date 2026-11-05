@@ -139,6 +139,86 @@ or incremental database reader; loading still visits all committed rows.
   a successful zero-match result. Regex compile offsets map to original query
   bytes. Failures do not expose partially constructed results.
 
+## Linux content jobs
+
+The current content runtime requires Linux/glibc 2.34 or newer (the selected
+Ubuntu 24.04 CI profile). Other platforms return UNSUPPORTED
+at submission, even when a native ugrep package is available. FSX remains C11;
+ugrep executes as an explicitly supplied absolute executable, with no shell,
+PATH search, filter commands, archives or matcher fallback. The caller owns tool
+provenance/version selection. The existing pinned Linux 7.8.5 tool uses the
+protocol qualified in vcpkg-cache PR #282; this does not select an unreleased
+Windows package or update the infrastructure pin.
+
+`FsContentRequest` selects exactly the supplied retained `FsResult` window,
+including its original source coverage and metadata epoch. Submission copies
+the tool and pattern and retains the result; the caller can release its query
+and result immediately afterward. This is not an all-query candidate iterator:
+an offset/limit intentionally selects that window. The CLI asks for the full
+admitted window and returns LIMIT before content submission if the selection
+would be truncated. New files absent from the metadata snapshot are not included.
+
+A lazily created one-worker content pool is independent of the query and writer
+pools. At most one content task executes per engine. Each file uses one ugrep
+process with `-J1`, literal `-F` or explicit PCRE2 `-P`. The child receives a fixed
+C locale and no inherited interactive configuration. Linux directory components
+are opened relative to fds with O_NOFOLLOW; only regular files with the selected
+device/inode identity are read. Fds use CLOEXEC, and child stdio pipes are wired
+explicitly in a private process group. Spawn closes all inherited fds above
+stderr using glibc's close-from file action. Only this worker blocks SIGPIPE; it drains
+new pending pipe signals before restoring its previous mask.
+
+Input, stdout and stderr advance together through nonblocking pipes/poll. Input
+is checked incrementally for UTF-8 (including scalars crossing read boundaries)
+and NUL. A leading UTF-8 BOM is stripped; offsets refer to the resulting stream.
+UTF-16/32, NUL and invalid UTF-8 are skipped with incomplete coverage. Symlinks,
+directories and non-regular files are skipped. Denied/missing/replaced objects
+are counted explicitly. Other native I/O errors fail the task.
+
+The file's tool output is held until normal tool completion and post-read checks
+of fd identity, size, mtime/change-time and path association. Observed changes
+discard that file's records. Stat checks cannot prove that bytes belong to one
+atomic content version: results explicitly mean LIVE_READ observations in the
+reported read time window, not content at `metadata_epoch`. No content facts or
+FTS rows are written to SQLite.
+
+The fixed JSON record schema is decoded into typed record views. Repeated
+matches on the same line produce separate records with their own byte offsets;
+record counts are not unique matching-line counts. Malformed/truncated JSON
+fails the file; exact escape decoding includes Unicode scalar/surrogate checks.
+The default raw-output bound is 8 MiB per file (configurable 1 KiB–8 MiB), with
+up to 10,000 record slots and a 64 KiB encoded frame limit. Record views point
+into the decoded output buffer. Input buffers are 64 KiB; file input is capped
+at 32 MiB (configurable downward). Stderr is drained with a 64 KiB cap and a
+192-byte diagnostic. These managed allocations use the engine heap budget;
+child RSS is separate and has no portable hard cap in this milestone.
+
+At most one complete file batch is outstanding per task. Publication wakes
+`content_wait`; acquiring it transfers batch ownership, and the worker waits
+until release before opening the next file. Wait therefore signals a batch or
+termination, not just whole-task completion. Consumers must acquire/release
+batches while waiting. Reaching a file/output/record limit discards the current
+unconfirmed file and terminates with LIMIT; earlier acquired batches remain
+valid. Arrival order follows the selected candidate window, with native tool
+record order inside a file. There is no global content sorting/pagination.
+
+Acquired batches retain the query and its selected snapshot and count as engine
+handles. Query release cancels unfinished work and discards an unacquired batch;
+acquired batches remain valid until explicitly released. Cancellation/STOPPING
+wakes consumer backpressure and kills the child process group, then reaps the
+owned child before terminal publication. Close remains retryable while tasks or
+external query/result/batch handles exist. Execution deadlines use monotonic
+time; a wait deadline does not itself cancel. Regular-file kernel reads and
+native cleanup are not promised hard real-time interruption.
+
+`FsContentInfo.complete` describes this selected window, subject to its original
+coverage: terminal OK, no skipped/changed candidates and no captured source
+invalidation. It does not assert that the whole current filesystem was searched.
+Published record/file counters, process start/running counts, native tool exit
+status and diagnostics remain available through poll. No PDF/Office extraction,
+bfs discovery, unbounded candidate iterator or Windows/macOS process backend is
+claimed by this initial API.
+
 ## Cooperative directory watches
 
 `FsWatch` is an external engine handle. The host serializes all calls on a given

@@ -8,6 +8,21 @@ cmake_add_test(fsx_ntfs_benchmark_test SOURCES ntfs_benchmark_test.c ntfs_measur
 set_tests_properties(fsx_ntfs_benchmark_test PROPERTIES TIMEOUT 300 LABELS "engine;ntfs;performance"
   RUN_SERIAL TRUE)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+if(FSX_BUILD_CONTENT_TESTS)
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "Content runtime tests currently require Linux")
+  endif()
+  if(NOT IS_ABSOLUTE "${FSX_CONTENT_TEST_UGREP}" OR NOT EXISTS "${FSX_CONTENT_TEST_UGREP}")
+    message(FATAL_ERROR "FSX_CONTENT_TEST_UGREP must name the real native ugrep executable")
+  endif()
+  cmake_add_test(fsx_content_test SOURCES content_test.c LIBS Fsx::Fsx Salts::TinyTest Salts::Platform
+    DEFS "FSX_TEST_UGREP=\"${FSX_CONTENT_TEST_UGREP}\"" FOLDER tests/content)
+  set_tests_properties(fsx_content_test PROPERTIES TIMEOUT 60 LABELS "content;integration"
+    ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")
+  add_test(NAME fsx_content_cli_test COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/content_cli_test.py" "$<TARGET_FILE:fsx_cli>" "${FSX_CONTENT_TEST_UGREP}")
+  set_tests_properties(fsx_content_cli_test PROPERTIES TIMEOUT 30 LABELS "content;cli;e2e")
+endif()
 add_test(NAME fsx_cli_test COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cli_test.py" "$<TARGET_FILE:fsx_cli>")
 set_tests_properties(fsx_cli_test PROPERTIES TIMEOUT 60 LABELS "cli;e2e")
 

@@ -211,6 +211,67 @@ static FsStatus ntfs_command(FsEngine *engine, const char *command,
   FsStatus closed = fsx_ntfs_close(&source);
   return status == FS_OK ? closed : status;
 }
+static FsStatus content_search(FsEngine *engine, const char *tool,
+                                const char *pattern, const char *scope,
+                                bool regex, uint32_t capacity, int *exit_code) {
+  FsQueryOptions options = fsx_query_options();
+  options.limit = capacity;
+  FsQueryRequest select = {sizeof(select), FSX_API_VERSION, scope, strlen(scope), options};
+  FsQuery *selection = NULL;
+  FsResult *candidates = NULL;
+  FsContentQuery *query = NULL;
+  FsStatus status = fsx_query_submit(engine, &select, &selection);
+  if (status == FS_OK) status = fsx_query_wait(selection, UINT64_MAX);
+  if (status == FS_OK) status = fsx_query_result_acquire(selection, &candidates);
+  FsResultInfo selected = {0};
+  if (status == FS_OK) {
+    fsx_result_info(candidates, &selected);
+    if (selected.window_count != selected.total_count) status = FS_LIMIT;
+  }
+  if (status == FS_OK) {
+    FsContentRequest request = fsx_content_request(candidates, tool, pattern);
+    request.mode = regex ? FS_CONTENT_PCRE2 : FS_CONTENT_LITERAL;
+    request.deadline_ns = fsx_engine_now_ns(engine) + UINT64_C(30000000000);
+    status = fsx_content_submit(engine, &request, &query);
+  }
+  fsx_result_release(candidates);
+  fsx_query_release(selection);
+  if (status != FS_OK) return status;
+  interrupted = 0;
+  void (*previous)(int) = signal(SIGINT, interrupt_watch);
+  if (previous == SIG_ERR) { fsx_content_release(query); return FS_IO; }
+  FsContentInfo info = {0};
+  for (;;) {
+    if (interrupted) fsx_content_cancel(query);
+    fsx_content_wait(query, fsx_engine_now_ns(engine) + UINT64_C(250000000));
+    FsContentBatch *batch = NULL;
+    FsStatus acquired;
+    while ((acquired = fsx_content_batch_acquire(query, &batch)) == FS_OK) {
+      FsContentFileView file; fsx_content_batch_info(batch, &file);
+      for (uint32_t i = 0; i < file.record_count; i++) {
+        FsContentRecordView record; fsx_content_batch_record(batch, i, &record);
+        fputs("{\"type\":\"match\",\"path\":", stdout); json_string(file.path);
+        printf(",\"line\":%" PRIu64 ",\"offset\":%" PRIu64 ",\"metadata_epoch\":%" PRIu64
+               ",\"text\":", record.line, record.byte_offset, file.metadata_epoch);
+        json_string(record.text); fputs("}\n", stdout);
+      }
+      fsx_content_batch_release(batch);
+    }
+    fsx_content_poll(query, &info);
+    if (info.finished && acquired == FS_END) break;
+    if (acquired == FS_BUSY) { fsx_content_cancel(query); status = FS_BUSY; break; }
+  }
+  signal(SIGINT, previous);
+  if (status == FS_OK) status = info.status;
+  printf("{\"type\":\"summary\",\"semantics\":\"live_read\",\"complete\":%s,"
+         "\"records\":%" PRIu64 ",\"candidates\":%" PRIu64 ",\"changed\":%" PRIu64
+         ",\"skipped\":%" PRIu64 "}\n", info.complete ? "true" : "false",
+         info.match_records, info.candidate_count, info.changed_files, info.skipped_files);
+  if (info.diagnostic[0]) fprintf(stderr, "%s\n", info.diagnostic);
+  if (status == FS_OK && !info.complete) *exit_code = 3;
+  fsx_content_release(query);
+  return status;
+}
 static int run(int argc, char **argv) {
   if (argc < 3) {
     fputs("Usage: fsx index DATABASE ROOT\n       fsx search DATABASE [--limit "
@@ -224,7 +285,8 @@ static int run(int argc, char **argv) {
           "       fsx ntfs-sync DATABASE ROOT [--raw-mft|--raw-mft-sync]\n"
           "       fsx ntfs-watch DATABASE ROOT [--raw-mft|--raw-mft-sync] "
           "[--duration-ms N] "
-          "[--updates N]\n",
+          "[--updates N]\n"
+          "       fsx content DATABASE UGREP --literal|--regex PATTERN -- SCOPE\n",
           stderr);
     return 2;
   }
@@ -232,6 +294,9 @@ static int run(int argc, char **argv) {
   FsQueryOptions options = fsx_query_options();
   FsOpenError open_error = {0};
   config.open_error = &open_error;
+  if (!strcmp(argv[1], "content") &&
+      (argc != 8 || (strcmp(argv[4], "--literal") && strcmp(argv[4], "--regex")) ||
+       strcmp(argv[6], "--"))) return 2;
   if (strcmp(argv[1], "index") && strcmp(argv[1], "watch") &&
       strcmp(argv[1], "ntfs-index") && strcmp(argv[1], "ntfs-watch"))
     config.flags &= ~FS_ENGINE_CREATE_DATABASE;
@@ -336,7 +401,10 @@ static int run(int argc, char **argv) {
     return 1;
   }
   int exit_code = 0;
-  if (!strcmp(argv[1], "ntfs-index") || !strcmp(argv[1], "ntfs-sync") ||
+  if (!strcmp(argv[1], "content")) {
+    status = content_search(engine, argv[3], argv[5], argv[7],
+                             !strcmp(argv[4], "--regex"), config.max_query_window, &exit_code);
+  } else if (!strcmp(argv[1], "ntfs-index") || !strcmp(argv[1], "ntfs-sync") ||
       !strcmp(argv[1], "ntfs-watch")) {
     status = ntfs_command(engine, argv[1], argv[3], watch_duration,
                           watch_updates, raw_mft, raw_sync);

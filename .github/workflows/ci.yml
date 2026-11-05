@@ -28,9 +28,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-debug, triplet: x64-linux}
-          - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-asan-ubsan, triplet: x64-linux}
-          - {runner: windows-2025, rid: windows-x64, preset: windows-debug, triplet: qigao-x64-windows-llvm-mingw}
+          - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-debug, triplet: x64-linux, content: 'ON'}
+          - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-asan-ubsan, triplet: x64-linux, content: 'ON'}
+          - {runner: windows-2025, rid: windows-x64, preset: windows-debug, triplet: qigao-x64-windows-llvm-mingw, content: 'OFF'}
     env: &native_environment
       VCPKG_BINARY_CACHE: ${{ github.workspace }}/build/vcpkg-binary-cache
       VCPKG_DOWNLOADS: ${{ github.workspace }}/build/vcpkg-downloads
@@ -138,7 +138,11 @@ jobs:
           "path=$($source -replace '\\', '/')" >> $env:GITHUB_OUTPUT
       - name: Configure source-owned tests
         working-directory: ${{ steps.live_source.outputs.path || github.workspace }}
-        run: cmake --preset ${{ matrix.preset }} -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        run: >-
+          cmake --preset ${{ matrix.preset }} -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DFSX_BUILD_SEARCH_TOOLS=${{ matrix.content }}
+          -DFSX_BUILD_CONTENT_TESTS=${{ matrix.content }}
+          -DFSX_CONTENT_TEST_UGREP=${{ github.workspace }}/build/${{ matrix.preset }}/vcpkg_installed/${{ matrix.triplet }}/tools/ugrep/ugrep
       - name: Build
         working-directory: ${{ steps.live_source.outputs.path || github.workspace }}
         run: cmake --build --preset ${{ matrix.preset }}
@@ -219,6 +223,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - {runner: windows-2025, rid: windows-x64, preset: windows-native-release, triplet: qigao-x64-windows-llvm-mingw, live: true}
+          - {runner: windows-2025, rid: windows-x64, preset: windows-native-release, triplet: qigao-x64-windows-llvm-mingw, live: true, content: 'OFF'}
     env: *native_environment
     steps: *native_steps

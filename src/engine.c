@@ -479,6 +479,7 @@ FsStatus fsx_engine_close(FsEngine **owner, uint64_t deadline) {
   cmeta_mutex_lock(&e->mutex);
   atomic_store(&e->stopping, true);
   fsx_watch_cancel_all(e);
+  fsx_content_cancel_all(e);
   for (FsQuery *q = e->jobs; q; q = q->next)
     atomic_store(&q->cancelled, true);
   cmeta_mutex_unlock(&e->mutex);
@@ -506,6 +507,10 @@ FsStatus fsx_engine_close(FsEngine **owner, uint64_t deadline) {
   cmeta_mutex_unlock(&e->mutex);
   cmeta_threadpool_wait_status(e->index_pool);
   cmeta_threadpool_destroy(e->index_pool);
+  if (e->content_pool) {
+    cmeta_threadpool_wait_status(e->content_pool);
+    cmeta_threadpool_destroy(e->content_pool);
+  }
   cmeta_threadpool_wait_status(e->pool);
   cmeta_threadpool_destroy(e->pool);
   fsx_snapshot_release(e->current);

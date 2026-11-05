@@ -40,6 +40,8 @@ struct FsEngine {
   cmeta_cond_t changed;
   cmeta_threadpool_t *pool;
   cmeta_threadpool_t *index_pool;
+  cmeta_threadpool_t *content_pool;
+  FsContentQuery *content;
   _Atomic(FsIndexJob *) index_job;
   atomic_bool writer_cancelled;
   sqlite3 *db;
@@ -157,6 +159,7 @@ void fsx_health_validate(FsEngine *, FsRootHealth *);
 /* Caller holds engine mutex; only signals cancellation, never destroys watches.
  */
 void fsx_watch_cancel_all(FsEngine *);
+void fsx_content_cancel_all(FsEngine *);
 FsStatus fsx_ntfs_invalidate_database(FsEngine *, uint32_t source);
 void fsx_ntfs_mark_invalid(FsEngine *, uint32_t source);
 void fsx_result_unref(FsResult *);
