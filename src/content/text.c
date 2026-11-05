@@ -1,7 +1,25 @@
 #include "content.h"
 bool fsx_content_text(FsTextState *s, const unsigned char *p, size_t n) {
-  for (size_t i = 0; i < n; i++) {
-    unsigned c = p[i];
+  size_t i = 0;
+  while (i < n) {
+    if (!s->remaining && p[i] < 0x80) {
+      /* Skip only complete, non-NUL ASCII words. memcpy permits unaligned
+       * input without aliasing or over-read; byte-order does not affect the
+       * high-bit/zero-byte predicates. Scalar transitions handle the boundary.
+       */
+      while (n - i >= sizeof(uint64_t)) {
+        uint64_t word;
+        memcpy(&word, p + i, sizeof(word));
+        const uint64_t high = UINT64_C(0x8080808080808080);
+        if ((word & high) ||
+            ((word - UINT64_C(0x0101010101010101)) & ~word & high))
+          break;
+        i += sizeof(word);
+      }
+      if (i == n)
+        break;
+    }
+    unsigned c = p[i++];
     if (!c)
       return false;
     if (s->remaining) {

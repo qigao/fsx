@@ -31,6 +31,9 @@ if(FSX_BUILD_CONTENT_TESTS)
   add_dependencies(fsx_content_test fsx_content_process_peer)
   set_tests_properties(fsx_content_test PROPERTIES TIMEOUT 60 LABELS "content;integration"
     ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")
+  cmake_add_test(fsx_content_text_test SOURCES content_text_test.c
+    LIBS Fsx::Fsx Salts::TinyTest Salts::Platform unofficial::sqlite3::sqlite3 FOLDER tests/content)
+  set_tests_properties(fsx_content_text_test PROPERTIES TIMEOUT 60 LABELS "content;unit")
   file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/content_benchmark_test.c" content_benchmark_sha256)
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS content_benchmark_test.c)
   cmake_add_test(fsx_content_benchmark_test SOURCES content_benchmark_test.c

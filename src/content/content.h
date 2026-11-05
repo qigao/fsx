@@ -1,11 +1,40 @@
 #ifndef FSX_CONTENT_H
 #define FSX_CONTENT_H
 #include "../internal.h"
+#include <errno.h>
 enum { FSX_CONTENT_QUEUE = 128, FSX_CONTENT_PATH_BYTES = 1024 * 1024 };
 typedef struct FsContentCandidate {
   FsEntry entry;
   char *owned_path;
 } FsContentCandidate;
+/* Private, opt-in counters. Configure the engine sink only while quiescent;
+ * a submitted job borrows it through terminal publication. Per-file staging is
+ * worker-owned, then added under the content query mutex. Wall spans can
+ * overlap across file workers; worker_cpu_ns includes only those workers, not
+ * children. */
+#define FSX_CONTENT_METRICS(X)                                                 \
+  X(files)                                                                     \
+  X(read_bytes)                                                                \
+  X(write_bytes) X(read_calls) X(write_calls) X(poll_calls) X(open_ns)         \
+      X(spawn_ns) X(read_ns) X(text_ns) X(poll_ns) X(write_ns) X(output_ns)    \
+          X(finish_ns) X(postcheck_ns) X(file_ns) X(worker_cpu_ns)             \
+              X(decode_ns)
+struct FsContentMetrics {
+#define FIELD(name) uint64_t name;
+  FSX_CONTENT_METRICS(FIELD)
+#undef FIELD
+};
+static inline uint64_t fsx_content_tick(bool enabled) {
+  return enabled ? cmeta_hrtime() : 0;
+}
+static inline void fsx_content_tock(bool enabled, uint64_t start,
+                                    uint64_t *out) {
+  if (enabled) {
+    int error = errno;
+    *out += cmeta_hrtime() - start;
+    errno = error;
+  }
+}
 struct FsContentQuery {
   atomic_uint refs;
   atomic_bool cancelled;
@@ -23,6 +52,7 @@ struct FsContentQuery {
   cmeta_mutex_t mutex;
   cmeta_cond_t changed;
   FsContentInfo info;
+  FsContentMetrics *metrics;
   FsContentBatch *pending;
   uint32_t in_flight;
   FsContentCandidate *queue;
@@ -36,7 +66,8 @@ struct FsContentBatch {
   char *owned_path;
   size_t used;
   FsContentRecordView *records;
-  bool acquired;
+  bool acquired, profiled;
+  FsContentMetrics timing;
   char diagnostic[192];
 };
 FsStatus fsx_content_stop(FsContentQuery *);

@@ -298,7 +298,10 @@ subset and `running_processes` counts owned children until reaping: at most
 Input, stdout and stderr advance together through nonblocking pipes/poll. Input
 is checked incrementally for UTF-8 (including scalars crossing read boundaries)
 and NUL. A leading UTF-8 BOM is stripped; offsets refer to the resulting stream.
-UTF-16/32, NUL and invalid UTF-8 are skipped with incomplete coverage. Symlinks,
+UTF-16/32, NUL and invalid UTF-8 are skipped with incomplete coverage.
+The incremental validator skips complete non-NUL ASCII words with bounded,
+unaligned-safe loads; UTF-8 scalar state still spans input blocks. This changes
+validation cost while retaining the same text acceptance and rejection rules. Symlinks,
 directories and non-regular files are skipped. Denied/missing/replaced objects
 are counted explicitly. Other native I/O errors fail the task.
 

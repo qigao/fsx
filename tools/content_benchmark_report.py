@@ -25,7 +25,7 @@ def read_measurements(path):
     rows = list(csv.DictReader(line for line in lines if not line.startswith("#")))
     if len(accepted) != 1 or int(accepted[0].split("operations=")[1]) != len(rows):
         raise ValueError("incomplete native acceptance or incorrect operation count")
-    if metadata["format"] != "fsx-content-benchmark-v2":
+    if metadata["format"] != "fsx-content-benchmark-v3":
         raise ValueError("unsupported measurement format")
     text = {"corpus", "source", "pattern", "phase", "input_hash"}
     return metadata, [{k: v if k in text else int(v) for k, v in row.items()} for row in rows]
@@ -38,7 +38,7 @@ def schedule(sources):
         for source in sources:
             variants = [(source, 1), (source, 2)]
             if source == "scope" and "live" in sources:
-                variants += [("direct", 1), ("direct", 2)]
+                variants += [("direct", 1), ("direct", 2), ("profile", 1), ("profile", 2)]
             for pattern in (("anchor", "needle", "absent") if corpus == "small"
                             else ("anchor", "absent")):
                 expected.extend((corpus, origin, pattern, "warmup", 0, pos, mode)
@@ -46,7 +46,7 @@ def schedule(sources):
                 expected.extend((corpus, variants[(rnd - 1 + pos) % len(variants)][0],
                                  pattern, "measure", rnd, pos,
                                  variants[(rnd - 1 + pos) % len(variants)][1])
-                                for rnd in range(1, 5) for pos in range(len(variants)))
+                                for rnd in range(1, 7 if len(variants) == 6 else 5) for pos in range(len(variants)))
             expected.extend((corpus, source, "anchor", "cancel", 0, mode - 1, mode)
                             for mode in (1, 2))
     return Counter(expected)
@@ -96,6 +96,18 @@ def summarize(measurement_path, query_path):
                 raise ValueError("invalid direct-process stages or concurrency bounds")
         elif any(row[k] for k in ("spawn_call_ns", "child_lifetime_ns", "collect_decode_ns")):
             raise ValueError("direct-process stages attached to a different backend")
+        if row["source"] == "profile":
+            stages = ("open_ns", "spawn_ns", "read_ns", "text_ns", "poll_ns", "write_ns",
+                      "output_ns", "finish_ns", "postcheck_ns")
+            if (row["fsx_files"] != row["files"] or row["fsx_read_bytes"] != row["bytes"]
+                    or row["fsx_write_bytes"] != row["bytes"]
+                    or any(row["fsx_" + k] < row["files"] for k in ("read_calls", "write_calls", "poll_calls"))
+                    or sum(row["fsx_" + k] for k in stages) > row["fsx_file_ns"]
+                    or row["fsx_file_ns"] > row["parallel_files"] * (row["end_ns"] - row["start_ns"])
+                    or row["fsx_worker_cpu_ns"] <= 0):
+                raise ValueError("inconsistent profiled file stages or byte totals")
+        elif any(v for k, v in row.items() if k.startswith("fsx_")):
+            raise ValueError("profiling counters attached to an unprofiled operation")
         if baseline:
             if any(row[k] for k in ("records", "processes", "cancel_ns", "first_batch_ns")):
                 raise ValueError("baseline unexpectedly ran a content process")
@@ -162,6 +174,11 @@ def summarize(measurement_path, query_path):
             result["collect_decode_per_process_ms"] = distribution([r["collect_decode_ns"] / r["files"] for r in batch], 1e6)
             result["first_checked_output_ms"] = result.pop("first_batch_ms")
             result["process_peak_semantics"] = "exact admitted/unreaped roots, not sampled"
+        if source == "profile":
+            result["fsx_stage_sum_ms"] = {k[4:]: distribution([r[k] for r in batch], 1e6)
+                                           for k in batch[0] if k.startswith("fsx_") and k.endswith("_ns")}
+            result["fsx_counters"] = {k[4:]: sorted({r[k] for r in batch})
+                                      for k in batch[0] if k.startswith("fsx_") and not k.endswith("_ns")}
         if phase == "measure":
             result["files_per_second"] = statistics.median(r["files"] * 1e9 / duration
                                                             for r, duration in zip(batch, durations))
@@ -184,16 +201,24 @@ def summarize(measurement_path, query_path):
             direct_comparisons.append({"corpus": corpus, "pattern": pattern,
                                        "parallel_files": parallel,
                                        "fsx_scope_wall_div_direct": scoped["wall_ms"]["median"] / direct["wall_ms"]["median"]})
+    profiling_comparisons = []
+    for (corpus, source, pattern, parallel), profiled in indexed.items():
+        if source == "profile":
+            scoped = indexed[corpus, "scope", pattern, parallel]
+            profiling_comparisons.append({"corpus": corpus, "pattern": pattern,
+                                          "parallel_files": parallel,
+                                          "profiled_wall_div_unprofiled": profiled["wall_ms"]["median"] / scoped["wall_ms"]["median"]})
     return {"metadata": metadata, "operations": len(rows), "matched_inputs": True,
             "balanced_positions": True, "groups": groups, "observed_ratios": ratios,
-            "direct_comparisons": direct_comparisons,
-            "limitations": ["Warm uncontrolled OS cache; fixed small corpus; four measured samples per mode/case.",
+            "direct_comparisons": direct_comparisons, "profiling_comparisons": profiling_comparisons,
+            "limitations": ["Warm uncontrolled OS cache; fixed small corpus; six measured scope/direct/profile samples and four live samples per mode/case.",
                             "Native validation and observer overhead are included in content wall time.",
                             "Query quantiles use only wholly contained observations; P50/P95/P99 are nearest-rank.",
                             "Allocation/process/queue peaks are sampled lower bounds, not RSS or child memory limits.",
                             "No cold-cache, 100k-file, batch-ugrep, CPU/RSS or production-tail-latency acceptance.",
                             "Cancellation starts at the first acquired confirmed file; these are not hung-child timings.",
                             "Hosted profiles and sanitizer timings must be analyzed separately; no speed threshold.",
+                            "Private POSIX profiling is opt-in; stage spans overlap across file workers. File CPU excludes decode, producer, metadata-query and child CPU. File wall includes profiling calls; decode is separate.",
                             "POSIX direct controls reopen immutable fixture paths, use regular temporary output files and blocking waitpid; omit FSX identity/text/post-read checks, streaming backpressure and cooperative cancellation.",
                             "Direct spawn-call time is not a ready-to-match metric; child lifetime includes spawn, matching and reaping. Stage sums overlap across parallel workers and are not wall-time components. Per-process stage quantiles describe four per-run averages, not individual child samples."]}
 
@@ -219,6 +244,7 @@ def main():
     repo = Path(__file__).resolve().parent.parent
     result["source_sha256"] = {path: sha256(repo / path) for path in (
         "tests/content_benchmark_test.c", "tests/CMakeLists.txt", "tools/content_benchmark_report.py",
+        "src/content/text.c", "src/content/content.h", "src/internal.h", "tests/content_text_test.c",
         "src/content/api.c", "src/content/parallel.c", "src/content/process.c",
         "src/content/process_windows.c", "src/content/discovery_posix.c")}
     if result["source_sha256"]["tests/content_benchmark_test.c"] != result["metadata"]["benchmark_source_sha256"]:
