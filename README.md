@@ -417,3 +417,12 @@ Large MFT inventory, scope paths and projection staging remain file-backed.
 Main facts/FTS/USN commit together before a new query snapshot is published.
 These are execution/storage choices, not a measured speedup. See the
 [ownership, limits and cancellation contract](docs/runtime-contract.md#asynchronous-indexing-and-bounded-ntfs-batches).
+
+The formal `fsx_content_benchmark_test` adds a seventh CTest entry to content
+profiles. It checks identical native results while measuring serial/parallel
+warm-cache throughput, first confirmed batches, cooperative cancellation and
+same-engine metadata query latency. The `linux-content-release` preset provides
+an optimized build; ordinary Debug/sanitizer timings are kept separate. CI
+preserves raw CSV, strict summaries with tool/source hashes, and formal logs.
+See [the first content performance baseline](docs/performance/content-parallel-2026-11-05.md)
+for the exact corpus, observations and remaining acceptance work.

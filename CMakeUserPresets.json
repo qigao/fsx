@@ -86,6 +86,18 @@
       }
     },
     {
+      "name": "linux-content-release",
+      "displayName": "Linux optimized content measurements",
+      "inherits": "linux-release",
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "FSX_BUILD_CONTENT_TESTS": "ON",
+        "FSX_BUILD_SEARCH_TOOLS": "ON",
+        "FSX_CONTENT_TEST_UGREP": "${sourceDir}/build/${presetName}/vcpkg_installed/x64-linux/tools/ugrep/ugrep",
+        "FSX_CONTENT_TEST_BFS": "${sourceDir}/build/${presetName}/vcpkg_installed/x64-linux/tools/bfs/bfs"
+      }
+    },
+    {
       "name": "linux-asan-ubsan",
       "inherits": "linux-debug",
       "cacheVariables": {
@@ -220,6 +232,10 @@
       "name": "macos-x64-asan-ubsan",
       "configurePreset": "macos-x64-asan-ubsan",
       "jobs": 2
+    },
+    {
+      "name": "linux-content-release",
+      "configurePreset": "linux-content-release"
     }
   ],
   "testPresets": [
@@ -320,6 +336,16 @@
     {
       "name": "macos-x64-asan-ubsan",
       "configurePreset": "macos-x64-asan-ubsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-content-release",
+      "configurePreset": "linux-content-release",
       "output": {
         "outputOnFailure": true
       },

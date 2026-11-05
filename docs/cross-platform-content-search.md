@@ -423,6 +423,11 @@ CPU、取消时延及并行内容负载下名字查询 P50/P95/P99。
 基准对照，注明后者的路径重开语义。若小文件启动成本不可接受，再设计可复用的
 有版本 worker 协议或明确不同语义的 batch 模式；不未经测量声称 bfs/ugrep 必然加速。
 
+阶段 F 第一组热缓存基准已进入实现/验收，原始逐任务/逐查询数据和未测项目见
+[内容并行基准](performance/content-parallel-2026-11-05.md)。使用固定语料、交替先后次序
+及严格结果核对；加入 Linux Release，并将 Debug/sanitizer 与优化构建的数据分开。
+它不表示本节完整性能范围已经验收。
+
 ## 11. 依据
 
 - [S1] [Linux inotify 手册](https://www.man7.org/linux/man-pages/man7/inotify.7.html)：

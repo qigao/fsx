@@ -29,6 +29,7 @@ jobs:
       matrix:
         include:
           - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-debug, triplet: x64-linux, content: 'ON', search_tools: 'ON', ugrep: 'build/linux-debug/vcpkg_installed/x64-linux/tools/ugrep/ugrep'}
+          - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-content-release, triplet: x64-linux, content: 'ON', search_tools: 'ON', ugrep: 'build/linux-content-release/vcpkg_installed/x64-linux/tools/ugrep/ugrep'}
           - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-asan-ubsan, triplet: x64-linux, content: 'ON', search_tools: 'ON', ugrep: 'build/linux-asan-ubsan/vcpkg_installed/x64-linux/tools/ugrep/ugrep'}
           - {runner: windows-2025, rid: windows-x64, preset: windows-debug, triplet: qigao-x64-windows-llvm-mingw, content: 'ON', search_tools: 'OFF', ugrep: 'build/windows-tool-candidate/build-search-tools/installed/qigao-x64-windows-llvm-mingw-static/tools/ugrep/ugrep.exe'}
           - {runner: macos-15, rid: macos-arm64, preset: macos-debug, triplet: arm64-osx, content: 'ON', search_tools: 'ON', ugrep: 'build/macos-debug/vcpkg_installed/arm64-osx/tools/ugrep/ugrep'}
@@ -169,6 +170,25 @@ jobs:
         if: ${{ !matrix.live }}
         working-directory: ${{ github.workspace }}
         run: ctest --preset ${{ matrix.preset }}
+      - name: Summarize accepted content measurements
+        if: matrix.content == 'ON'
+        run: >-
+          python tools/content_benchmark_report.py
+          build/${{ matrix.preset }}/tests/content-benchmark.csv
+          build/${{ matrix.preset }}/tests/content-benchmark-queries.csv
+          --revision ${{ github.sha }} --capture-tools
+          --output build/${{ matrix.preset }}/tests/content-benchmark-summary.json
+      - name: Preserve content measurements and formal test logs
+        if: always() && matrix.content == 'ON'
+        uses: actions/upload-artifact@v4
+        with:
+          name: content-${{ matrix.preset }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            build/${{ matrix.preset }}/tests/content-benchmark*.csv
+            build/${{ matrix.preset }}/tests/content-benchmark-summary.json
+            build/${{ matrix.preset }}/Testing/Temporary/LastTest.log
+          if-no-files-found: error
+          retention-days: 30
       - name: Run real NTFS acceptance and same-build comparisons
         if: matrix.live
         working-directory: ${{ steps.live_source.outputs.path }}
