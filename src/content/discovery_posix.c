@@ -1,5 +1,9 @@
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE
+#else
 #define _GNU_SOURCE
-#include "child_linux.h"
+#endif
+#include "child_posix.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>

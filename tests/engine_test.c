@@ -1,3 +1,6 @@
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE
+#endif
 #ifndef _WIN32
 #define _POSIX_C_SOURCE 200809L
 #define _XOPEN_SOURCE 700
@@ -1705,6 +1708,17 @@ suite("FileSearch engine") {
     check_false(progress.needs_rescan);
   }
 #endif
+#endif
+#ifdef __APPLE__
+  it("reports macOS directory watching as unsupported") {
+    put("safe.txt", "x");
+    open_engine();
+    scan();
+    FsWatchConfig config = fsx_watch_config();
+    check_equal(fsx_watch_open(engine, root, &config, &watch), FS_UNSUPPORTED);
+    check_null(watch);
+    check_equal(count("safe"), (uint64_t)1);
+  }
 #endif
 #ifdef _WIN32
   it("reports an unrepresentable native name as partial coverage") {

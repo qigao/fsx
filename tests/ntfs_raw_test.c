@@ -8,6 +8,7 @@ static FsNtfsRawGeometry geometry;
 static FsNtfsConfig config;
 static unsigned seen, bootstraps;
 static bool fail_read, relocate, cancel_visit, bad_extension;
+static bool measured_callback;
 static FsStatus callback_status, begin_fault, finish_fault;
 static struct {
   void *buffer;
@@ -195,6 +196,8 @@ static FsStatus get_record(void *ctx, uint64_t frn, void *out, size_t capacity,
 }
 static FsStatus directory(void *ctx, const FsNtfsRecord *entry) {
   (void)ctx;
+  if (measured_callback)
+    cmeta_sleep_ms(1);
   if (callback_status != FS_OK)
     return callback_status;
   check_true(seen < 3);
@@ -228,6 +231,7 @@ static void setup(void) {
   begin_fault = finish_fault = FS_OK;
   complete_inline = fault_on_cancel_only = false;
   fail_read = relocate = cancel_visit = bad_extension = false;
+  measured_callback = false;
   callback_status = FS_OK;
   memset(records, 0, sizeof(records));
   memset(names, 0, sizeof(names));
@@ -294,6 +298,8 @@ suite("Raw NTFS MFT reader") {
   }
   it("partitions optional stage timings without changing raw inventory "
      "results") {
+    /* Give this measured stage observable work on every native clock. */
+    measured_callback = true;
     FsNtfsRawStats stats;
     check_equal(fsx_ntfs_raw_inventory(engine, &config, &geometry, &io, NULL,
                                        directory, NULL, true, &stats),

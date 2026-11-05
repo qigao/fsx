@@ -1,6 +1,11 @@
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE
+#endif
 #define _XOPEN_SOURCE 700
 #include <clock.h>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <fsx/api.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -611,8 +616,16 @@ suite("Asynchronous native ugrep content") {
     check_equal(fsx_content_batch_record(batch, 0, &record), FS_OK);
     check_equal(record.text, "needle");
   }
-  it("counts invalid live names and binary input as incomplete coverage") {
+  it("reports binary coverage and native invalid-name behavior") {
+#ifdef __APPLE__
+    char invalid[1200];
+    snprintf(invalid, sizeof(invalid), "%s/invalid-\xff", root);
+    FILE *rejected = fopen(invalid, "wb");
+    check_null(rejected);
+    check_equal(errno, EILSEQ);
+#else
     put("invalid-\xff", "needle\n");
+#endif
     put_bytes("binary", "needle\0", 7);
     char path[1200];
     snprintf(path, sizeof(path), "%s/fifo", root);
@@ -625,8 +638,13 @@ suite("Asynchronous native ugrep content") {
     check_equal(info.status, FS_OK);
     check_false(info.complete);
     check_true(info.candidate_count_known);
+#ifdef __APPLE__
+    check_equal(info.candidate_count, (uint64_t)1);
+    check_equal(info.skipped_files, (uint64_t)1);
+#else
     check_equal(info.candidate_count, (uint64_t)2);
     check_equal(info.skipped_files, (uint64_t)2);
+#endif
     check_equal(info.match_records, (uint64_t)0);
   }
   it("kills and reaps discovery under file-batch backpressure on STOPPING") {
@@ -810,5 +828,42 @@ suite("Asynchronous native ugrep content") {
     check_equal(info.processes_started, (uint64_t)2);
     check_equal(info.running_processes, 0u);
     check_false(info.complete);
+  }
+  it("excludes an unrelated non-CLOEXEC descriptor from POSIX children") {
+    put("host-file", "private\n");
+    char path[1200];
+    snprintf(path, sizeof(path), "%s/host-file", root);
+    int descriptor = open(path, O_RDONLY);
+    check_true(descriptor >= 3);
+    struct stat identity;
+    check_equal(fstat(descriptor, &identity), 0);
+    char mode[100];
+    snprintf(mode, sizeof(mode), "9 %d %llu %llu", descriptor,
+             (unsigned long long)identity.st_dev,
+             (unsigned long long)identity.st_ino);
+    put("protocol-case", mode);
+    FsContentRequest r = live_request("needle");
+    r.bfs_executable = FSX_TEST_CONTENT_PEER;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info = finish();
+    check_equal(close(descriptor), 0);
+    check_equal(info.status, FS_OK);
+    check_true(info.complete);
+    check_equal(info.discovery_exit_code, 0);
+  }
+  it("survives a matcher closing stdin before a large input is written") {
+    char *data = malloc(1024 * 1024);
+    check_not_null(data);
+    memset(data, 'x', 1024 * 1024);
+    put_bytes("input", data, 1024 * 1024);
+    free(data);
+    FsContentRequest r = request("needle");
+    r.ugrep_executable = FSX_TEST_CONTENT_PEER;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+    FsContentInfo info = finish();
+    check_equal(info.status, FS_IO);
+    check_equal(info.running_processes, 0u);
+    FsScanInfo scan;
+    check_equal(fsx_engine_scan(engine, root, &scan), FS_OK);
   }
 }

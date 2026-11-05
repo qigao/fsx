@@ -142,7 +142,7 @@ or incremental database reader; loading still visits all committed rows.
 ## Content jobs
 
 The content runtime supports Linux/glibc 2.34+ (the selected Ubuntu 24.04 CI
-profile) and Windows 10+ (native x64 LLVM-MinGW qualification). Other platforms
+profile), native macOS 15 ARM64 and Windows 10+ (native x64 LLVM-MinGW qualification). Other platforms
 return UNSUPPORTED at submission, even when a native ugrep package is available. FSX remains C11;
 ugrep executes as an explicitly supplied absolute executable, with no shell,
 PATH search, filter commands, archives or matcher fallback. The caller owns tool
@@ -180,6 +180,21 @@ volume serials. Existing databases recording the former 32-bit serial require a
 fresh index database; mismatch reports stale and does not select a compatibility
 identity. Local NTFS is the qualified Windows profile; other volumes need their
 own acceptance.
+
+macOS uses the shared POSIX file/discovery pipeline, with explicit Darwin
+`st_mtimespec` / `st_ctimespec` fields for metadata and read-version checks.
+Darwin pipes use pipe + FD_CLOEXEC, while POSIX_SPAWN_CLOEXEC_DEFAULT admits only
+stdio dup actions in each child; Linux retains pipe2/close-from actions. Darwin
+sets F_SETNOSIGPIPE on the parent stdin write fd and does not change the host's
+SIGPIPE disposition or worker mask; Linux retains its worker-local mask/drain.
+There is no alternate spawn, signal or scan backend. The native macOS 15 ARM64
+profile uses runner Apple Clang and the fixed released Core/CMeta SDKs, whose
+Mach-O minimum deployment versions are 15.0. The versioned presets match that
+baseline. Intel macOS and older OS releases are not qualified here.
+The APFS fixture explicitly verifies rejection of an ill-formed UTF-8 filename
+at creation; Linux exercises discovered invalid-name skips. File content remains
+UTF-8/NUL validated on both. macOS watch APIs return UNSUPPORTED; FSEvents is a
+separate future milestone.
 
 The expanded request/info structures require callers to recompile and use the
 request factories. `FsContentRequest` selects exactly the supplied retained `FsResult` window,
@@ -259,7 +274,7 @@ database argument; its summary labels the source `bfs_live` (indexed CLI:
 A lazily created one-worker content pool is independent of the query and writer
 pools. At most one content task executes per engine. Each file uses one ugrep
 process with `-J1`, literal `-F` or explicit PCRE2 `-P`. The child receives a fixed
-C locale and no inherited interactive configuration. Linux directory components
+C locale and no inherited interactive configuration. POSIX directory components
 are opened relative to fds with O_NOFOLLOW; only regular files with the selected
 device/inode identity are read. Fds use CLOEXEC, and child stdio pipes are wired
 explicitly in a private process group. Spawn closes all inherited fds above
@@ -289,7 +304,7 @@ atomic content version: results explicitly mean LIVE_READ observations in the
 reported read time window, not content at `metadata_epoch`. No content facts or
 FTS rows are written to SQLite.
 
-The fixed JSON record schema uses the tool's native `%~` terminator: LF on Linux,
+The fixed JSON record schema uses the tool's native `%~` terminator: LF on Linux/macOS,
 CRLF on Windows; each backend requires its exact framing. It is decoded into typed record views. Repeated
 matches on the same line produce separate records with their own byte offsets;
 record counts are not unique matching-line counts. Malformed/truncated JSON
@@ -324,8 +339,8 @@ native cleanup are not promised hard real-time interruption.
 coverage: terminal OK, no skipped/changed candidates and no captured source
 invalidation. It does not assert that the whole current filesystem was searched.
 Published record/file counters, process start/running counts, native tool exit
-status and diagnostics remain available through poll. No PDF/Office extraction,
-or macOS process backend is claimed by this API.
+status and diagnostics remain available through poll. No PDF/Office extraction
+is claimed by this API. macOS watching/FSEvents remains unsupported.
 
 ## Cooperative directory watches
 

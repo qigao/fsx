@@ -31,6 +31,7 @@ jobs:
           - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-debug, triplet: x64-linux, content: 'ON', search_tools: 'ON', ugrep: 'build/linux-debug/vcpkg_installed/x64-linux/tools/ugrep/ugrep'}
           - {runner: ubuntu-24.04, rid: linux-x64, preset: linux-asan-ubsan, triplet: x64-linux, content: 'ON', search_tools: 'ON', ugrep: 'build/linux-asan-ubsan/vcpkg_installed/x64-linux/tools/ugrep/ugrep'}
           - {runner: windows-2025, rid: windows-x64, preset: windows-debug, triplet: qigao-x64-windows-llvm-mingw, content: 'ON', search_tools: 'OFF', ugrep: 'build/windows-tool-candidate/build-search-tools/installed/qigao-x64-windows-llvm-mingw-static/tools/ugrep/ugrep.exe'}
+          - {runner: macos-15, rid: macos-arm64, preset: macos-debug, triplet: arm64-osx, content: 'ON', search_tools: 'ON', ugrep: 'build/macos-debug/vcpkg_installed/arm64-osx/tools/ugrep/ugrep'}
     env: &native_environment
       VCPKG_BINARY_CACHE: ${{ github.workspace }}/build/vcpkg-binary-cache
       VCPKG_DOWNLOADS: ${{ github.workspace }}/build/vcpkg-downloads
@@ -54,7 +55,7 @@ jobs:
         shell: pwsh
         run: New-Item -ItemType Directory -Force -Path $env:VCPKG_BINARY_CACHE, $env:VCPKG_DOWNLOADS, $env:CCACHE_DIR | Out-Null
       - uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@v0.1.002
-        if: runner.os != 'Windows'
+        if: runner.os == 'Linux'
         with:
           build-type: toolchain-only
           obfuscator: "false"
@@ -67,8 +68,8 @@ jobs:
       - name: Select LLVM for manifest ABI resolution and builds
         shell: pwsh
         run: |
-          $compiler = if ($IsWindows) { $env:LLVM_MINGW_CC } else { $env:LLVM_NATIVE_CC }
-          $cppCompiler = if ($IsWindows) { $env:LLVM_MINGW_CXX } else { $env:LLVM_NATIVE_CXX }
+          $compiler = if ($IsWindows) { $env:LLVM_MINGW_CC } elseif ($IsMacOS) { 'clang' } else { $env:LLVM_NATIVE_CC }
+          $cppCompiler = if ($IsWindows) { $env:LLVM_MINGW_CXX } elseif ($IsMacOS) { 'clang++' } else { $env:LLVM_NATIVE_CXX }
           if (-not $compiler -or -not $cppCompiler) { throw 'LLVM setup did not select both compilers' }
           "CC=$compiler" >> $env:GITHUB_ENV
           "CXX=$cppCompiler" >> $env:GITHUB_ENV
@@ -109,6 +110,8 @@ jobs:
           }
           $platform, $digest, $extension = if ($IsWindows) {
             'windows-x86_64', '6993ce645e53192cec592ee23186200b574ac4c59097ecde8d9cfd681b47ae84', 'zip'
+          } elseif ($IsMacOS) {
+            'darwin', 'cf240009630b605b775c7c5c7b7105a3b196c79f31af322c1557969aa28003fc', 'tar.gz'
           } else {
             'linux-x86_64-glibc', 'b1f7fbb60ee24b80a6abae09ec4fcc6554fbf98c933c9bd25a3f53ab685fc00b', 'tar.gz'
           }

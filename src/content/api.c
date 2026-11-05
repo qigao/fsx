@@ -1,6 +1,6 @@
 #include "content.h"
-#ifdef __linux__
-#include "child_linux.h"
+#ifdef FSX_POSIX_CONTENT
+#include "child_posix.h"
 #endif
 
 bool fsx_content_tool_path(const char *path) {
@@ -16,7 +16,7 @@ bool fsx_content_tool_path(const char *path) {
 #endif
 }
 static bool fsx_content_root_path(const char *path) {
-#ifdef __linux__
+#ifdef FSX_POSIX_CONTENT
   return fsx_content_path(path);
 #else
   (void)path;
@@ -182,7 +182,7 @@ static void run(void *context) {
   FsStatus status = fsx_content_stop(q);
   if (status == FS_OK) {
     if (q->root) {
-#ifdef __linux__
+#ifdef FSX_POSIX_CONTENT
       status = fsx_content_discover(q);
 #endif
     } else if (q->request.scope)
@@ -226,7 +226,7 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
   if (!out)
     return FS_INVALID;
   *out = NULL;
-#if !defined(__linux__) && !defined(_WIN32)
+#if !defined(FSX_POSIX_CONTENT) && !defined(_WIN32)
   (void)e;
   (void)r;
   return FS_UNSUPPORTED;

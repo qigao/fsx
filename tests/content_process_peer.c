@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 /* Native fault-injection peer, only for the formal content protocol tests.
@@ -16,6 +17,10 @@ int main(int argc, char **argv) {
     return 91;
   unsigned mode = 0;
   int read = fscanf(control, "%u", &mode);
+  int descriptor = -1;
+  unsigned long long device = 0, inode = 0;
+  if (read == 1 && mode == 9)
+    read = fscanf(control, "%d %llu %llu", &descriptor, &device, &inode) == 3;
   fclose(control);
   if (read != 1)
     return 92;
@@ -45,6 +50,14 @@ int main(int argc, char **argv) {
   case 8:
     putchar(0);
     return 0;
+  case 9: {
+    struct stat info;
+    return fstat(descriptor, &info) == 0 &&
+                   (unsigned long long)info.st_dev == device &&
+                   (unsigned long long)info.st_ino == inode
+               ? 97
+               : 0;
+  }
   default:
     return 93;
   }
