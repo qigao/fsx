@@ -41,6 +41,9 @@
 
 ## 数据与复现
 
+本页保存 v1 数据，配套源码/汇总器为 `95f26c4bcfab5906ad042cb534c7b36d351e2ecb`。
+最新 v2 的 POSIX 直接 ugrep 对照见[独立报告](content-direct-control-2026-11-05.md)。
+
 - [逐操作原始 CSV](content-2026-11-05-linux-release.csv)
 - [逐查询原始 CSV](content-2026-11-05-linux-release-queries.csv)
 - [机器可读汇总与工具/源码哈希](content-2026-11-05-linux-release-summary.json)

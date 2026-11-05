@@ -426,3 +426,11 @@ an optimized build; ordinary Debug/sanitizer timings are kept separate. CI
 preserves raw CSV, strict summaries with tool/source hashes, and formal logs.
 See [the first content performance baseline](docs/performance/content-parallel-2026-11-05.md)
 for the exact corpus, observations and remaining acceptance work.
+
+The v2 benchmark adds a POSIX direct per-file ugrep control, with four-position
+rotation against both scope modes and separate spawn/lifetime/collection sums.
+It runs 160 POSIX operations; Windows keeps 56 scope operations. Direct controls
+use immutable fixture paths, temporary regular output files and blocking reaping;
+they do not have FSX's file-version, streaming or cancellation semantics.
+See [the direct control data](docs/performance/content-direct-control-2026-11-05.md)
+for results and the limits of this comparison.
