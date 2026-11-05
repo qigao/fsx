@@ -31,6 +31,20 @@ if(FSX_BUILD_CONTENT_TESTS)
   add_dependencies(fsx_content_test fsx_content_process_peer)
   set_tests_properties(fsx_content_test PROPERTIES TIMEOUT 60 LABELS "content;integration"
     ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")
+  file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/content_benchmark_test.c" content_benchmark_sha256)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS content_benchmark_test.c)
+  cmake_add_test(fsx_content_benchmark_test SOURCES content_benchmark_test.c
+    LIBS Fsx::Fsx Salts::TinyTest Salts::Platform
+    DEFS "FSX_TEST_UGREP=\"${FSX_CONTENT_TEST_UGREP}\"" "FSX_TEST_BFS=\"${FSX_CONTENT_TEST_BFS}\""
+      "FSX_TEST_BUILD_TYPE=\"${CMAKE_BUILD_TYPE}\""
+      "FSX_TEST_PLATFORM=\"${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}\""
+      "FSX_TEST_SOURCE_SHA256=\"${content_benchmark_sha256}\""
+      "FSX_TEST_COMPILER=\"${CMAKE_C_COMPILER_ID}/${CMAKE_C_COMPILER_VERSION}\""
+      "FSX_TEST_SANITIZERS=\"asan=${FSX_ENABLE_ASAN}/ubsan=${FSX_ENABLE_UBSAN}/tsan=${FSX_ENABLE_TSAN}\""
+    FOLDER tests/content)
+  set_tests_properties(fsx_content_benchmark_test PROPERTIES TIMEOUT 300
+    LABELS "content;performance" RUN_SERIAL TRUE
+    ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")
   add_test(NAME fsx_content_cli_test COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/content_cli_test.py" "$<TARGET_FILE:fsx_cli>" "${FSX_CONTENT_TEST_UGREP}" "${FSX_CONTENT_TEST_BFS}")
   set_tests_properties(fsx_content_cli_test PROPERTIES TIMEOUT 30 LABELS "content;cli;e2e")
