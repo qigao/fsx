@@ -1,0 +1,4536 @@
+{
+  "metadata": {
+    "format": "fsx-content-benchmark-v3",
+    "build_type": "Release",
+    "platform": "Linux/x86_64",
+    "compiler": "Clang/18.1.3",
+    "sanitizers": "asan=OFF/ubsan=OFF/tsan=OFF",
+    "benchmark_source_sha256": "22164e3fbe1035e0e089b95bc838d2549d28be56104c6beeccf1962340ffecfd",
+    "cache": "warm-uncontrolled-os-cache",
+    "ugrep": "/workspace/scratch/c014d52aafa7/vcpkg-cache-tools/build-search-tools/installed/x64-linux/tools/ugrep/ugrep",
+    "bfs": "/workspace/scratch/c014d52aafa7/deps/vcpkg/buildtrees/bfs/x64-linux-rel/bin/bfs",
+    "filesystem_magic": "0x794c7630"
+  },
+  "operations": 270,
+  "matched_inputs": true,
+  "balanced_positions": true,
+  "groups": [
+    {
+      "corpus": "large",
+      "source": "direct",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 12.9925015,
+        "p50": 12.960924,
+        "p95": 14.229964,
+        "p99": 14.229964,
+        "min": 11.927209,
+        "max": 14.229964
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.01674,
+        "p50": 0.016284,
+        "p95": 0.025238,
+        "p99": 0.025238,
+        "min": 0.014763,
+        "max": 0.025238
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 66,
+        "median": 0.0602605,
+        "p50": 0.06026,
+        "p95": 0.702678,
+        "p99": 2.107461,
+        "min": 0.01315,
+        "max": 2.107461
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 388511,
+      "sampled_owned_increase_bytes": 386251,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "spawn_call_per_process_ms": {
+        "n": 6,
+        "median": 0.128856375,
+        "p50": 0.12450225,
+        "p95": 0.14366875,
+        "p99": 0.14366875,
+        "min": 0.116803,
+        "max": 0.14366875
+      },
+      "child_lifetime_per_process_ms": {
+        "n": 6,
+        "median": 2.982285375,
+        "p50": 2.9558555,
+        "p95": 3.23616775,
+        "p99": 3.23616775,
+        "min": 2.82923975,
+        "max": 3.23616775
+      },
+      "collect_decode_per_process_ms": {
+        "n": 6,
+        "median": 0.007444875,
+        "p50": 0.007326,
+        "p95": 0.00845725,
+        "p99": 0.00845725,
+        "min": 0.00678275,
+        "max": 0.00845725
+      },
+      "first_checked_output_ms": {
+        "n": 0
+      },
+      "process_peak_semantics": "exact admitted/unreaped roots, not sampled",
+      "files_per_second": 307.87170802334816,
+      "mib_per_second": 1231.4868320933926
+    },
+    {
+      "corpus": "large",
+      "source": "direct",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 7.0591095,
+        "p50": 6.747443,
+        "p95": 14.062742,
+        "p99": 14.062742,
+        "min": 6.330517,
+        "max": 14.062742
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.039865,
+        "p50": 0.039449,
+        "p95": 0.051607,
+        "p99": 0.051607,
+        "min": 0.031187,
+        "max": 0.051607
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 34,
+        "median": 0.069475,
+        "p50": 0.069375,
+        "p95": 2.009814,
+        "p99": 2.28642,
+        "min": 0.038849,
+        "max": 2.28642
+      },
+      "crossing_queries": 1,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 773876,
+      "sampled_owned_increase_bytes": 771616,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0,
+      "spawn_call_per_process_ms": {
+        "n": 6,
+        "median": 0.140343875,
+        "p50": 0.13193875,
+        "p95": 0.42575525,
+        "p99": 0.42575525,
+        "min": 0.1172185,
+        "max": 0.42575525
+      },
+      "child_lifetime_per_process_ms": {
+        "n": 6,
+        "median": 3.099161375,
+        "p50": 2.92698725,
+        "p95": 5.415503,
+        "p99": 5.415503,
+        "min": 2.76726675,
+        "max": 5.415503
+      },
+      "collect_decode_per_process_ms": {
+        "n": 6,
+        "median": 0.0079795,
+        "p50": 0.00725075,
+        "p95": 0.0094915,
+        "p99": 0.0094915,
+        "min": 0.006545,
+        "max": 0.0094915
+      },
+      "first_checked_output_ms": {
+        "n": 0
+      },
+      "process_peak_semantics": "exact admitted/unreaped roots, not sampled",
+      "files_per_second": 567.7504308308644,
+      "mib_per_second": 2271.0017233234576
+    },
+    {
+      "corpus": "large",
+      "source": "direct",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 14.584154,
+        "p50": 14.017944,
+        "p95": 16.112757,
+        "p99": 16.112757,
+        "min": 12.885711,
+        "max": 16.112757
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.020892,
+        "p50": 0.020311,
+        "p95": 0.031617,
+        "p99": 0.031617,
+        "min": 0.017286,
+        "max": 0.031617
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 79,
+        "median": 0.053921,
+        "p50": 0.053921,
+        "p95": 0.10651,
+        "p99": 0.905473,
+        "min": 0.037496,
+        "max": 0.905473
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 470347,
+      "sampled_owned_increase_bytes": 468087,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "spawn_call_per_process_ms": {
+        "n": 6,
+        "median": 0.1355835,
+        "p50": 0.132825,
+        "p95": 0.241611,
+        "p99": 0.241611,
+        "min": 0.12808,
+        "max": 0.241611
+      },
+      "child_lifetime_per_process_ms": {
+        "n": 6,
+        "median": 3.344282625,
+        "p50": 3.27924,
+        "p95": 3.6394455,
+        "p99": 3.6394455,
+        "min": 2.98355475,
+        "max": 3.6394455
+      },
+      "collect_decode_per_process_ms": {
+        "n": 6,
+        "median": 0.061168125,
+        "p50": 0.05926375,
+        "p95": 0.06967225,
+        "p99": 0.06967225,
+        "min": 0.0584505,
+        "max": 0.06967225
+      },
+      "first_checked_output_ms": {
+        "n": 6,
+        "median": 3.369644,
+        "p50": 3.35542,
+        "p95": 3.829913,
+        "p99": 3.829913,
+        "min": 3.184067,
+        "max": 3.829913
+      },
+      "process_peak_semantics": "exact admitted/unreaped roots, not sampled",
+      "files_per_second": 274.684304794423,
+      "mib_per_second": 1098.737219177692
+    },
+    {
+      "corpus": "large",
+      "source": "direct",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 8.252296,
+        "p50": 7.737764,
+        "p95": 9.128267,
+        "p99": 9.128267,
+        "min": 6.920184,
+        "max": 9.128267
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.038593,
+        "p50": 0.037917,
+        "p95": 0.056375,
+        "p99": 0.056375,
+        "min": 0.036245,
+        "max": 0.056375
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 36,
+        "median": 0.0649575,
+        "p50": 0.062814,
+        "p95": 1.912879,
+        "p99": 2.266862,
+        "min": 0.036855,
+        "max": 2.266862
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 774112,
+      "sampled_owned_increase_bytes": 771852,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0,
+      "spawn_call_per_process_ms": {
+        "n": 6,
+        "median": 0.136770875,
+        "p50": 0.136558,
+        "p95": 0.4037,
+        "p99": 0.4037,
+        "min": 0.12641025,
+        "max": 0.4037
+      },
+      "child_lifetime_per_process_ms": {
+        "n": 6,
+        "median": 3.435936,
+        "p50": 3.32892675,
+        "p95": 4.08042325,
+        "p99": 4.08042325,
+        "min": 3.13872975,
+        "max": 4.08042325
+      },
+      "collect_decode_per_process_ms": {
+        "n": 6,
+        "median": 0.06062475,
+        "p50": 0.06056575,
+        "p95": 0.0714325,
+        "p99": 0.0714325,
+        "min": 0.05840525,
+        "max": 0.0714325
+      },
+      "first_checked_output_ms": {
+        "n": 6,
+        "median": 3.52189,
+        "p50": 3.480102,
+        "p95": 4.452105,
+        "p99": 4.452105,
+        "min": 3.163701,
+        "max": 4.452105
+      },
+      "process_peak_semantics": "exact admitted/unreaped roots, not sampled",
+      "files_per_second": 486.60528647348985,
+      "mib_per_second": 1946.4211458939594
+    },
+    {
+      "corpus": "large",
+      "source": "live",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 4,
+        "median": 19.9799195,
+        "p50": 19.535809,
+        "p95": 20.888033,
+        "p99": 20.888033,
+        "min": 17.939151,
+        "max": 20.888033
+      },
+      "submit_ms": {
+        "n": 4,
+        "median": 0.0155085,
+        "p50": 0.015463,
+        "p95": 0.016415,
+        "p99": 0.016415,
+        "min": 0.01341,
+        "max": 0.016415
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 67,
+        "median": 0.067141,
+        "p50": 0.067141,
+        "p95": 0.184228,
+        "p99": 1.251743,
+        "min": 0.034081,
+        "max": 1.251743
+      },
+      "crossing_queries": 0,
+      "outside_queries": 4,
+      "sampled_owned_peak_bytes": 521652,
+      "sampled_owned_increase_bytes": 519392,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0,
+      "files_per_second": 200.29997041909127,
+      "mib_per_second": 801.1998816763651
+    },
+    {
+      "corpus": "large",
+      "source": "live",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 4,
+        "median": 12.230918,
+        "p50": 12.196478,
+        "p95": 14.172006,
+        "p99": 14.172006,
+        "min": 10.545739,
+        "max": 14.172006
+      },
+      "submit_ms": {
+        "n": 4,
+        "median": 0.01671,
+        "p50": 0.016545,
+        "p95": 0.018167,
+        "p99": 0.018167,
+        "min": 0.013009,
+        "max": 0.018167
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 39,
+        "median": 0.071687,
+        "p50": 0.071687,
+        "p95": 1.246316,
+        "p99": 1.470042,
+        "min": 0.016114,
+        "max": 1.470042
+      },
+      "crossing_queries": 0,
+      "outside_queries": 4,
+      "sampled_owned_peak_bytes": 1002933,
+      "sampled_owned_increase_bytes": 1000673,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 2,
+      "files_per_second": 327.04264025836505,
+      "mib_per_second": 1308.1705610334602
+    },
+    {
+      "corpus": "large",
+      "source": "live",
+      "pattern": "anchor",
+      "phase": "cancel",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 1,
+        "median": 5.531404,
+        "p50": 5.531404,
+        "p95": 5.531404,
+        "p99": 5.531404,
+        "min": 5.531404,
+        "max": 5.531404
+      },
+      "submit_ms": {
+        "n": 1,
+        "median": 0.015223,
+        "p50": 0.015223,
+        "p95": 0.015223,
+        "p99": 0.015223,
+        "min": 0.015223,
+        "max": 0.015223
+      },
+      "first_batch_ms": {
+        "n": 1,
+        "median": 5.491013,
+        "p50": 5.491013,
+        "p95": 5.491013,
+        "p99": 5.491013,
+        "min": 5.491013,
+        "max": 5.491013
+      },
+      "cancel_ms": {
+        "n": 1,
+        "median": 0.035113,
+        "p50": 0.035113,
+        "p95": 0.035113,
+        "p99": 0.035113,
+        "min": 0.035113,
+        "max": 0.035113
+      },
+      "contained_query_ms": {
+        "n": 5,
+        "median": 0.01949,
+        "p50": 0.01949,
+        "p95": 0.021172,
+        "p99": 0.021172,
+        "min": 0.015704,
+        "max": 0.021172
+      },
+      "crossing_queries": 0,
+      "outside_queries": 1,
+      "sampled_owned_peak_bytes": 521002,
+      "sampled_owned_increase_bytes": 518742,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0
+    },
+    {
+      "corpus": "large",
+      "source": "live",
+      "pattern": "anchor",
+      "phase": "cancel",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 1,
+        "median": 7.040004,
+        "p50": 7.040004,
+        "p95": 7.040004,
+        "p99": 7.040004,
+        "min": 7.040004,
+        "max": 7.040004
+      },
+      "submit_ms": {
+        "n": 1,
+        "median": 0.018578,
+        "p50": 0.018578,
+        "p95": 0.018578,
+        "p99": 0.018578,
+        "min": 0.018578,
+        "max": 0.018578
+      },
+      "first_batch_ms": {
+        "n": 1,
+        "median": 6.941556,
+        "p50": 6.941556,
+        "p95": 6.941556,
+        "p99": 6.941556,
+        "min": 6.941556,
+        "max": 6.941556
+      },
+      "cancel_ms": {
+        "n": 1,
+        "median": 0.092309,
+        "p50": 0.092309,
+        "p95": 0.092309,
+        "p99": 0.092309,
+        "min": 0.092309,
+        "max": 0.092309
+      },
+      "contained_query_ms": {
+        "n": 6,
+        "median": 0.05638,
+        "p50": 0.055143,
+        "p95": 0.084518,
+        "p99": 0.084518,
+        "min": 0.049775,
+        "max": 0.084518
+      },
+      "crossing_queries": 1,
+      "outside_queries": 1,
+      "sampled_owned_peak_bytes": 920091,
+      "sampled_owned_increase_bytes": 917831,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 2
+    },
+    {
+      "corpus": "large",
+      "source": "live",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 4,
+        "median": 21.546759,
+        "p50": 21.31828,
+        "p95": 23.161183,
+        "p99": 23.161183,
+        "min": 20.775043,
+        "max": 23.161183
+      },
+      "submit_ms": {
+        "n": 4,
+        "median": 0.0160935,
+        "p50": 0.01377,
+        "p95": 0.021162,
+        "p99": 0.021162,
+        "min": 0.008423,
+        "max": 0.021162
+      },
+      "first_batch_ms": {
+        "n": 4,
+        "median": 6.631915,
+        "p50": 6.618159,
+        "p95": 7.008156,
+        "p99": 7.008156,
+        "min": 6.24677,
+        "max": 7.008156
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 74,
+        "median": 0.064692,
+        "p50": 0.064637,
+        "p95": 0.480914,
+        "p99": 1.354478,
+        "min": 0.037447,
+        "max": 1.354478
+      },
+      "crossing_queries": 1,
+      "outside_queries": 4,
+      "sampled_owned_peak_bytes": 521652,
+      "sampled_owned_increase_bytes": 519392,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0,
+      "files_per_second": 185.6636452234407,
+      "mib_per_second": 742.6545808937628
+    },
+    {
+      "corpus": "large",
+      "source": "live",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 4,
+        "median": 12.1030085,
+        "p50": 12.070314,
+        "p95": 12.158947,
+        "p99": 12.158947,
+        "min": 12.054279,
+        "max": 12.158947
+      },
+      "submit_ms": {
+        "n": 4,
+        "median": 0.0142565,
+        "p50": 0.014021,
+        "p95": 0.020431,
+        "p99": 0.020431,
+        "min": 0.012929,
+        "max": 0.020431
+      },
+      "first_batch_ms": {
+        "n": 4,
+        "median": 6.0408105,
+        "p50": 5.966849,
+        "p95": 6.618209,
+        "p99": 6.618209,
+        "min": 5.623032,
+        "max": 6.618209
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 39,
+        "median": 0.083105,
+        "p50": 0.083105,
+        "p95": 0.835808,
+        "p99": 1.364683,
+        "min": 0.039259,
+        "max": 1.364683
+      },
+      "crossing_queries": 1,
+      "outside_queries": 4,
+      "sampled_owned_peak_bytes": 920505,
+      "sampled_owned_increase_bytes": 918245,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 2,
+      "files_per_second": 330.4987507402086,
+      "mib_per_second": 1321.9950029608344
+    },
+    {
+      "corpus": "large",
+      "source": "none",
+      "pattern": "none",
+      "phase": "baseline",
+      "parallel_files": 0,
+      "wall_ms": {
+        "n": 1,
+        "median": 50.097259,
+        "p50": 50.097259,
+        "p95": 50.097259,
+        "p99": 50.097259,
+        "min": 50.097259,
+        "max": 50.097259
+      },
+      "submit_ms": {
+        "n": 0
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 44,
+        "median": 0.053896,
+        "p50": 0.053731,
+        "p95": 0.117507,
+        "p99": 0.118358,
+        "min": 0.036585,
+        "max": 0.118358
+      },
+      "crossing_queries": 0,
+      "outside_queries": 1,
+      "sampled_owned_peak_bytes": 2260,
+      "sampled_owned_increase_bytes": 0,
+      "sampled_running_peak": 0,
+      "sampled_queued_peak": 0
+    },
+    {
+      "corpus": "large",
+      "source": "profile",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 19.4787575,
+        "p50": 19.072792,
+        "p95": 23.340368,
+        "p99": 23.340368,
+        "min": 16.35432,
+        "max": 23.340368
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0127185,
+        "p50": 0.012248,
+        "p95": 0.025068,
+        "p99": 0.025068,
+        "min": 0.010045,
+        "max": 0.025068
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 102,
+        "median": 0.055148,
+        "p50": 0.055033,
+        "p95": 0.148874,
+        "p99": 0.68461,
+        "min": 0.011367,
+        "max": 1.734976
+      },
+      "crossing_queries": 1,
+      "outside_queries": 7,
+      "sampled_owned_peak_bytes": 538023,
+      "sampled_owned_increase_bytes": 535763,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "fsx_stage_sum_ms": {
+        "open_ns": {
+          "n": 6,
+          "median": 0.0730255,
+          "p50": 0.069285,
+          "p95": 0.192921,
+          "p99": 0.192921,
+          "min": 0.060091,
+          "max": 0.192921
+        },
+        "spawn_ns": {
+          "n": 6,
+          "median": 0.6019955,
+          "p50": 0.570427,
+          "p95": 0.672853,
+          "p99": 0.672853,
+          "min": 0.494423,
+          "max": 0.672853
+        },
+        "read_ns": {
+          "n": 6,
+          "median": 2.6583605,
+          "p50": 2.597409,
+          "p95": 3.811683,
+          "p99": 3.811683,
+          "min": 1.996541,
+          "max": 3.811683
+        },
+        "text_ns": {
+          "n": 6,
+          "median": 2.0193975,
+          "p50": 1.886692,
+          "p95": 2.262735,
+          "p99": 2.262735,
+          "min": 1.487484,
+          "max": 2.262735
+        },
+        "poll_ns": {
+          "n": 6,
+          "median": 9.8699195,
+          "p50": 9.574193,
+          "p95": 11.268806,
+          "p99": 11.268806,
+          "min": 8.423859,
+          "max": 11.268806
+        },
+        "write_ns": {
+          "n": 6,
+          "median": 3.8715475,
+          "p50": 3.61923,
+          "p95": 5.147874,
+          "p99": 5.147874,
+          "min": 3.267552,
+          "max": 5.147874
+        },
+        "output_ns": {
+          "n": 6,
+          "median": 0.025199,
+          "p50": 0.02519,
+          "p95": 0.026029,
+          "p99": 0.026029,
+          "min": 0.024384,
+          "max": 0.026029
+        },
+        "finish_ns": {
+          "n": 6,
+          "median": 0.0311065,
+          "p50": 0.030146,
+          "p95": 1.102058,
+          "p99": 1.102058,
+          "min": 0.023656,
+          "max": 1.102058
+        },
+        "postcheck_ns": {
+          "n": 6,
+          "median": 0.1048065,
+          "p50": 0.102774,
+          "p95": 0.115513,
+          "p99": 0.115513,
+          "min": 0.078557,
+          "max": 0.115513
+        },
+        "file_ns": {
+          "n": 6,
+          "median": 19.37762,
+          "p50": 18.969235,
+          "p95": 23.206641,
+          "p99": 23.206641,
+          "min": 16.242142,
+          "max": 23.206641
+        },
+        "worker_cpu_ns": {
+          "n": 6,
+          "median": 9.233386,
+          "p50": 9.110723,
+          "p95": 12.082677,
+          "p99": 12.082677,
+          "min": 7.56818,
+          "max": 12.082677
+        },
+        "decode_ns": {
+          "n": 6,
+          "median": 0.000441,
+          "p50": 0.000381,
+          "p95": 0.000651,
+          "p99": 0.000651,
+          "min": 0.00036,
+          "max": 0.000651
+        }
+      },
+      "fsx_counters": {
+        "files": [
+          4
+        ],
+        "read_bytes": [
+          16777216
+        ],
+        "write_bytes": [
+          16777216
+        ],
+        "read_calls": [
+          260
+        ],
+        "write_calls": [
+          256,
+          257,
+          258
+        ],
+        "poll_calls": [
+          260,
+          261,
+          262
+        ]
+      },
+      "files_per_second": 205.44114370452849,
+      "mib_per_second": 821.7645748181139
+    },
+    {
+      "corpus": "large",
+      "source": "profile",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 9.5249215,
+        "p50": 9.457778,
+        "p95": 11.138942,
+        "p99": 11.138942,
+        "min": 9.006925,
+        "max": 11.138942
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0106155,
+        "p50": 0.010185,
+        "p95": 0.016024,
+        "p99": 0.016024,
+        "min": 0.009975,
+        "max": 0.016024
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 46,
+        "median": 0.0627345,
+        "p50": 0.062464,
+        "p95": 1.058012,
+        "p99": 1.407298,
+        "min": 0.044807,
+        "max": 1.407298
+      },
+      "crossing_queries": 1,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 1001920,
+      "sampled_owned_increase_bytes": 999660,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 2,
+      "fsx_stage_sum_ms": {
+        "open_ns": {
+          "n": 6,
+          "median": 0.0801865,
+          "p50": 0.079791,
+          "p95": 0.093341,
+          "p99": 0.093341,
+          "min": 0.071739,
+          "max": 0.093341
+        },
+        "spawn_ns": {
+          "n": 6,
+          "median": 0.596367,
+          "p50": 0.583267,
+          "p95": 0.863209,
+          "p99": 0.863209,
+          "min": 0.556317,
+          "max": 0.863209
+        },
+        "read_ns": {
+          "n": 6,
+          "median": 2.316108,
+          "p50": 2.300257,
+          "p95": 2.553854,
+          "p99": 2.553854,
+          "min": 2.129509,
+          "max": 2.553854
+        },
+        "text_ns": {
+          "n": 6,
+          "median": 1.7431665,
+          "p50": 1.669086,
+          "p95": 1.852759,
+          "p99": 1.852759,
+          "min": 1.368476,
+          "max": 1.852759
+        },
+        "poll_ns": {
+          "n": 6,
+          "median": 9.7199445,
+          "p50": 9.615588,
+          "p95": 12.301853,
+          "p99": 12.301853,
+          "min": 8.967985,
+          "max": 12.301853
+        },
+        "write_ns": {
+          "n": 6,
+          "median": 3.467826,
+          "p50": 3.358334,
+          "p95": 3.894861,
+          "p99": 3.894861,
+          "min": 3.257204,
+          "max": 3.894861
+        },
+        "output_ns": {
+          "n": 6,
+          "median": 0.026561,
+          "p50": 0.026492,
+          "p95": 0.028479,
+          "p99": 0.028479,
+          "min": 0.024075,
+          "max": 0.028479
+        },
+        "finish_ns": {
+          "n": 6,
+          "median": 0.0275315,
+          "p50": 0.025588,
+          "p95": 0.079551,
+          "p99": 0.079551,
+          "min": 0.024065,
+          "max": 0.079551
+        },
+        "postcheck_ns": {
+          "n": 6,
+          "median": 0.0931065,
+          "p50": 0.091329,
+          "p95": 0.189445,
+          "p99": 0.189445,
+          "min": 0.082594,
+          "max": 0.189445
+        },
+        "file_ns": {
+          "n": 6,
+          "median": 18.2426475,
+          "p50": 18.090635,
+          "p95": 21.056947,
+          "p99": 21.056947,
+          "min": 17.082445,
+          "max": 21.056947
+        },
+        "worker_cpu_ns": {
+          "n": 6,
+          "median": 8.397054,
+          "p50": 8.37638,
+          "p95": 8.673014,
+          "p99": 8.673014,
+          "min": 7.852444,
+          "max": 8.673014
+        },
+        "decode_ns": {
+          "n": 6,
+          "median": 0.000265,
+          "p50": 0.00026,
+          "p95": 0.0005,
+          "p99": 0.0005,
+          "min": 0.00025,
+          "max": 0.0005
+        }
+      },
+      "fsx_counters": {
+        "files": [
+          4
+        ],
+        "read_bytes": [
+          16777216
+        ],
+        "write_bytes": [
+          16777216
+        ],
+        "read_calls": [
+          260
+        ],
+        "write_calls": [
+          256,
+          257
+        ],
+        "poll_calls": [
+          260,
+          261,
+          262
+        ]
+      },
+      "files_per_second": 419.9718367512794,
+      "mib_per_second": 1679.8873470051176
+    },
+    {
+      "corpus": "large",
+      "source": "profile",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 17.554316,
+        "p50": 17.054043,
+        "p95": 25.498201,
+        "p99": 25.498201,
+        "min": 16.218557,
+        "max": 25.498201
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0117425,
+        "p50": 0.011557,
+        "p95": 0.012158,
+        "p99": 0.012158,
+        "min": 0.010586,
+        "max": 0.012158
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 4.4214435,
+        "p50": 4.331438,
+        "p95": 6.601113,
+        "p99": 6.601113,
+        "min": 4.129364,
+        "max": 6.601113
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 99,
+        "median": 0.056635,
+        "p50": 0.056635,
+        "p95": 0.200692,
+        "p99": 1.33305,
+        "min": 0.012168,
+        "max": 1.33305
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 619859,
+      "sampled_owned_increase_bytes": 617599,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "fsx_stage_sum_ms": {
+        "open_ns": {
+          "n": 6,
+          "median": 0.082239,
+          "p50": 0.069645,
+          "p95": 0.281503,
+          "p99": 0.281503,
+          "min": 0.059149,
+          "max": 0.281503
+        },
+        "spawn_ns": {
+          "n": 6,
+          "median": 0.5344545,
+          "p50": 0.515356,
+          "p95": 0.992392,
+          "p99": 0.992392,
+          "min": 0.469827,
+          "max": 0.992392
+        },
+        "read_ns": {
+          "n": 6,
+          "median": 2.073709,
+          "p50": 2.064461,
+          "p95": 3.307858,
+          "p99": 3.307858,
+          "min": 2.038634,
+          "max": 3.307858
+        },
+        "text_ns": {
+          "n": 6,
+          "median": 1.3381295,
+          "p50": 1.308453,
+          "p95": 1.843408,
+          "p99": 1.843408,
+          "min": 1.188739,
+          "max": 1.843408
+        },
+        "poll_ns": {
+          "n": 6,
+          "median": 8.9915815,
+          "p50": 8.8032,
+          "p95": 13.638087,
+          "p99": 13.638087,
+          "min": 8.418116,
+          "max": 13.638087
+        },
+        "write_ns": {
+          "n": 6,
+          "median": 3.6553935,
+          "p50": 3.539967,
+          "p95": 4.710674,
+          "p99": 4.710674,
+          "min": 2.829191,
+          "max": 4.710674
+        },
+        "output_ns": {
+          "n": 6,
+          "median": 0.1050765,
+          "p50": 0.088122,
+          "p95": 0.162193,
+          "p99": 0.162193,
+          "min": 0.081959,
+          "max": 0.162193
+        },
+        "finish_ns": {
+          "n": 6,
+          "median": 0.02613,
+          "p50": 0.023045,
+          "p95": 0.036756,
+          "p99": 0.036756,
+          "min": 0.022414,
+          "max": 0.036756
+        },
+        "postcheck_ns": {
+          "n": 6,
+          "median": 0.088679,
+          "p50": 0.075684,
+          "p95": 0.200711,
+          "p99": 0.200711,
+          "min": 0.072711,
+          "max": 0.200711
+        },
+        "file_ns": {
+          "n": 6,
+          "median": 16.966922,
+          "p50": 16.302537,
+          "p95": 25.048344,
+          "p99": 25.048344,
+          "min": 15.828029,
+          "max": 25.048344
+        },
+        "worker_cpu_ns": {
+          "n": 6,
+          "median": 8.0096675,
+          "p50": 7.715008,
+          "p95": 11.062436,
+          "p99": 11.062436,
+          "min": 6.744131,
+          "max": 11.062436
+        },
+        "decode_ns": {
+          "n": 6,
+          "median": 0.2248875,
+          "p50": 0.220923,
+          "p95": 0.402406,
+          "p99": 0.402406,
+          "min": 0.196326,
+          "max": 0.402406
+        }
+      },
+      "fsx_counters": {
+        "files": [
+          4
+        ],
+        "read_bytes": [
+          16777216
+        ],
+        "write_bytes": [
+          16777216
+        ],
+        "read_calls": [
+          260
+        ],
+        "write_calls": [
+          256,
+          257,
+          259,
+          261
+        ],
+        "poll_calls": [
+          264,
+          265,
+          266,
+          269,
+          270
+        ]
+      },
+      "files_per_second": 228.04940482107196,
+      "mib_per_second": 912.1976192842878
+    },
+    {
+      "corpus": "large",
+      "source": "profile",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 9.6659105,
+        "p50": 9.641248,
+        "p95": 10.912122,
+        "p99": 10.912122,
+        "min": 8.487773,
+        "max": 10.912122
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0115125,
+        "p50": 0.011327,
+        "p95": 0.012499,
+        "p99": 0.012499,
+        "min": 0.010726,
+        "max": 0.012499
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 4.64485,
+        "p50": 4.48495,
+        "p95": 5.141677,
+        "p99": 5.141677,
+        "min": 3.975182,
+        "max": 5.141677
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 46,
+        "median": 0.0688135,
+        "p50": 0.067422,
+        "p95": 1.224914,
+        "p99": 2.881867,
+        "min": 0.01955,
+        "max": 2.881867
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 1001920,
+      "sampled_owned_increase_bytes": 999660,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 2,
+      "fsx_stage_sum_ms": {
+        "open_ns": {
+          "n": 6,
+          "median": 0.0821635,
+          "p50": 0.081082,
+          "p95": 0.092007,
+          "p99": 0.092007,
+          "min": 0.075895,
+          "max": 0.092007
+        },
+        "spawn_ns": {
+          "n": 6,
+          "median": 0.627694,
+          "p50": 0.613722,
+          "p95": 0.846635,
+          "p99": 0.846635,
+          "min": 0.559322,
+          "max": 0.846635
+        },
+        "read_ns": {
+          "n": 6,
+          "median": 2.290079,
+          "p50": 2.283918,
+          "p95": 2.393409,
+          "p99": 2.393409,
+          "min": 2.039991,
+          "max": 2.393409
+        },
+        "text_ns": {
+          "n": 6,
+          "median": 1.637347,
+          "p50": 1.534697,
+          "p95": 1.971633,
+          "p99": 1.971633,
+          "min": 1.306811,
+          "max": 1.971633
+        },
+        "poll_ns": {
+          "n": 6,
+          "median": 8.928206,
+          "p50": 8.864907,
+          "p95": 10.383795,
+          "p99": 10.383795,
+          "min": 7.959569,
+          "max": 10.383795
+        },
+        "write_ns": {
+          "n": 6,
+          "median": 3.736357,
+          "p50": 3.682098,
+          "p95": 4.97263,
+          "p99": 4.97263,
+          "min": 3.275817,
+          "max": 4.97263
+        },
+        "output_ns": {
+          "n": 6,
+          "median": 0.0937505,
+          "p50": 0.089915,
+          "p95": 0.125411,
+          "p99": 0.125411,
+          "min": 0.083786,
+          "max": 0.125411
+        },
+        "finish_ns": {
+          "n": 6,
+          "median": 0.0296995,
+          "p50": 0.028273,
+          "p95": 0.088132,
+          "p99": 0.088132,
+          "min": 0.023155,
+          "max": 0.088132
+        },
+        "postcheck_ns": {
+          "n": 6,
+          "median": 0.106321,
+          "p50": 0.104178,
+          "p95": 0.145247,
+          "p99": 0.145247,
+          "min": 0.076495,
+          "max": 0.145247
+        },
+        "file_ns": {
+          "n": 6,
+          "median": 18.1432955,
+          "p50": 17.747517,
+          "p95": 19.182476,
+          "p99": 19.182476,
+          "min": 15.749412,
+          "max": 19.182476
+        },
+        "worker_cpu_ns": {
+          "n": 6,
+          "median": 8.501544,
+          "p50": 8.434047,
+          "p95": 10.130862,
+          "p99": 10.130862,
+          "min": 7.521079,
+          "max": 10.130862
+        },
+        "decode_ns": {
+          "n": 6,
+          "median": 0.2410035,
+          "p50": 0.235535,
+          "p95": 0.347783,
+          "p99": 0.347783,
+          "min": 0.221273,
+          "max": 0.347783
+        }
+      },
+      "fsx_counters": {
+        "files": [
+          4
+        ],
+        "read_bytes": [
+          16777216
+        ],
+        "write_bytes": [
+          16777216
+        ],
+        "read_calls": [
+          260
+        ],
+        "write_calls": [
+          257,
+          258,
+          261
+        ],
+        "poll_calls": [
+          266,
+          274
+        ]
+      },
+      "files_per_second": 413.8281686582296,
+      "mib_per_second": 1655.3126746329183
+    },
+    {
+      "corpus": "large",
+      "source": "scope",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 16.869565,
+        "p50": 16.664817,
+        "p95": 20.68327,
+        "p99": 20.68327,
+        "min": 16.099828,
+        "max": 20.68327
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0101655,
+        "p50": 0.009695,
+        "p95": 0.011297,
+        "p99": 0.011297,
+        "min": 0.007341,
+        "max": 0.011297
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 91,
+        "median": 0.054783,
+        "p50": 0.054783,
+        "p95": 0.752392,
+        "p99": 1.291664,
+        "min": 0.010336,
+        "max": 1.291664
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 620253,
+      "sampled_owned_increase_bytes": 617993,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "files_per_second": 237.1483393861426,
+      "mib_per_second": 948.5933575445704
+    },
+    {
+      "corpus": "large",
+      "source": "scope",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 9.0085815,
+        "p50": 8.934865,
+        "p95": 10.733032,
+        "p99": 10.733032,
+        "min": 8.276054,
+        "max": 10.733032
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.011422,
+        "p50": 0.011417,
+        "p95": 0.012439,
+        "p99": 0.012439,
+        "min": 0.010576,
+        "max": 0.012439
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 46,
+        "median": 0.070887,
+        "p50": 0.070256,
+        "p95": 0.752563,
+        "p99": 1.895332,
+        "min": 0.038138,
+        "max": 1.895332
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 1001838,
+      "sampled_owned_increase_bytes": 999578,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 2,
+      "files_per_second": 444.0508040741165,
+      "mib_per_second": 1776.203216296466
+    },
+    {
+      "corpus": "large",
+      "source": "scope",
+      "pattern": "anchor",
+      "phase": "cancel",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 1,
+        "median": 8.456936,
+        "p50": 8.456936,
+        "p95": 8.456936,
+        "p99": 8.456936,
+        "min": 8.456936,
+        "max": 8.456936
+      },
+      "submit_ms": {
+        "n": 1,
+        "median": 0.011127,
+        "p50": 0.011127,
+        "p95": 0.011127,
+        "p99": 0.011127,
+        "min": 0.011127,
+        "max": 0.011127
+      },
+      "first_batch_ms": {
+        "n": 1,
+        "median": 8.413841,
+        "p50": 8.413841,
+        "p95": 8.413841,
+        "p99": 8.413841,
+        "min": 8.413841,
+        "max": 8.413841
+      },
+      "cancel_ms": {
+        "n": 1,
+        "median": 0.036225,
+        "p50": 0.036225,
+        "p95": 0.036225,
+        "p99": 0.036225,
+        "min": 0.036225,
+        "max": 0.036225
+      },
+      "contained_query_ms": {
+        "n": 7,
+        "median": 0.097316,
+        "p50": 0.097316,
+        "p95": 0.314653,
+        "p99": 0.314653,
+        "min": 0.054502,
+        "max": 0.314653
+      },
+      "crossing_queries": 0,
+      "outside_queries": 1,
+      "sampled_owned_peak_bytes": 538023,
+      "sampled_owned_increase_bytes": 535763,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0
+    },
+    {
+      "corpus": "large",
+      "source": "scope",
+      "pattern": "anchor",
+      "phase": "cancel",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 1,
+        "median": 6.545145,
+        "p50": 6.545145,
+        "p95": 6.545145,
+        "p99": 6.545145,
+        "min": 6.545145,
+        "max": 6.545145
+      },
+      "submit_ms": {
+        "n": 1,
+        "median": 0.012308,
+        "p50": 0.012308,
+        "p95": 0.012308,
+        "p99": 0.012308,
+        "min": 0.012308,
+        "max": 0.012308
+      },
+      "first_batch_ms": {
+        "n": 1,
+        "median": 6.390732,
+        "p50": 6.390732,
+        "p95": 6.390732,
+        "p99": 6.390732,
+        "min": 6.390732,
+        "max": 6.390732
+      },
+      "cancel_ms": {
+        "n": 1,
+        "median": 0.149495,
+        "p50": 0.149495,
+        "p95": 0.149495,
+        "p99": 0.149495,
+        "min": 0.149495,
+        "max": 0.149495
+      },
+      "contained_query_ms": {
+        "n": 5,
+        "median": 0.144327,
+        "p50": 0.144327,
+        "p95": 0.59131,
+        "p99": 0.59131,
+        "min": 0.038208,
+        "max": 0.59131
+      },
+      "crossing_queries": 0,
+      "outside_queries": 1,
+      "sampled_owned_peak_bytes": 919492,
+      "sampled_owned_increase_bytes": 917232,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 2
+    },
+    {
+      "corpus": "large",
+      "source": "scope",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 17.365392,
+        "p50": 17.138982,
+        "p95": 18.655609,
+        "p99": 18.655609,
+        "min": 16.320049,
+        "max": 18.655609
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.010426,
+        "p50": 0.010406,
+        "p95": 0.0401,
+        "p99": 0.0401,
+        "min": 0.008974,
+        "max": 0.0401
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 4.4182985,
+        "p50": 4.123605,
+        "p95": 5.295033,
+        "p99": 5.295033,
+        "min": 3.563132,
+        "max": 5.295033
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 95,
+        "median": 0.050426,
+        "p50": 0.050426,
+        "p95": 0.145078,
+        "p99": 0.255885,
+        "min": 0.01345,
+        "max": 0.255885
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 538023,
+      "sampled_owned_increase_bytes": 535763,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "files_per_second": 230.38236473418405,
+      "mib_per_second": 921.5294589367362
+    },
+    {
+      "corpus": "large",
+      "source": "scope",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 10.440546,
+        "p50": 10.314391,
+        "p95": 11.280055,
+        "p99": 11.280055,
+        "min": 9.212233,
+        "max": 11.280055
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.011793,
+        "p50": 0.011447,
+        "p95": 0.029124,
+        "p99": 0.029124,
+        "min": 0.010476,
+        "max": 0.029124
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 4.7970365,
+        "p50": 4.733553,
+        "p95": 5.219649,
+        "p99": 5.219649,
+        "min": 3.996914,
+        "max": 5.219649
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 51,
+        "median": 0.068343,
+        "p50": 0.068343,
+        "p95": 1.206556,
+        "p99": 1.338755,
+        "min": 0.043175,
+        "max": 1.338755
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 919728,
+      "sampled_owned_increase_bytes": 917468,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 2,
+      "files_per_second": 383.1776708102451,
+      "mib_per_second": 1532.7106832409804
+    },
+    {
+      "corpus": "small",
+      "source": "direct",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 142.4680615,
+        "p50": 142.463995,
+        "p95": 150.362727,
+        "p99": 150.362727,
+        "min": 138.587046,
+        "max": 150.362727
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0255885,
+        "p50": 0.022434,
+        "p95": 0.091017,
+        "p99": 0.091017,
+        "min": 0.017226,
+        "max": 0.091017
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 723,
+        "median": 0.056725,
+        "p50": 0.056725,
+        "p95": 0.260332,
+        "p99": 1.605927,
+        "min": 0.011517,
+        "max": 3.857625
+      },
+      "crossing_queries": 1,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 497741,
+      "sampled_owned_increase_bytes": 468481,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "spawn_call_per_process_ms": {
+        "n": 6,
+        "median": 0.1338792734375,
+        "p50": 0.13191178125,
+        "p95": 0.148182359375,
+        "p99": 0.148182359375,
+        "min": 0.123799875,
+        "max": 0.148182359375
+      },
+      "child_lifetime_per_process_ms": {
+        "n": 6,
+        "median": 2.165505125,
+        "p50": 2.16053546875,
+        "p95": 2.28193253125,
+        "p99": 2.28193253125,
+        "min": 2.110228109375,
+        "max": 2.28193253125
+      },
+      "collect_decode_per_process_ms": {
+        "n": 6,
+        "median": 0.006633984375,
+        "p50": 0.006571046875,
+        "p95": 0.006867015625,
+        "p99": 0.006867015625,
+        "min": 0.006347546875,
+        "max": 0.006867015625
+      },
+      "first_checked_output_ms": {
+        "n": 0
+      },
+      "process_peak_semantics": "exact admitted/unreaped roots, not sampled",
+      "files_per_second": 449.22349176585,
+      "mib_per_second": 0.4386948161775879
+    },
+    {
+      "corpus": "small",
+      "source": "direct",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 75.5695975,
+        "p50": 75.080459,
+        "p95": 77.666766,
+        "p99": 77.666766,
+        "min": 73.454447,
+        "max": 77.666766
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.03976,
+        "p50": 0.03946,
+        "p95": 0.056225,
+        "p99": 0.056225,
+        "min": 0.036474,
+        "max": 0.056225
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 353,
+        "median": 0.057447,
+        "p50": 0.057447,
+        "p95": 0.993154,
+        "p99": 1.644124,
+        "min": 0.014071,
+        "max": 1.855452
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 883304,
+      "sampled_owned_increase_bytes": 854044,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0,
+      "spawn_call_per_process_ms": {
+        "n": 6,
+        "median": 0.17325878125,
+        "p50": 0.169777109375,
+        "p95": 0.208291125,
+        "p99": 0.208291125,
+        "min": 0.145307828125,
+        "max": 0.208291125
+      },
+      "child_lifetime_per_process_ms": {
+        "n": 6,
+        "median": 2.2789504375,
+        "p50": 2.255799171875,
+        "p95": 2.357779671875,
+        "p99": 2.357779671875,
+        "min": 2.1930176875,
+        "max": 2.357779671875
+      },
+      "collect_decode_per_process_ms": {
+        "n": 6,
+        "median": 0.00721040625,
+        "p50": 0.007155625,
+        "p95": 0.010383625,
+        "p99": 0.010383625,
+        "min": 0.006736046875,
+        "max": 0.010383625
+      },
+      "first_checked_output_ms": {
+        "n": 0
+      },
+      "process_peak_semantics": "exact admitted/unreaped roots, not sampled",
+      "files_per_second": 846.9369105386409,
+      "mib_per_second": 0.8270868266978915
+    },
+    {
+      "corpus": "small",
+      "source": "direct",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 153.6574725,
+        "p50": 151.442584,
+        "p95": 166.511873,
+        "p99": 166.511873,
+        "min": 144.782816,
+        "max": 166.511873
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0223685,
+        "p50": 0.021923,
+        "p95": 0.027562,
+        "p99": 0.027562,
+        "min": 0.019168,
+        "max": 0.027562
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 764,
+        "median": 0.060511,
+        "p50": 0.060511,
+        "p95": 0.384168,
+        "p99": 1.618456,
+        "min": 0.014261,
+        "max": 6.243015
+      },
+      "crossing_queries": 1,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 497821,
+      "sampled_owned_increase_bytes": 468561,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "spawn_call_per_process_ms": {
+        "n": 6,
+        "median": 0.14419490625,
+        "p50": 0.14089484375,
+        "p95": 0.190548734375,
+        "p99": 0.190548734375,
+        "min": 0.13266946875,
+        "max": 0.190548734375
+      },
+      "child_lifetime_per_process_ms": {
+        "n": 6,
+        "median": 2.3218992265625,
+        "p50": 2.295068125,
+        "p95": 2.528488203125,
+        "p99": 2.528488203125,
+        "min": 2.193540421875,
+        "max": 2.528488203125
+      },
+      "collect_decode_per_process_ms": {
+        "n": 6,
+        "median": 0.011566671875,
+        "p50": 0.01156353125,
+        "p95": 0.01215253125,
+        "p99": 0.01215253125,
+        "min": 0.0101413125,
+        "max": 0.01215253125
+      },
+      "first_checked_output_ms": {
+        "n": 6,
+        "median": 2.6081335,
+        "p50": 2.537287,
+        "p95": 3.011612,
+        "p99": 3.011612,
+        "min": 2.102169,
+        "max": 3.011612
+      },
+      "process_peak_semantics": "exact admitted/unreaped roots, not sampled",
+      "files_per_second": 416.5973799788742,
+      "mib_per_second": 0.4068333788856193
+    },
+    {
+      "corpus": "small",
+      "source": "direct",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 76.9063405,
+        "p50": 76.831539,
+        "p95": 81.632228,
+        "p99": 81.632228,
+        "min": 73.28376,
+        "max": 81.632228
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.044562,
+        "p50": 0.043245,
+        "p95": 0.062153,
+        "p99": 0.062153,
+        "min": 0.042404,
+        "max": 0.062153
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 376,
+        "median": 0.0397295,
+        "p50": 0.039619,
+        "p95": 0.969464,
+        "p99": 1.70195,
+        "min": 0.014802,
+        "max": 2.404584
+      },
+      "crossing_queries": 2,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 883342,
+      "sampled_owned_increase_bytes": 854082,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0,
+      "spawn_call_per_process_ms": {
+        "n": 6,
+        "median": 0.139997796875,
+        "p50": 0.13726315625,
+        "p95": 0.177184390625,
+        "p99": 0.177184390625,
+        "min": 0.131517171875,
+        "max": 0.177184390625
+      },
+      "child_lifetime_per_process_ms": {
+        "n": 6,
+        "median": 2.3060276953125,
+        "p50": 2.300434625,
+        "p95": 2.391606546875,
+        "p99": 2.391606546875,
+        "min": 2.193941984375,
+        "max": 2.391606546875
+      },
+      "collect_decode_per_process_ms": {
+        "n": 6,
+        "median": 0.012068359375,
+        "p50": 0.011670734375,
+        "p95": 0.02811309375,
+        "p99": 0.02811309375,
+        "min": 0.01009490625,
+        "max": 0.02811309375
+      },
+      "first_checked_output_ms": {
+        "n": 6,
+        "median": 2.444798,
+        "p50": 2.398398,
+        "p95": 2.564548,
+        "p99": 2.564548,
+        "min": 2.216949,
+        "max": 2.564548
+      },
+      "process_peak_semantics": "exact admitted/unreaped roots, not sampled",
+      "files_per_second": 832.1818477994027,
+      "mib_per_second": 0.8126775857416042
+    },
+    {
+      "corpus": "small",
+      "source": "direct",
+      "pattern": "needle",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 150.417282,
+        "p50": 148.305926,
+        "p95": 161.465988,
+        "p99": 161.465988,
+        "min": 145.463641,
+        "max": 161.465988
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0192385,
+        "p50": 0.018808,
+        "p95": 0.023015,
+        "p99": 0.023015,
+        "min": 0.017847,
+        "max": 0.023015
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 755,
+        "median": 0.057307,
+        "p50": 0.057307,
+        "p95": 0.447203,
+        "p99": 1.57469,
+        "min": 0.011978,
+        "max": 2.432189
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 497639,
+      "sampled_owned_increase_bytes": 468379,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "spawn_call_per_process_ms": {
+        "n": 6,
+        "median": 0.1476567578125,
+        "p50": 0.140573375,
+        "p95": 0.158266515625,
+        "p99": 0.158266515625,
+        "min": 0.126189765625,
+        "max": 0.158266515625
+      },
+      "child_lifetime_per_process_ms": {
+        "n": 6,
+        "median": 2.2616638671875,
+        "p50": 2.232833484375,
+        "p95": 2.444655015625,
+        "p99": 2.444655015625,
+        "min": 2.182116890625,
+        "max": 2.444655015625
+      },
+      "collect_decode_per_process_ms": {
+        "n": 6,
+        "median": 0.0265206171875,
+        "p50": 0.026466515625,
+        "p95": 0.03191946875,
+        "p99": 0.03191946875,
+        "min": 0.0262221875,
+        "max": 0.03191946875
+      },
+      "first_checked_output_ms": {
+        "n": 6,
+        "median": 2.2779675,
+        "p50": 2.233802,
+        "p95": 2.632687,
+        "p99": 2.632687,
+        "min": 2.151687,
+        "max": 2.632687
+      },
+      "process_peak_semantics": "exact admitted/unreaped roots, not sampled",
+      "files_per_second": 425.5668724473172,
+      "mib_per_second": 0.4155926488743332
+    },
+    {
+      "corpus": "small",
+      "source": "direct",
+      "pattern": "needle",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 79.9662135,
+        "p50": 79.334944,
+        "p95": 83.240795,
+        "p99": 83.240795,
+        "min": 74.652241,
+        "max": 83.240795
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0423835,
+        "p50": 0.038458,
+        "p95": 0.049414,
+        "p99": 0.049414,
+        "min": 0.035814,
+        "max": 0.049414
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 353,
+        "median": 0.061292,
+        "p50": 0.061292,
+        "p95": 1.392065,
+        "p99": 2.038477,
+        "min": 0.015263,
+        "max": 3.912202
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 882948,
+      "sampled_owned_increase_bytes": 853688,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0,
+      "spawn_call_per_process_ms": {
+        "n": 6,
+        "median": 0.1714118984375,
+        "p50": 0.1636731875,
+        "p95": 0.257898296875,
+        "p99": 0.257898296875,
+        "min": 0.132527890625,
+        "max": 0.257898296875
+      },
+      "child_lifetime_per_process_ms": {
+        "n": 6,
+        "median": 2.3965843359375,
+        "p50": 2.390093515625,
+        "p95": 2.513013796875,
+        "p99": 2.513013796875,
+        "min": 2.228024328125,
+        "max": 2.513013796875
+      },
+      "collect_decode_per_process_ms": {
+        "n": 6,
+        "median": 0.02638990625,
+        "p50": 0.026026328125,
+        "p95": 0.02960284375,
+        "p99": 0.02960284375,
+        "min": 0.0248201875,
+        "max": 0.02960284375
+      },
+      "first_checked_output_ms": {
+        "n": 6,
+        "median": 2.421734,
+        "p50": 2.387438,
+        "p95": 2.575385,
+        "p99": 2.575385,
+        "min": 2.299289,
+        "max": 2.575385
+      },
+      "process_peak_semantics": "exact admitted/unreaped roots, not sampled",
+      "files_per_second": 800.3878866729758,
+      "mib_per_second": 0.7816287955790779
+    },
+    {
+      "corpus": "small",
+      "source": "live",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 4,
+        "median": 149.65866,
+        "p50": 149.614131,
+        "p95": 150.981642,
+        "p99": 150.981642,
+        "min": 142.484011,
+        "max": 150.981642
+      },
+      "submit_ms": {
+        "n": 4,
+        "median": 0.0141215,
+        "p50": 0.01294,
+        "p95": 0.017376,
+        "p99": 0.017376,
+        "min": 0.011918,
+        "max": 0.017376
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 497,
+        "median": 0.057646,
+        "p50": 0.057646,
+        "p95": 0.330147,
+        "p99": 1.434309,
+        "min": 0.014171,
+        "max": 2.643228
+      },
+      "crossing_queries": 2,
+      "outside_queries": 4,
+      "sampled_owned_peak_bytes": 630814,
+      "sampled_owned_increase_bytes": 601554,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0,
+      "files_per_second": 427.63984166243654,
+      "mib_per_second": 0.4176170328734732
+    },
+    {
+      "corpus": "small",
+      "source": "live",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 4,
+        "median": 75.954174,
+        "p50": 75.838906,
+        "p95": 82.094403,
+        "p99": 82.094403,
+        "min": 70.118227,
+        "max": 82.094403
+      },
+      "submit_ms": {
+        "n": 4,
+        "median": 0.0139005,
+        "p50": 0.01346,
+        "p95": 0.016054,
+        "p99": 0.016054,
+        "min": 0.012679,
+        "max": 0.016054
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 231,
+        "median": 0.052469,
+        "p50": 0.052469,
+        "p95": 1.255319,
+        "p99": 2.01359,
+        "min": 0.01315,
+        "max": 2.158267
+      },
+      "crossing_queries": 0,
+      "outside_queries": 4,
+      "sampled_owned_peak_bytes": 1035663,
+      "sampled_owned_increase_bytes": 1006403,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 62,
+      "files_per_second": 842.6152774596012,
+      "mib_per_second": 0.8228664818941418
+    },
+    {
+      "corpus": "small",
+      "source": "live",
+      "pattern": "anchor",
+      "phase": "cancel",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 1,
+        "median": 3.668361,
+        "p50": 3.668361,
+        "p95": 3.668361,
+        "p99": 3.668361,
+        "min": 3.668361,
+        "max": 3.668361
+      },
+      "submit_ms": {
+        "n": 1,
+        "median": 0.007321,
+        "p50": 0.007321,
+        "p95": 0.007321,
+        "p99": 0.007321,
+        "min": 0.007321,
+        "max": 0.007321
+      },
+      "first_batch_ms": {
+        "n": 1,
+        "median": 3.646478,
+        "p50": 3.646478,
+        "p95": 3.646478,
+        "p99": 3.646478,
+        "min": 3.646478,
+        "max": 3.646478
+      },
+      "cancel_ms": {
+        "n": 1,
+        "median": 0.018047,
+        "p50": 0.018047,
+        "p95": 0.018047,
+        "p99": 0.018047,
+        "min": 0.018047,
+        "max": 0.018047
+      },
+      "contained_query_ms": {
+        "n": 4,
+        "median": 0.057051,
+        "p50": 0.056705,
+        "p95": 0.060861,
+        "p99": 0.060861,
+        "min": 0.052348,
+        "max": 0.060861
+      },
+      "crossing_queries": 0,
+      "outside_queries": 1,
+      "sampled_owned_peak_bytes": 548002,
+      "sampled_owned_increase_bytes": 518742,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0
+    },
+    {
+      "corpus": "small",
+      "source": "live",
+      "pattern": "anchor",
+      "phase": "cancel",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 1,
+        "median": 3.457643,
+        "p50": 3.457643,
+        "p95": 3.457643,
+        "p99": 3.457643,
+        "min": 3.457643,
+        "max": 3.457643
+      },
+      "submit_ms": {
+        "n": 1,
+        "median": 0.008062,
+        "p50": 0.008062,
+        "p95": 0.008062,
+        "p99": 0.008062,
+        "min": 0.008062,
+        "max": 0.008062
+      },
+      "first_batch_ms": {
+        "n": 1,
+        "median": 3.380517,
+        "p50": 3.380517,
+        "p95": 3.380517,
+        "p99": 3.380517,
+        "min": 3.380517,
+        "max": 3.380517
+      },
+      "cancel_ms": {
+        "n": 1,
+        "median": 0.074582,
+        "p50": 0.074582,
+        "p95": 0.074582,
+        "p99": 0.074582,
+        "min": 0.074582,
+        "max": 0.074582
+      },
+      "contained_query_ms": {
+        "n": 3,
+        "median": 0.054082,
+        "p50": 0.054082,
+        "p95": 0.057347,
+        "p99": 0.057347,
+        "min": 0.044787,
+        "max": 0.057347
+      },
+      "crossing_queries": 0,
+      "outside_queries": 1,
+      "sampled_owned_peak_bytes": 955251,
+      "sampled_owned_increase_bytes": 925991,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 62
+    },
+    {
+      "corpus": "small",
+      "source": "live",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 4,
+        "median": 146.7704605,
+        "p50": 145.960397,
+        "p95": 150.280844,
+        "p99": 150.280844,
+        "min": 141.129632,
+        "max": 150.280844
+      },
+      "submit_ms": {
+        "n": 4,
+        "median": 0.01301,
+        "p50": 0.012419,
+        "p95": 0.014992,
+        "p99": 0.014992,
+        "min": 0.012278,
+        "max": 0.014992
+      },
+      "first_batch_ms": {
+        "n": 4,
+        "median": 3.109344,
+        "p50": 3.108278,
+        "p95": 3.180867,
+        "p99": 3.180867,
+        "min": 3.05708,
+        "max": 3.180867
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 494,
+        "median": 0.060501,
+        "p50": 0.060501,
+        "p95": 0.155895,
+        "p99": 1.482931,
+        "min": 0.026921,
+        "max": 2.042084
+      },
+      "crossing_queries": 2,
+      "outside_queries": 4,
+      "sampled_owned_peak_bytes": 630962,
+      "sampled_owned_increase_bytes": 601702,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0,
+      "files_per_second": 436.06833023574916,
+      "mib_per_second": 0.4258479787458488
+    },
+    {
+      "corpus": "small",
+      "source": "live",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 4,
+        "median": 79.039021,
+        "p50": 78.094329,
+        "p95": 81.294676,
+        "p99": 81.294676,
+        "min": 76.950518,
+        "max": 81.294676
+      },
+      "submit_ms": {
+        "n": 4,
+        "median": 0.01344,
+        "p50": 0.013089,
+        "p95": 0.014341,
+        "p99": 0.014341,
+        "min": 0.012929,
+        "max": 0.014341
+      },
+      "first_batch_ms": {
+        "n": 4,
+        "median": 3.973319,
+        "p50": 3.971336,
+        "p95": 4.251573,
+        "p99": 4.251573,
+        "min": 3.383272,
+        "max": 4.251573
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 249,
+        "median": 0.052729,
+        "p50": 0.052729,
+        "p95": 0.871872,
+        "p99": 1.619608,
+        "min": 0.01378,
+        "max": 1.644354
+      },
+      "crossing_queries": 0,
+      "outside_queries": 4,
+      "sampled_owned_peak_bytes": 1033333,
+      "sampled_owned_increase_bytes": 1004073,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 62,
+      "files_per_second": 809.8423191097936,
+      "mib_per_second": 0.7908616397556578
+    },
+    {
+      "corpus": "small",
+      "source": "live",
+      "pattern": "needle",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 4,
+        "median": 152.1155345,
+        "p50": 151.302005,
+        "p95": 153.43148,
+        "p99": 153.43148,
+        "min": 148.756986,
+        "max": 153.43148
+      },
+      "submit_ms": {
+        "n": 4,
+        "median": 0.012854,
+        "p50": 0.012579,
+        "p95": 0.014192,
+        "p99": 0.014192,
+        "min": 0.008052,
+        "max": 0.014192
+      },
+      "first_batch_ms": {
+        "n": 4,
+        "median": 3.2646605,
+        "p50": 3.192679,
+        "p95": 3.447277,
+        "p99": 3.447277,
+        "min": 3.045653,
+        "max": 3.447277
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 518,
+        "median": 0.054717,
+        "p50": 0.054712,
+        "p95": 0.142134,
+        "p99": 1.381269,
+        "min": 0.01364,
+        "max": 2.504334
+      },
+      "crossing_queries": 0,
+      "outside_queries": 4,
+      "sampled_owned_peak_bytes": 630882,
+      "sampled_owned_increase_bytes": 601622,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 0,
+      "files_per_second": 420.74486871894646,
+      "mib_per_second": 0.41088366085834616
+    },
+    {
+      "corpus": "small",
+      "source": "live",
+      "pattern": "needle",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 4,
+        "median": 77.8316695,
+        "p50": 77.786656,
+        "p95": 81.440155,
+        "p99": 81.440155,
+        "min": 76.557306,
+        "max": 81.440155
+      },
+      "submit_ms": {
+        "n": 4,
+        "median": 0.0125845,
+        "p50": 0.011568,
+        "p95": 0.014492,
+        "p99": 0.014492,
+        "min": 0.006299,
+        "max": 0.014492
+      },
+      "first_batch_ms": {
+        "n": 4,
+        "median": 3.712157,
+        "p50": 3.456743,
+        "p95": 4.357367,
+        "p99": 4.357367,
+        "min": 3.302419,
+        "max": 4.357367
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 238,
+        "median": 0.0588585,
+        "p50": 0.058799,
+        "p95": 0.936089,
+        "p99": 1.718891,
+        "min": 0.017657,
+        "max": 1.998537
+      },
+      "crossing_queries": 0,
+      "outside_queries": 4,
+      "sampled_owned_peak_bytes": 1034527,
+      "sampled_owned_increase_bytes": 1005267,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 62,
+      "files_per_second": 822.2876602545592,
+      "mib_per_second": 0.803015293217343
+    },
+    {
+      "corpus": "small",
+      "source": "none",
+      "pattern": "none",
+      "phase": "baseline",
+      "parallel_files": 0,
+      "wall_ms": {
+        "n": 1,
+        "median": 50.088528,
+        "p50": 50.088528,
+        "p95": 50.088528,
+        "p99": 50.088528,
+        "min": 50.088528,
+        "max": 50.088528
+      },
+      "submit_ms": {
+        "n": 0
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 44,
+        "median": 0.0568855,
+        "p50": 0.056705,
+        "p95": 0.114662,
+        "p99": 0.123876,
+        "min": 0.04631,
+        "max": 0.123876
+      },
+      "crossing_queries": 1,
+      "outside_queries": 1,
+      "sampled_owned_peak_bytes": 29260,
+      "sampled_owned_increase_bytes": 0,
+      "sampled_running_peak": 0,
+      "sampled_queued_peak": 0
+    },
+    {
+      "corpus": "small",
+      "source": "profile",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 146.5176175,
+        "p50": 145.12243,
+        "p95": 153.220913,
+        "p99": 153.220913,
+        "min": 142.458602,
+        "max": 153.220913
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.012559,
+        "p50": 0.012469,
+        "p95": 0.014011,
+        "p99": 0.014011,
+        "min": 0.007181,
+        "max": 0.014011
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 753,
+        "median": 0.055504,
+        "p50": 0.055504,
+        "p95": 0.180482,
+        "p99": 1.302656,
+        "min": 0.01336,
+        "max": 1.926714
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 647333,
+      "sampled_owned_increase_bytes": 618073,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "fsx_stage_sum_ms": {
+        "open_ns": {
+          "n": 6,
+          "median": 0.9052535,
+          "p50": 0.901016,
+          "p95": 2.440478,
+          "p99": 2.440478,
+          "min": 0.842491,
+          "max": 2.440478
+        },
+        "spawn_ns": {
+          "n": 6,
+          "median": 9.458902,
+          "p50": 9.402301,
+          "p95": 11.333609,
+          "p99": 11.333609,
+          "min": 8.701255,
+          "max": 11.333609
+        },
+        "read_ns": {
+          "n": 6,
+          "median": 0.181651,
+          "p50": 0.181096,
+          "p95": 0.253737,
+          "p99": 0.253737,
+          "min": 0.163996,
+          "max": 0.253737
+        },
+        "text_ns": {
+          "n": 6,
+          "median": 0.0279075,
+          "p50": 0.027894,
+          "p95": 0.028818,
+          "p99": 0.028818,
+          "min": 0.027261,
+          "max": 0.028818
+        },
+        "poll_ns": {
+          "n": 6,
+          "median": 130.9953825,
+          "p50": 130.379097,
+          "p95": 137.153349,
+          "p99": 137.153349,
+          "min": 127.90995,
+          "max": 137.153349
+        },
+        "write_ns": {
+          "n": 6,
+          "median": 0.105758,
+          "p50": 0.102007,
+          "p95": 0.137286,
+          "p99": 0.137286,
+          "min": 0.101591,
+          "max": 0.137286
+        },
+        "output_ns": {
+          "n": 6,
+          "median": 0.3161145,
+          "p50": 0.314009,
+          "p95": 0.333656,
+          "p99": 0.333656,
+          "min": 0.307746,
+          "max": 0.333656
+        },
+        "finish_ns": {
+          "n": 6,
+          "median": 0.4327685,
+          "p50": 0.418582,
+          "p95": 2.520838,
+          "p99": 2.520838,
+          "min": 0.345632,
+          "max": 2.520838
+        },
+        "postcheck_ns": {
+          "n": 6,
+          "median": 1.389166,
+          "p50": 1.376294,
+          "p95": 1.575947,
+          "p99": 1.575947,
+          "min": 1.248492,
+          "max": 1.575947
+        },
+        "file_ns": {
+          "n": 6,
+          "median": 145.744148,
+          "p50": 144.252352,
+          "p95": 152.289745,
+          "p99": 152.289745,
+          "min": 142.07509,
+          "max": 152.289745
+        },
+        "worker_cpu_ns": {
+          "n": 6,
+          "median": 7.182803,
+          "p50": 7.17697,
+          "p95": 9.278201,
+          "p99": 9.278201,
+          "min": 6.995122,
+          "max": 9.278201
+        },
+        "decode_ns": {
+          "n": 6,
+          "median": 0.0045485,
+          "p50": 0.004548,
+          "p95": 0.004805,
+          "p99": 0.004805,
+          "min": 0.004279,
+          "max": 0.004805
+        }
+      },
+      "fsx_counters": {
+        "files": [
+          64
+        ],
+        "read_bytes": [
+          65536
+        ],
+        "write_bytes": [
+          65536
+        ],
+        "read_calls": [
+          128
+        ],
+        "write_calls": [
+          64
+        ],
+        "poll_calls": [
+          128,
+          129,
+          130,
+          131
+        ]
+      },
+      "files_per_second": 436.84715046701604,
+      "mib_per_second": 0.42660854537794535
+    },
+    {
+      "corpus": "small",
+      "source": "profile",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 76.822961,
+        "p50": 75.985576,
+        "p95": 82.816055,
+        "p99": 82.816055,
+        "min": 74.144842,
+        "max": 82.816055
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.011808,
+        "p50": 0.011778,
+        "p95": 0.015794,
+        "p99": 0.015794,
+        "min": 0.011267,
+        "max": 0.015794
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 363,
+        "median": 0.056365,
+        "p50": 0.056365,
+        "p95": 0.899384,
+        "p99": 1.784145,
+        "min": 0.01376,
+        "max": 2.203776
+      },
+      "crossing_queries": 1,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 946728,
+      "sampled_owned_increase_bytes": 917468,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 62,
+      "fsx_stage_sum_ms": {
+        "open_ns": {
+          "n": 6,
+          "median": 1.0181625,
+          "p50": 1.017956,
+          "p95": 1.156019,
+          "p99": 1.156019,
+          "min": 0.916779,
+          "max": 1.156019
+        },
+        "spawn_ns": {
+          "n": 6,
+          "median": 9.687586,
+          "p50": 9.664366,
+          "p95": 10.828077,
+          "p99": 10.828077,
+          "min": 8.683319,
+          "max": 10.828077
+        },
+        "read_ns": {
+          "n": 6,
+          "median": 0.188615,
+          "p50": 0.188301,
+          "p95": 0.286476,
+          "p99": 0.286476,
+          "min": 0.167155,
+          "max": 0.286476
+        },
+        "text_ns": {
+          "n": 6,
+          "median": 0.0300045,
+          "p50": 0.029732,
+          "p95": 0.131435,
+          "p99": 0.131435,
+          "min": 0.028015,
+          "max": 0.131435
+        },
+        "poll_ns": {
+          "n": 6,
+          "median": 135.979065,
+          "p50": 133.988955,
+          "p95": 147.456219,
+          "p99": 147.456219,
+          "min": 131.272821,
+          "max": 147.456219
+        },
+        "write_ns": {
+          "n": 6,
+          "median": 0.119842,
+          "p50": 0.115637,
+          "p95": 0.157575,
+          "p99": 0.157575,
+          "min": 0.107864,
+          "max": 0.157575
+        },
+        "output_ns": {
+          "n": 6,
+          "median": 0.341469,
+          "p50": 0.329829,
+          "p95": 2.525166,
+          "p99": 2.525166,
+          "min": 0.323536,
+          "max": 2.525166
+        },
+        "finish_ns": {
+          "n": 6,
+          "median": 0.500021,
+          "p50": 0.431148,
+          "p95": 1.42599,
+          "p99": 1.42599,
+          "min": 0.368194,
+          "max": 1.42599
+        },
+        "postcheck_ns": {
+          "n": 6,
+          "median": 1.5996315,
+          "p50": 1.584721,
+          "p95": 1.846879,
+          "p99": 1.846879,
+          "min": 1.439376,
+          "max": 1.846879
+        },
+        "file_ns": {
+          "n": 6,
+          "median": 150.8200185,
+          "p50": 147.562596,
+          "p95": 162.368664,
+          "p99": 162.368664,
+          "min": 145.207897,
+          "max": 162.368664
+        },
+        "worker_cpu_ns": {
+          "n": 6,
+          "median": 7.845322,
+          "p50": 7.617742,
+          "p95": 10.512541,
+          "p99": 10.512541,
+          "min": 7.532478,
+          "max": 10.512541
+        },
+        "decode_ns": {
+          "n": 6,
+          "median": 0.0043645,
+          "p50": 0.004345,
+          "p95": 0.004837,
+          "p99": 0.004837,
+          "min": 0.004152,
+          "max": 0.004837
+        }
+      },
+      "fsx_counters": {
+        "files": [
+          64
+        ],
+        "read_bytes": [
+          65536
+        ],
+        "write_bytes": [
+          65536
+        ],
+        "read_calls": [
+          128
+        ],
+        "write_calls": [
+          64
+        ],
+        "poll_calls": [
+          128,
+          129
+        ]
+      },
+      "files_per_second": 833.1832589870041,
+      "mib_per_second": 0.8136555263544962
+    },
+    {
+      "corpus": "small",
+      "source": "profile",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 155.569681,
+        "p50": 155.493654,
+        "p95": 170.251661,
+        "p99": 170.251661,
+        "min": 150.614879,
+        "max": 170.251661
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0124385,
+        "p50": 0.012128,
+        "p95": 0.022564,
+        "p99": 0.022564,
+        "min": 0.010466,
+        "max": 0.022564
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 2.567368,
+        "p50": 2.514093,
+        "p95": 3.48828,
+        "p99": 3.48828,
+        "min": 2.269184,
+        "max": 3.48828
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 802,
+        "median": 0.057787,
+        "p50": 0.057787,
+        "p95": 0.164888,
+        "p99": 1.159655,
+        "min": 0.012839,
+        "max": 2.249966
+      },
+      "crossing_queries": 1,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 647253,
+      "sampled_owned_increase_bytes": 617993,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "fsx_stage_sum_ms": {
+        "open_ns": {
+          "n": 6,
+          "median": 0.917952,
+          "p50": 0.908162,
+          "p95": 1.005489,
+          "p99": 1.005489,
+          "min": 0.77989,
+          "max": 1.005489
+        },
+        "spawn_ns": {
+          "n": 6,
+          "median": 8.8835135,
+          "p50": 8.86068,
+          "p95": 9.92547,
+          "p99": 9.92547,
+          "min": 8.512109,
+          "max": 9.92547
+        },
+        "read_ns": {
+          "n": 6,
+          "median": 0.1974035,
+          "p50": 0.175272,
+          "p95": 0.256365,
+          "p99": 0.256365,
+          "min": 0.164155,
+          "max": 0.256365
+        },
+        "text_ns": {
+          "n": 6,
+          "median": 0.028366,
+          "p50": 0.028327,
+          "p95": 0.080582,
+          "p99": 0.080582,
+          "min": 0.027772,
+          "max": 0.080582
+        },
+        "poll_ns": {
+          "n": 6,
+          "median": 137.6986145,
+          "p50": 135.815291,
+          "p95": 151.418501,
+          "p99": 151.418501,
+          "min": 134.209972,
+          "max": 151.418501
+        },
+        "write_ns": {
+          "n": 6,
+          "median": 0.1163165,
+          "p50": 0.110197,
+          "p95": 0.189692,
+          "p99": 0.189692,
+          "min": 0.10514,
+          "max": 0.189692
+        },
+        "output_ns": {
+          "n": 6,
+          "median": 0.4487135,
+          "p50": 0.43594,
+          "p95": 0.552068,
+          "p99": 0.552068,
+          "min": 0.385246,
+          "max": 0.552068
+        },
+        "finish_ns": {
+          "n": 6,
+          "median": 0.906423,
+          "p50": 0.411756,
+          "p95": 1.529053,
+          "p99": 1.529053,
+          "min": 0.387314,
+          "max": 1.529053
+        },
+        "postcheck_ns": {
+          "n": 6,
+          "median": 1.6680155,
+          "p50": 1.50884,
+          "p95": 2.224706,
+          "p99": 2.224706,
+          "min": 1.216136,
+          "max": 2.224706
+        },
+        "file_ns": {
+          "n": 6,
+          "median": 150.7436115,
+          "p50": 149.080818,
+          "p95": 166.978396,
+          "p99": 166.978396,
+          "min": 147.699633,
+          "max": 166.978396
+        },
+        "worker_cpu_ns": {
+          "n": 6,
+          "median": 8.439319,
+          "p50": 7.614314,
+          "p95": 9.592542,
+          "p99": 9.592542,
+          "min": 6.830622,
+          "max": 9.592542
+        },
+        "decode_ns": {
+          "n": 6,
+          "median": 0.101335,
+          "p50": 0.101015,
+          "p95": 0.131767,
+          "p99": 0.131767,
+          "min": 0.100492,
+          "max": 0.131767
+        }
+      },
+      "fsx_counters": {
+        "files": [
+          64
+        ],
+        "read_bytes": [
+          65536
+        ],
+        "write_bytes": [
+          65536
+        ],
+        "read_calls": [
+          128
+        ],
+        "write_calls": [
+          64
+        ],
+        "poll_calls": [
+          192,
+          193
+        ]
+      },
+      "files_per_second": 411.39131271352784,
+      "mib_per_second": 0.40174932882180453
+    },
+    {
+      "corpus": "small",
+      "source": "profile",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 81.028489,
+        "p50": 79.086961,
+        "p95": 84.989696,
+        "p99": 84.989696,
+        "min": 77.38499,
+        "max": 84.989696
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0126995,
+        "p50": 0.011928,
+        "p95": 0.014662,
+        "p99": 0.014662,
+        "min": 0.005638,
+        "max": 0.014662
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 2.599754,
+        "p50": 2.588423,
+        "p95": 3.246706,
+        "p99": 3.246706,
+        "min": 2.33321,
+        "max": 3.246706
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 373,
+        "median": 0.060852,
+        "p50": 0.060852,
+        "p95": 1.129149,
+        "p99": 1.722483,
+        "min": 0.015914,
+        "max": 2.753359
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 1029038,
+      "sampled_owned_increase_bytes": 999778,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 62,
+      "fsx_stage_sum_ms": {
+        "open_ns": {
+          "n": 6,
+          "median": 1.01338,
+          "p50": 0.998462,
+          "p95": 2.184533,
+          "p99": 2.184533,
+          "min": 0.934402,
+          "max": 2.184533
+        },
+        "spawn_ns": {
+          "n": 6,
+          "median": 9.136052,
+          "p50": 9.087872,
+          "p95": 11.726024,
+          "p99": 11.726024,
+          "min": 8.403668,
+          "max": 11.726024
+        },
+        "read_ns": {
+          "n": 6,
+          "median": 0.177117,
+          "p50": 0.175962,
+          "p95": 0.237906,
+          "p99": 0.237906,
+          "min": 0.155288,
+          "max": 0.237906
+        },
+        "text_ns": {
+          "n": 6,
+          "median": 0.040202,
+          "p50": 0.030509,
+          "p95": 0.101015,
+          "p99": 0.101015,
+          "min": 0.029315,
+          "max": 0.101015
+        },
+        "poll_ns": {
+          "n": 6,
+          "median": 138.9772315,
+          "p50": 137.642641,
+          "p95": 149.569062,
+          "p99": 149.569062,
+          "min": 134.98372,
+          "max": 149.569062
+        },
+        "write_ns": {
+          "n": 6,
+          "median": 0.103651,
+          "p50": 0.102756,
+          "p95": 0.131309,
+          "p99": 0.131309,
+          "min": 0.09717,
+          "max": 0.131309
+        },
+        "output_ns": {
+          "n": 6,
+          "median": 0.4888045,
+          "p50": 0.487596,
+          "p95": 1.633194,
+          "p99": 1.633194,
+          "min": 0.411033,
+          "max": 1.633194
+        },
+        "finish_ns": {
+          "n": 6,
+          "median": 0.4869195,
+          "p50": 0.459577,
+          "p95": 1.603063,
+          "p99": 1.603063,
+          "min": 0.384457,
+          "max": 1.603063
+        },
+        "postcheck_ns": {
+          "n": 6,
+          "median": 1.5868325,
+          "p50": 1.541628,
+          "p95": 3.326134,
+          "p99": 3.326134,
+          "min": 1.390003,
+          "max": 3.326134
+        },
+        "file_ns": {
+          "n": 6,
+          "median": 154.734618,
+          "p50": 153.379461,
+          "p95": 162.447029,
+          "p99": 162.447029,
+          "min": 148.498075,
+          "max": 162.447029
+        },
+        "worker_cpu_ns": {
+          "n": 6,
+          "median": 8.406118,
+          "p50": 8.128754,
+          "p95": 11.55773,
+          "p99": 11.55773,
+          "min": 7.560499,
+          "max": 11.55773
+        },
+        "decode_ns": {
+          "n": 6,
+          "median": 0.123789,
+          "p50": 0.122001,
+          "p95": 0.164243,
+          "p99": 0.164243,
+          "min": 0.108944,
+          "max": 0.164243
+        }
+      },
+      "fsx_counters": {
+        "files": [
+          64
+        ],
+        "read_bytes": [
+          65536
+        ],
+        "write_bytes": [
+          65536
+        ],
+        "read_calls": [
+          128
+        ],
+        "write_calls": [
+          64
+        ],
+        "poll_calls": [
+          192,
+          193,
+          194
+        ]
+      },
+      "files_per_second": 790.2993916526725,
+      "mib_per_second": 0.771776749660813
+    },
+    {
+      "corpus": "small",
+      "source": "profile",
+      "pattern": "needle",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 155.605868,
+        "p50": 152.256871,
+        "p95": 165.543272,
+        "p99": 165.543272,
+        "min": 146.462494,
+        "max": 165.543272
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0125885,
+        "p50": 0.012428,
+        "p95": 0.015563,
+        "p99": 0.015563,
+        "min": 0.010746,
+        "max": 0.015563
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 2.45946,
+        "p50": 2.332069,
+        "p95": 3.129469,
+        "p99": 3.129469,
+        "min": 2.017907,
+        "max": 3.129469
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 772,
+        "median": 0.0583625,
+        "p50": 0.058358,
+        "p95": 0.449947,
+        "p99": 1.401399,
+        "min": 0.013891,
+        "max": 2.773339
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 647295,
+      "sampled_owned_increase_bytes": 618035,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "fsx_stage_sum_ms": {
+        "open_ns": {
+          "n": 6,
+          "median": 0.987367,
+          "p50": 0.923692,
+          "p95": 1.141171,
+          "p99": 1.141171,
+          "min": 0.870187,
+          "max": 1.141171
+        },
+        "spawn_ns": {
+          "n": 6,
+          "median": 9.0492815,
+          "p50": 8.956965,
+          "p95": 10.301922,
+          "p99": 10.301922,
+          "min": 8.871298,
+          "max": 10.301922
+        },
+        "read_ns": {
+          "n": 6,
+          "median": 0.176094,
+          "p50": 0.166007,
+          "p95": 0.247631,
+          "p99": 0.247631,
+          "min": 0.159358,
+          "max": 0.247631
+        },
+        "text_ns": {
+          "n": 6,
+          "median": 0.0277145,
+          "p50": 0.027699,
+          "p95": 0.050269,
+          "p99": 0.050269,
+          "min": 0.026612,
+          "max": 0.050269
+        },
+        "poll_ns": {
+          "n": 6,
+          "median": 134.634827,
+          "p50": 131.149028,
+          "p95": 148.574246,
+          "p99": 148.574246,
+          "min": 126.401669,
+          "max": 148.574246
+        },
+        "write_ns": {
+          "n": 6,
+          "median": 0.104775,
+          "p50": 0.101477,
+          "p95": 0.116659,
+          "p99": 0.116659,
+          "min": 0.097851,
+          "max": 0.116659
+        },
+        "output_ns": {
+          "n": 6,
+          "median": 0.4733645,
+          "p50": 0.463168,
+          "p95": 0.491088,
+          "p99": 0.491088,
+          "min": 0.406511,
+          "max": 0.491088
+        },
+        "finish_ns": {
+          "n": 6,
+          "median": 1.2137315,
+          "p50": 0.79633,
+          "p95": 2.646781,
+          "p99": 2.646781,
+          "min": 0.353483,
+          "max": 2.646781
+        },
+        "postcheck_ns": {
+          "n": 6,
+          "median": 1.555569,
+          "p50": 1.474217,
+          "p95": 1.683341,
+          "p99": 1.683341,
+          "min": 1.357594,
+          "max": 1.683341
+        },
+        "file_ns": {
+          "n": 6,
+          "median": 148.6744925,
+          "p50": 144.85248,
+          "p95": 161.542324,
+          "p99": 161.542324,
+          "min": 142.525824,
+          "max": 161.542324
+        },
+        "worker_cpu_ns": {
+          "n": 6,
+          "median": 8.064639,
+          "p50": 7.998955,
+          "p95": 8.403744,
+          "p99": 8.403744,
+          "min": 7.459702,
+          "max": 8.403744
+        },
+        "decode_ns": {
+          "n": 6,
+          "median": 0.970015,
+          "p50": 0.960307,
+          "p95": 1.522498,
+          "p99": 1.522498,
+          "min": 0.895286,
+          "max": 1.522498
+        }
+      },
+      "fsx_counters": {
+        "files": [
+          64
+        ],
+        "read_bytes": [
+          65536
+        ],
+        "write_bytes": [
+          65536
+        ],
+        "read_calls": [
+          128
+        ],
+        "write_calls": [
+          64
+        ],
+        "poll_calls": [
+          202,
+          206,
+          213,
+          214,
+          216,
+          225
+        ]
+      },
+      "files_per_second": 411.4861475177544,
+      "mib_per_second": 0.401841940935307
+    },
+    {
+      "corpus": "small",
+      "source": "profile",
+      "pattern": "needle",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 77.0178245,
+        "p50": 76.375849,
+        "p95": 83.292254,
+        "p99": 83.292254,
+        "min": 75.51359,
+        "max": 83.292254
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.012198,
+        "p50": 0.012118,
+        "p95": 0.015503,
+        "p99": 0.015503,
+        "min": 0.005589,
+        "max": 0.015503
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 2.49841,
+        "p50": 2.495455,
+        "p95": 2.735386,
+        "p99": 2.735386,
+        "min": 2.29299,
+        "max": 2.735386
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 373,
+        "median": 0.056205,
+        "p50": 0.056205,
+        "p95": 0.969238,
+        "p99": 1.749783,
+        "min": 0.01368,
+        "max": 2.032467
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 1028890,
+      "sampled_owned_increase_bytes": 999630,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 62,
+      "fsx_stage_sum_ms": {
+        "open_ns": {
+          "n": 6,
+          "median": 1.036398,
+          "p50": 0.971259,
+          "p95": 1.357711,
+          "p99": 1.357711,
+          "min": 0.887062,
+          "max": 1.357711
+        },
+        "spawn_ns": {
+          "n": 6,
+          "median": 9.961182,
+          "p50": 9.893233,
+          "p95": 12.014689,
+          "p99": 12.014689,
+          "min": 8.685,
+          "max": 12.014689
+        },
+        "read_ns": {
+          "n": 6,
+          "median": 0.167799,
+          "p50": 0.163304,
+          "p95": 0.191166,
+          "p99": 0.191166,
+          "min": 0.160326,
+          "max": 0.191166
+        },
+        "text_ns": {
+          "n": 6,
+          "median": 0.0288725,
+          "p50": 0.028,
+          "p95": 0.141445,
+          "p99": 0.141445,
+          "min": 0.027513,
+          "max": 0.141445
+        },
+        "poll_ns": {
+          "n": 6,
+          "median": 130.80253,
+          "p50": 130.3894,
+          "p95": 146.646238,
+          "p99": 146.646238,
+          "min": 127.70655,
+          "max": 146.646238
+        },
+        "write_ns": {
+          "n": 6,
+          "median": 0.1062855,
+          "p50": 0.104677,
+          "p95": 0.131613,
+          "p99": 0.131613,
+          "min": 0.092558,
+          "max": 0.131613
+        },
+        "output_ns": {
+          "n": 6,
+          "median": 0.455576,
+          "p50": 0.455198,
+          "p95": 0.72872,
+          "p99": 0.72872,
+          "min": 0.394889,
+          "max": 0.72872
+        },
+        "finish_ns": {
+          "n": 6,
+          "median": 1.11845,
+          "p50": 0.384828,
+          "p95": 2.739589,
+          "p99": 2.739589,
+          "min": 0.33436,
+          "max": 2.739589
+        },
+        "postcheck_ns": {
+          "n": 6,
+          "median": 1.5043325,
+          "p50": 1.406075,
+          "p95": 1.669818,
+          "p99": 1.669818,
+          "min": 1.243727,
+          "max": 1.669818
+        },
+        "file_ns": {
+          "n": 6,
+          "median": 147.165905,
+          "p50": 146.363474,
+          "p95": 160.629475,
+          "p99": 160.629475,
+          "min": 141.633984,
+          "max": 160.629475
+        },
+        "worker_cpu_ns": {
+          "n": 6,
+          "median": 7.838202,
+          "p50": 7.822226,
+          "p95": 8.81022,
+          "p99": 8.81022,
+          "min": 7.498954,
+          "max": 8.81022
+        },
+        "decode_ns": {
+          "n": 6,
+          "median": 1.029708,
+          "p50": 0.944036,
+          "p95": 1.194292,
+          "p99": 1.194292,
+          "min": 0.931548,
+          "max": 1.194292
+        }
+      },
+      "fsx_counters": {
+        "files": [
+          64
+        ],
+        "read_bytes": [
+          65536
+        ],
+        "write_bytes": [
+          65536
+        ],
+        "read_calls": [
+          128
+        ],
+        "write_calls": [
+          64
+        ],
+        "poll_calls": [
+          207,
+          209,
+          213,
+          227,
+          236
+        ]
+      },
+      "files_per_second": 831.0342104473232,
+      "mib_per_second": 0.811556846139964
+    },
+    {
+      "corpus": "small",
+      "source": "scope",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 141.597674,
+        "p50": 140.335738,
+        "p95": 149.976211,
+        "p99": 149.976211,
+        "min": 139.679441,
+        "max": 149.976211
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0107415,
+        "p50": 0.010666,
+        "p95": 0.012579,
+        "p99": 0.012579,
+        "min": 0.004186,
+        "max": 0.012579
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 733,
+        "median": 0.055874,
+        "p50": 0.055874,
+        "p95": 0.156997,
+        "p99": 1.344333,
+        "min": 0.014122,
+        "max": 2.319285
+      },
+      "crossing_queries": 1,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 647253,
+      "sampled_owned_increase_bytes": 617993,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "files_per_second": 452.02072785892744,
+      "mib_per_second": 0.44142649204973383
+    },
+    {
+      "corpus": "small",
+      "source": "scope",
+      "pattern": "absent",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 73.3389035,
+        "p50": 71.956148,
+        "p95": 75.434612,
+        "p99": 75.434612,
+        "min": 71.563897,
+        "max": 75.434612
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0115875,
+        "p50": 0.011287,
+        "p95": 0.014772,
+        "p99": 0.014772,
+        "min": 0.005117,
+        "max": 0.014772
+      },
+      "first_batch_ms": {
+        "n": 0
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 341,
+        "median": 0.058588,
+        "p50": 0.058588,
+        "p95": 1.020085,
+        "p99": 1.7937,
+        "min": 0.01309,
+        "max": 2.961231
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 1028764,
+      "sampled_owned_increase_bytes": 999504,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 62,
+      "files_per_second": 872.9713168727294,
+      "mib_per_second": 0.8525110516335248
+    },
+    {
+      "corpus": "small",
+      "source": "scope",
+      "pattern": "anchor",
+      "phase": "cancel",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 1,
+        "median": 2.229716,
+        "p50": 2.229716,
+        "p95": 2.229716,
+        "p99": 2.229716,
+        "min": 2.229716,
+        "max": 2.229716
+      },
+      "submit_ms": {
+        "n": 1,
+        "median": 0.015423,
+        "p50": 0.015423,
+        "p95": 0.015423,
+        "p99": 0.015423,
+        "min": 0.015423,
+        "max": 0.015423
+      },
+      "first_batch_ms": {
+        "n": 1,
+        "median": 2.210677,
+        "p50": 2.210677,
+        "p95": 2.210677,
+        "p99": 2.210677,
+        "min": 2.210677,
+        "max": 2.210677
+      },
+      "cancel_ms": {
+        "n": 1,
+        "median": 0.013,
+        "p50": 0.013,
+        "p95": 0.013,
+        "p99": 0.013,
+        "min": 0.013,
+        "max": 0.013
+      },
+      "contained_query_ms": {
+        "n": 2,
+        "median": 0.055153,
+        "p50": 0.050396,
+        "p95": 0.05991,
+        "p99": 0.05991,
+        "min": 0.050396,
+        "max": 0.05991
+      },
+      "crossing_queries": 0,
+      "outside_queries": 1,
+      "sampled_owned_peak_bytes": 564373,
+      "sampled_owned_increase_bytes": 535113,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0
+    },
+    {
+      "corpus": "small",
+      "source": "scope",
+      "pattern": "anchor",
+      "phase": "cancel",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 1,
+        "median": 2.869418,
+        "p50": 2.869418,
+        "p95": 2.869418,
+        "p99": 2.869418,
+        "min": 2.869418,
+        "max": 2.869418
+      },
+      "submit_ms": {
+        "n": 1,
+        "median": 0.014442,
+        "p50": 0.014442,
+        "p95": 0.014442,
+        "p99": 0.014442,
+        "min": 0.014442,
+        "max": 0.014442
+      },
+      "first_batch_ms": {
+        "n": 1,
+        "median": 2.773283,
+        "p50": 2.773283,
+        "p95": 2.773283,
+        "p99": 2.773283,
+        "min": 2.773283,
+        "max": 2.773283
+      },
+      "cancel_ms": {
+        "n": 1,
+        "median": 0.092469,
+        "p50": 0.092469,
+        "p95": 0.092469,
+        "p99": 0.092469,
+        "min": 0.092469,
+        "max": 0.092469
+      },
+      "contained_query_ms": {
+        "n": 3,
+        "median": 0.08628,
+        "p50": 0.08628,
+        "p95": 0.117296,
+        "p99": 0.117296,
+        "min": 0.05325,
+        "max": 0.117296
+      },
+      "crossing_queries": 0,
+      "outside_queries": 1,
+      "sampled_owned_peak_bytes": 946078,
+      "sampled_owned_increase_bytes": 916818,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 62
+    },
+    {
+      "corpus": "small",
+      "source": "scope",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 155.4072145,
+        "p50": 150.587534,
+        "p95": 163.157404,
+        "p99": 163.157404,
+        "min": 144.064785,
+        "max": 163.157404
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.0109065,
+        "p50": 0.010666,
+        "p95": 0.012749,
+        "p99": 0.012749,
+        "min": 0.009565,
+        "max": 0.012749
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 2.358874,
+        "p50": 2.357607,
+        "p95": 2.577048,
+        "p99": 2.577048,
+        "min": 2.191887,
+        "max": 2.577048
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 757,
+        "median": 0.061312,
+        "p50": 0.061312,
+        "p95": 0.566763,
+        "p99": 1.914021,
+        "min": 0.016735,
+        "max": 3.613328
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 647333,
+      "sampled_owned_increase_bytes": 618073,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "files_per_second": 412.21777250217934,
+      "mib_per_second": 0.4025564184591595
+    },
+    {
+      "corpus": "small",
+      "source": "scope",
+      "pattern": "anchor",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 82.926306,
+        "p50": 81.629595,
+        "p95": 95.490823,
+        "p99": 95.490823,
+        "min": 76.495242,
+        "max": 95.490823
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.011797,
+        "p50": 0.011737,
+        "p95": 0.01372,
+        "p99": 0.01372,
+        "min": 0.011437,
+        "max": 0.01372
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 2.6647635,
+        "p50": 2.646851,
+        "p95": 3.403475,
+        "p99": 3.403475,
+        "min": 2.332275,
+        "max": 3.403475
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 371,
+        "median": 0.061893,
+        "p50": 0.061893,
+        "p95": 1.437743,
+        "p99": 2.227801,
+        "min": 0.014842,
+        "max": 2.539581
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 946728,
+      "sampled_owned_increase_bytes": 917468,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 62,
+      "files_per_second": 771.9583295067196,
+      "mib_per_second": 0.7538655561589058
+    },
+    {
+      "corpus": "small",
+      "source": "scope",
+      "pattern": "needle",
+      "phase": "measure",
+      "parallel_files": 1,
+      "wall_ms": {
+        "n": 6,
+        "median": 153.0465795,
+        "p50": 152.692569,
+        "p95": 163.949299,
+        "p99": 163.949299,
+        "min": 144.666332,
+        "max": 163.949299
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.011437,
+        "p50": 0.010796,
+        "p95": 0.082475,
+        "p99": 0.082475,
+        "min": 0.010416,
+        "max": 0.082475
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 2.2597405,
+        "p50": 2.236125,
+        "p95": 2.459802,
+        "p99": 2.459802,
+        "min": 2.144256,
+        "max": 2.459802
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 775,
+        "median": 0.054332,
+        "p50": 0.054332,
+        "p95": 0.251823,
+        "p99": 1.560488,
+        "min": 0.011998,
+        "max": 5.239605
+      },
+      "crossing_queries": 0,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 647215,
+      "sampled_owned_increase_bytes": 617955,
+      "sampled_running_peak": 1,
+      "sampled_queued_peak": 0,
+      "files_per_second": 418.1755818101774,
+      "mib_per_second": 0.40837459161150136
+    },
+    {
+      "corpus": "small",
+      "source": "scope",
+      "pattern": "needle",
+      "phase": "measure",
+      "parallel_files": 2,
+      "wall_ms": {
+        "n": 6,
+        "median": 78.028375,
+        "p50": 77.688487,
+        "p95": 84.501701,
+        "p99": 84.501701,
+        "min": 74.73405,
+        "max": 84.501701
+      },
+      "submit_ms": {
+        "n": 6,
+        "median": 0.012519,
+        "p50": 0.011047,
+        "p95": 0.015103,
+        "p99": 0.015103,
+        "min": 0.005378,
+        "max": 0.015103
+      },
+      "first_batch_ms": {
+        "n": 6,
+        "median": 2.4409925,
+        "p50": 2.405749,
+        "p95": 3.142509,
+        "p99": 3.142509,
+        "min": 2.23996,
+        "max": 3.142509
+      },
+      "cancel_ms": {
+        "n": 0
+      },
+      "contained_query_ms": {
+        "n": 365,
+        "median": 0.056805,
+        "p50": 0.056805,
+        "p95": 1.092284,
+        "p99": 1.985928,
+        "min": 0.012438,
+        "max": 3.233925
+      },
+      "crossing_queries": 1,
+      "outside_queries": 6,
+      "sampled_owned_peak_bytes": 1028958,
+      "sampled_owned_increase_bytes": 999698,
+      "sampled_running_peak": 2,
+      "sampled_queued_peak": 62,
+      "files_per_second": 820.2300045388736,
+      "mib_per_second": 0.8010058638074937
+    }
+  ],
+  "observed_ratios": [
+    {
+      "corpus": "large",
+      "source": "direct",
+      "pattern": "absent",
+      "serial_median_wall_div_parallel": 1.8405298147025484
+    },
+    {
+      "corpus": "large",
+      "source": "direct",
+      "pattern": "anchor",
+      "serial_median_wall_div_parallel": 1.7672844018198088
+    },
+    {
+      "corpus": "large",
+      "source": "live",
+      "pattern": "absent",
+      "serial_median_wall_div_parallel": 1.633558454075156
+    },
+    {
+      "corpus": "large",
+      "source": "live",
+      "pattern": "anchor",
+      "serial_median_wall_div_parallel": 1.7802812416433487
+    },
+    {
+      "corpus": "large",
+      "source": "profile",
+      "pattern": "absent",
+      "serial_median_wall_div_parallel": 2.0450307648204764
+    },
+    {
+      "corpus": "large",
+      "source": "profile",
+      "pattern": "anchor",
+      "serial_median_wall_div_parallel": 1.8161057874475455
+    },
+    {
+      "corpus": "large",
+      "source": "scope",
+      "pattern": "absent",
+      "serial_median_wall_div_parallel": 1.8726105769260124
+    },
+    {
+      "corpus": "large",
+      "source": "scope",
+      "pattern": "anchor",
+      "serial_median_wall_div_parallel": 1.6632647373039686
+    },
+    {
+      "corpus": "small",
+      "source": "direct",
+      "pattern": "absent",
+      "serial_median_wall_div_parallel": 1.8852563228221508
+    },
+    {
+      "corpus": "small",
+      "source": "direct",
+      "pattern": "anchor",
+      "serial_median_wall_div_parallel": 1.9979818504041291
+    },
+    {
+      "corpus": "small",
+      "source": "direct",
+      "pattern": "needle",
+      "serial_median_wall_div_parallel": 1.8810104344880605
+    },
+    {
+      "corpus": "small",
+      "source": "live",
+      "pattern": "absent",
+      "serial_median_wall_div_parallel": 1.9703809826172294
+    },
+    {
+      "corpus": "small",
+      "source": "live",
+      "pattern": "anchor",
+      "serial_median_wall_div_parallel": 1.8569367211671308
+    },
+    {
+      "corpus": "small",
+      "source": "live",
+      "pattern": "needle",
+      "serial_median_wall_div_parallel": 1.9544169549131925
+    },
+    {
+      "corpus": "small",
+      "source": "profile",
+      "pattern": "absent",
+      "serial_median_wall_div_parallel": 1.9072112763266178
+    },
+    {
+      "corpus": "small",
+      "source": "profile",
+      "pattern": "anchor",
+      "serial_median_wall_div_parallel": 1.9199380726450423
+    },
+    {
+      "corpus": "small",
+      "source": "profile",
+      "pattern": "needle",
+      "serial_median_wall_div_parallel": 2.020387735049566
+    },
+    {
+      "corpus": "small",
+      "source": "scope",
+      "pattern": "absent",
+      "serial_median_wall_div_parallel": 1.9307307205649729
+    },
+    {
+      "corpus": "small",
+      "source": "scope",
+      "pattern": "anchor",
+      "serial_median_wall_div_parallel": 1.8740400000453417
+    },
+    {
+      "corpus": "small",
+      "source": "scope",
+      "pattern": "needle",
+      "serial_median_wall_div_parallel": 1.9614221044587947
+    }
+  ],
+  "direct_comparisons": [
+    {
+      "corpus": "large",
+      "pattern": "absent",
+      "parallel_files": 1,
+      "fsx_scope_wall_div_direct": 1.2984077777478034
+    },
+    {
+      "corpus": "large",
+      "pattern": "absent",
+      "parallel_files": 2,
+      "fsx_scope_wall_div_direct": 1.2761640119054678
+    },
+    {
+      "corpus": "large",
+      "pattern": "anchor",
+      "parallel_files": 1,
+      "fsx_scope_wall_div_direct": 1.190702731197161
+    },
+    {
+      "corpus": "large",
+      "pattern": "anchor",
+      "parallel_files": 2,
+      "fsx_scope_wall_div_direct": 1.265168627009986
+    },
+    {
+      "corpus": "small",
+      "pattern": "absent",
+      "parallel_files": 1,
+      "fsx_scope_wall_div_direct": 0.9938906482559251
+    },
+    {
+      "corpus": "small",
+      "pattern": "absent",
+      "parallel_files": 2,
+      "fsx_scope_wall_div_direct": 0.9704815947974316
+    },
+    {
+      "corpus": "small",
+      "pattern": "anchor",
+      "parallel_files": 1,
+      "fsx_scope_wall_div_direct": 1.011387288698244
+    },
+    {
+      "corpus": "small",
+      "pattern": "anchor",
+      "parallel_files": 2,
+      "fsx_scope_wall_div_direct": 1.078276582410003
+    },
+    {
+      "corpus": "small",
+      "pattern": "needle",
+      "parallel_files": 1,
+      "fsx_scope_wall_div_direct": 1.0174800226745222
+    },
+    {
+      "corpus": "small",
+      "pattern": "needle",
+      "parallel_files": 2,
+      "fsx_scope_wall_div_direct": 0.9757667843057244
+    }
+  ],
+  "profiling_comparisons": [
+    {
+      "corpus": "large",
+      "pattern": "absent",
+      "parallel_files": 1,
+      "profiled_wall_div_unprofiled": 1.154668629570472
+    },
+    {
+      "corpus": "large",
+      "pattern": "absent",
+      "parallel_files": 2,
+      "profiled_wall_div_unprofiled": 1.0573164598666283
+    },
+    {
+      "corpus": "large",
+      "pattern": "anchor",
+      "parallel_files": 1,
+      "profiled_wall_div_unprofiled": 1.0108793397811002
+    },
+    {
+      "corpus": "large",
+      "pattern": "anchor",
+      "parallel_files": 2,
+      "profiled_wall_div_unprofiled": 0.9258050776271664
+    },
+    {
+      "corpus": "small",
+      "pattern": "absent",
+      "parallel_files": 1,
+      "profiled_wall_div_unprofiled": 1.0347459344565222
+    },
+    {
+      "corpus": "small",
+      "pattern": "absent",
+      "parallel_files": 2,
+      "profiled_wall_div_unprofiled": 1.0475062665751473
+    },
+    {
+      "corpus": "small",
+      "pattern": "anchor",
+      "parallel_files": 1,
+      "profiled_wall_div_unprofiled": 1.0010454244387734
+    },
+    {
+      "corpus": "small",
+      "pattern": "anchor",
+      "parallel_files": 2,
+      "profiled_wall_div_unprofiled": 0.9771144152978428
+    },
+    {
+      "corpus": "small",
+      "pattern": "needle",
+      "parallel_files": 1,
+      "profiled_wall_div_unprofiled": 1.0167222848649158
+    },
+    {
+      "corpus": "small",
+      "pattern": "needle",
+      "parallel_files": 2,
+      "profiled_wall_div_unprofiled": 0.9870489357237031
+    }
+  ],
+  "limitations": [
+    "Warm uncontrolled OS cache; fixed small corpus; six measured scope/direct/profile samples and four live samples per mode/case.",
+    "Native validation and observer overhead are included in content wall time.",
+    "Query quantiles use only wholly contained observations; P50/P95/P99 are nearest-rank.",
+    "Allocation/process/queue peaks are sampled lower bounds, not RSS or child memory limits.",
+    "No cold-cache, 100k-file, batch-ugrep, CPU/RSS or production-tail-latency acceptance.",
+    "Cancellation starts at the first acquired confirmed file; these are not hung-child timings.",
+    "Hosted profiles and sanitizer timings must be analyzed separately; no speed threshold.",
+    "Private POSIX profiling is opt-in; stage spans overlap across file workers. File CPU excludes decode, producer, metadata-query and child CPU. File wall includes profiling calls; decode is separate.",
+    "POSIX direct controls reopen immutable fixture paths, use regular temporary output files and blocking waitpid; omit FSX identity/text/post-read checks, streaming backpressure and cooperative cancellation.",
+    "Direct spawn-call time is not a ready-to-match metric; child lifetime includes spawn, matching and reaping. Stage sums overlap across parallel workers and are not wall-time components. Per-process stage quantiles describe four per-run averages, not individual child samples."
+  ],
+  "revision": "8d8cdf7ddaf8a6b87c03f264d1ab9e9dea53300d+profile-ascii-working-tree",
+  "host": {
+    "system": "Linux",
+    "release": "6.18.57",
+    "machine": "x86_64",
+    "logical_cpus_visible": 9
+  },
+  "raw_sha256": {
+    "content-benchmark.csv": "820a121b8e468d01334deeb61832f03518c699842aa11e59a989eb7a82a27cfa",
+    "content-benchmark-queries.csv": "223d19652b20bcb013b04e17f2ae5069872993d661f0ca137e307ce60349eaef"
+  },
+  "source_sha256": {
+    "tests/content_benchmark_test.c": "22164e3fbe1035e0e089b95bc838d2549d28be56104c6beeccf1962340ffecfd",
+    "tests/CMakeLists.txt": "4ae5e82ee4677fe184b4f6c14765d3cffd43e9e4b23721c1e196fb20ce4b4fcd",
+    "tools/content_benchmark_report.py": "a5c338b684408582de9ac5754423cc15ce8ac9c3da05f16c71b7df29e082f73b",
+    "src/content/text.c": "fb7d7c22f95873153f3e766cc48ebbc52b6463a1eb191fecc52170be3b7efe2b",
+    "src/content/content.h": "cbf966bb6605346f48b09c0ba9246b4847c6b2030e7ca4b2ea63203bf3c41d35",
+    "src/internal.h": "61cb51e19b623aee2b8d9fc2af6212c0adc14dd85f82793a828c581853d1caf0",
+    "tests/content_text_test.c": "525cff46d930ae94648e2adf33bcfa5a510161b65d148e27906f349b88454390",
+    "src/content/api.c": "24493160d2301d0a70f1b2f60b25f1cae73f8670ca2a47cee9d5786f08489982",
+    "src/content/parallel.c": "6dd32c8c96283980d9e891014c2ab8a80c7b5f2e3439aae0d398d26b8068e6e4",
+    "src/content/process.c": "12e5ea7edb1c82cf3242f885e823637fb2c428e5f1ebb1d518622042f975c489",
+    "src/content/process_windows.c": "67ad98b86e63b3c8079c95e30319d737dcf6e040839ab5f4c426ef2053536f57",
+    "src/content/discovery_posix.c": "770b02d6018ba1902fd47555d931a8f172e98ecbb09bb6ae7b6eec426c356f1e"
+  },
+  "tools_captured": true,
+  "tools": {
+    "ugrep": {
+      "path": "/workspace/scratch/c014d52aafa7/vcpkg-cache-tools/build-search-tools/installed/x64-linux/tools/ugrep/ugrep",
+      "sha256": "6639feac277d3a0a90c65fc0b15e5cbf423c1098b35c4d44646cb20bc4dcf1b4",
+      "version": "ugrep 7.8.5 x86_64-pc-linux-gnu +sse2; -P:pcre2jit\nLicense: BSD-3-Clause; ugrep user manual: <https://ugrep.com>\nWritten by Robert van Engelen and others: <https://github.com/Genivia/ugrep>\nUgrep utilizes the RE/flex regex library: <https://github.com/Genivia/RE-flex>"
+    },
+    "bfs": {
+      "path": "/workspace/scratch/c014d52aafa7/deps/vcpkg/buildtrees/bfs/x64-linux-rel/bin/bfs",
+      "sha256": "0e6909586da6e2a05d27b18ea1dd5aaf7e2e39c5bc5d0bdf8d0f8669b1f53dd2",
+      "version": "bfs 4.1.5\n\nCopyright \u00a9 Tavian Barnes and the bfs contributors\nNo rights reserved (https://opensource.org/license/0BSD)\n\nCONFFLAGS := --prefix=/workspace/scratch/c014d52aafa7/fsx/build/linux-debug/vcpkg_installed/x64-linux --version=4.1.5 --enable-release --without-libacl --without-libcap --without-libselinux --without-liburing --without-oniguruma\nCC        := clang\nCPPFLAGS  := -Isrc -Igen -include src/prelude.h -DNDEBUG -MD -MP -Wundef-prefix=BFS_\nCFLAGS    := -O3 -flto=auto -std=c23 -pthread -Wformat=2 -Wimplicit-fallthrough -Werror=implicit -Wmissing-declarations -Wmissing-variable-declarations -Wshadow -Wsign-compare -Wstrict-prototypes -Wtautological-unsigned-zero-compare -g -Wall \nAR        := /usr/bin/ar\nARFLAGS   := rcs \nLDFLAGS   := -Wl,-z,now -L/workspace/scratch/c014d52aafa7/fsx/build/linux-debug/vcpkg_installed/x64-linux/lib \nLDLIBS    := -lrt\n\nhttps://tavianator.com/projects/bfs.html"
+    }
+  }
+}

@@ -36,6 +36,7 @@ static inline const FsEntry *fsx_snapshot_entry(const FsSnapshot *s,
                                                 uint32_t id) {
   return &s->pages[id / FSX_PAGE_ENTRIES]->entries[id % FSX_PAGE_ENTRIES];
 }
+typedef struct FsContentMetrics FsContentMetrics;
 struct FsEngine {
   FsEngineConfig config;
   cmeta_mutex_t mutex, budget_mutex;
@@ -44,6 +45,7 @@ struct FsEngine {
   cmeta_threadpool_t *index_pool;
   cmeta_threadpool_t *content_pool;
   FsContentQuery *content;
+  FsContentMetrics *content_metrics; /* Private quiescent profiling sink. */
   _Atomic(FsIndexJob *) index_job;
   atomic_bool writer_cancelled;
   sqlite3 *db;

@@ -175,7 +175,7 @@ static void setup(void) {
   check_not_null(measurements);
   check_not_null(query_measurements);
   fprintf(measurements,
-          "# format=fsx-content-benchmark-v2\n# build_type=%s\n# platform=%s\n"
+          "# format=fsx-content-benchmark-v3\n# build_type=%s\n# platform=%s\n"
           "# compiler=%s\n# sanitizers=%s\n# benchmark_source_sha256=%s\n"
           "# cache=warm-uncontrolled-os-cache\n"
           "# ugrep=%s\n",
@@ -190,8 +190,12 @@ static void setup(void) {
         "bytes,input_hash,scan_ns,metadata_epoch,start_ns,end_ns,submit_ns,"
         "first_batch_ns,cancel_ns,records,files_scanned,candidates,processes,"
         "running_sampled_peak,queued_sampled_peak,owned_base,owned_sampled_"
-        "peak,status,spawn_call_ns,child_lifetime_ns,collect_decode_ns\n",
+        "peak,status,spawn_call_ns,child_lifetime_ns,collect_decode_ns",
         measurements);
+#define HEADER(name) fputs(",fsx_" #name, measurements);
+  FSX_CONTENT_METRICS(HEADER)
+#undef HEADER
+  fputc('\n', measurements);
   fputs("operation,start_ns,end_ns,metadata_epoch,matches,status\n",
         query_measurements);
 }
@@ -496,6 +500,9 @@ static void run(const char *source, const char *pattern, const char *phase,
   unsigned running_peak = 0, queued_peak = 0;
   uint64_t spawn_ns = 0, child_ns = 0, collect_ns = 0;
   FsContentInfo info = {0};
+  static FsContentMetrics metrics;
+  memset(&metrics, 0, sizeof(metrics));
+  engine->content_metrics = !strcmp(source, "profile") ? &metrics : NULL;
   bool seen[SMALL_FILES] = {0};
   if (baseline) {
     cmeta_sleep_ms(50);
@@ -594,22 +601,75 @@ static void run(const char *source, const char *pattern, const char *phase,
     fsx_content_release(query);
     query = NULL;
   }
+  engine->content_metrics = NULL;
   monitor_stop();
   queries_report();
-  fprintf(
-      measurements,
-      "%u,%s,%s,%s,%s,%u,%u,%u,%u,%" PRIu64 ",%016" PRIx64 ",%" PRIu64
-      ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64
-      ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%u,%u,%" PRIu64
-      ",%" PRIu64 ",%d,%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
-      operation, current->name, source, pattern, phase, round, position,
-      parallel, current->files, (uint64_t)current->files * current->bytes,
-      input_hash, scan_ns, epoch, start, end, submitted, first,
-      cancelled ? end - cancelled : 0, records, info.files_scanned,
-      info.candidate_count, info.processes_started, running_peak, queued_peak,
-      owned_base, peak, (int)info.status, spawn_ns, child_ns, collect_ns);
+  fprintf(measurements,
+          "%u,%s,%s,%s,%s,%u,%u,%u,%u,%" PRIu64 ",%016" PRIx64 ",%" PRIu64
+          ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64
+          ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64
+          ",%u,%u,%" PRIu64 ",%" PRIu64 ",%d,%" PRIu64 ",%" PRIu64 ",%" PRIu64,
+          operation, current->name, source, pattern, phase, round, position,
+          parallel, current->files, (uint64_t)current->files * current->bytes,
+          input_hash, scan_ns, epoch, start, end, submitted, first,
+          cancelled ? end - cancelled : 0, records, info.files_scanned,
+          info.candidate_count, info.processes_started, running_peak,
+          queued_peak, owned_base, peak, (int)info.status, spawn_ns, child_ns,
+          collect_ns);
+#define REPORT(name) fprintf(measurements, ",%" PRIu64, metrics.name);
+  FSX_CONTENT_METRICS(REPORT)
+#undef REPORT
+  fputc('\n', measurements);
+  if (!strcmp(source, "profile")) {
+    check_equal(metrics.files, (uint64_t)current->files);
+    check_equal(metrics.read_bytes, (uint64_t)current->files * current->bytes);
+    check_equal(metrics.write_bytes, metrics.read_bytes);
+    check_true(metrics.read_calls >= current->files);
+    check_true(metrics.write_calls >= current->files);
+    check_true(metrics.poll_calls >= current->files);
+    uint64_t stages = metrics.open_ns + metrics.spawn_ns + metrics.read_ns +
+                      metrics.text_ns + metrics.poll_ns + metrics.write_ns +
+                      metrics.output_ns + metrics.finish_ns +
+                      metrics.postcheck_ns;
+    check_true(stages <= metrics.file_ns);
+    check_true(metrics.file_ns <= parallel * (end - start));
+  }
   check_equal(fflush(measurements), 0);
 }
+#ifndef _WIN32
+static void profile_failures(void) {
+  build_corpus(&corpora[0]);
+  static FsContentMetrics metrics;
+  memset(&metrics, 0, sizeof(metrics));
+  engine->content_metrics = &metrics;
+  FsContentRequest r = fsx_content_scope_request("file:", FSX_TEST_UGREP, "[");
+  r.mode = FS_CONTENT_PCRE2;
+  r.parallel_files = 2;
+  check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+  check_equal(fsx_content_wait(query, cmeta_hrtime() + UINT64_C(10000000000)),
+              FS_IO);
+  FsContentInfo info;
+  check_equal(fsx_content_poll(query, &info), FS_IO);
+  check_true(info.finished);
+  check_false(info.complete);
+  check_equal(info.running_processes, 0u);
+  check_true(metrics.files >= 1 && metrics.files <= 2);
+  check_true(metrics.file_ns > 0);
+  fsx_content_release(query);
+  query = NULL;
+  memset(&metrics, 0, sizeof(metrics));
+  r.deadline_ns = 0;
+  check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
+  check_equal(fsx_content_wait(query, UINT64_MAX), FS_TIMEOUT);
+  check_equal(fsx_content_poll(query, &info), FS_TIMEOUT);
+  check_true(info.finished);
+  check_equal(metrics.files, (uint64_t)0);
+  engine->content_metrics = NULL;
+  fsx_content_release(query);
+  query = NULL;
+  clear_corpus();
+}
+#endif
 suite("Real content throughput and concurrent metadata latency") {
   before_each() { setup(); }
   after_each() { teardown(); }
@@ -629,21 +689,25 @@ suite("Real content throughput and concurrent metadata latency") {
         for (unsigned p = 0; p < 3; p++) {
           if (c && p == 1)
             continue;
-          const char *variants[] = {sources[s], sources[s]
+          const char *variants[] = {sources[s],
+                                    sources[s]
 #ifndef _WIN32
                                     ,
-                                    "direct", "direct"
+                                    "direct",
+                                    "direct",
+                                    "profile",
+                                    "profile"
 #endif
           };
           unsigned count = 2;
 #ifndef _WIN32
           if (!s)
-            count = 4;
+            count = 6;
 #endif
           for (unsigned variant = 0; variant < count; variant++)
             run(variants[variant], patterns[p], "warmup", 0, variant,
                 variant % 2 + 1);
-          for (unsigned round = 1; round <= 4; round++)
+          for (unsigned round = 1; round <= (count == 6 ? 6u : 4u); round++)
             for (unsigned position = 0; position < count; position++) {
               unsigned variant = (round - 1 + position) % count;
               run(variants[variant], patterns[p], "measure", round, position,
@@ -655,6 +719,9 @@ suite("Real content throughput and concurrent metadata latency") {
       }
       clear_corpus();
     }
+#ifndef _WIN32
+    profile_failures();
+#endif
     fprintf(measurements, "# acceptance=passed operations=%u\n", operation);
   }
 }

@@ -430,6 +430,10 @@ CPU、取消时延及并行内容负载下名字查询 P50/P95/P99。
 [直接对照报告](performance/content-direct-control-2026-11-05.md)；该测试使用路径重开、
 普通输出文件和阻塞回收，不替代 FSX 的文件版本、管道或取消契约。
 
+增量文本校验的 ASCII 字扫描及按需 POSIX 阶段计时见
+[校验优化与计时报告](performance/content-ascii-profile-2026-11-05.md)。
+同机控制只支持所列热缓存样本的观察，不升级为完整阶段 F 验收。
+
 ## 11. 依据
 
 - [S1] [Linux inotify 手册](https://www.man7.org/linux/man-pages/man7/inotify.7.html)：

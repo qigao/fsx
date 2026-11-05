@@ -13,6 +13,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <time.h>
 
 #include <unistd.h>
 
@@ -103,7 +104,9 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
                   "-",
                   NULL};
   FsChild child;
+  uint64_t stamp = fsx_content_tick(b->profiled);
   FsStatus status = fsx_child_spawn(q, q->tool, argv, false, &child);
+  fsx_content_tock(b->profiled, stamp, &b->timing.spawn_ns);
   if (status != FS_OK)
     return status;
   int rc = 0;
@@ -133,7 +136,14 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
     if (status != FS_OK)
       break;
     if (child.input >= 0 && sent == used) {
+      stamp = fsx_content_tick(b->profiled);
       ssize_t n = read(file, input, 65536);
+      fsx_content_tock(b->profiled, stamp, &b->timing.read_ns);
+      if (b->profiled) {
+        b->timing.read_calls++;
+        if (n > 0)
+          b->timing.read_bytes += (uint64_t)n;
+      }
       if (n < 0) {
         if (errno == EINTR)
           continue;
@@ -158,7 +168,10 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
         if (first && used >= 3 && !memcmp(input, "\xef\xbb\xbf", 3))
           sent = 3;
         first = false;
-        if (!fsx_content_text(&utf8, input + sent, used - sent)) {
+        stamp = fsx_content_tick(b->profiled);
+        bool valid = fsx_content_text(&utf8, input + sent, used - sent);
+        fsx_content_tock(b->profiled, stamp, &b->timing.text_ns);
+        if (!valid) {
           status = FS_UNSUPPORTED;
           break;
         }
@@ -167,20 +180,33 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
     struct pollfd fds[3] = {{child.input, POLLOUT, 0},
                             {child.output, POLLIN, 0},
                             {child.error, POLLIN, 0}};
-    if (poll(fds, 3, 25) < 0) {
+    stamp = fsx_content_tick(b->profiled);
+    int ready = poll(fds, 3, 25);
+    fsx_content_tock(b->profiled, stamp, &b->timing.poll_ns);
+    if (b->profiled)
+      b->timing.poll_calls++;
+    if (ready < 0) {
       if (errno == EINTR)
         continue;
       status = FS_IO;
       break;
     }
     if (fds[0].revents && child.input >= 0 && sent < used) {
+      stamp = fsx_content_tick(b->profiled);
       ssize_t n = write(child.input, input + sent, used - sent);
+      fsx_content_tock(b->profiled, stamp, &b->timing.write_ns);
+      if (b->profiled) {
+        b->timing.write_calls++;
+        if (n > 0)
+          b->timing.write_bytes += (uint64_t)n;
+      }
       if (n > 0)
         sent += (size_t)n;
       else if (n < 0 && errno != EAGAIN && errno != EINTR) {
         status = FS_IO;
       }
     }
+    stamp = fsx_content_tick(b->profiled);
     for (unsigned i = 1; i < 3 && status == FS_OK; i++) {
       int *stream = i == 1 ? &child.output : &child.error;
       if (!fds[i].revents || *stream < 0)
@@ -213,10 +239,13 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
           status = FS_LIMIT;
       }
     }
+    fsx_content_tock(b->profiled, stamp, &b->timing.output_ns);
   }
   fsx_free(input);
   int exit_code;
+  stamp = fsx_content_tick(b->profiled);
   status = fsx_child_finish(q, &child, status, &exit_code);
+  fsx_content_tock(b->profiled, stamp, &b->timing.finish_ns);
 #ifndef __APPLE__
   if (!masked) {
     if (!sigismember(&previous, SIGPIPE)) {
@@ -236,13 +265,15 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
     status = FS_IO;
   return status;
 }
-FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
-                          FsContentBatch *b) {
+static FsStatus content_file(FsContentQuery *q, const FsEntry *entry,
+                             FsContentBatch *b) {
   if (entry->flags & (FS_ENTRY_DIRECTORY | FS_ENTRY_LINK))
     return FS_UNSUPPORTED;
   int fd = -1;
   struct stat before, after, association;
+  uint64_t stamp = fsx_content_tick(b->profiled);
   FsStatus status = open_file(q, entry, &fd, &before);
+  fsx_content_tock(b->profiled, stamp, &b->timing.open_ns);
   if (status != FS_OK)
     return status;
   if (q->root) {
@@ -254,6 +285,7 @@ FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
       before.st_size < 0 || (uint64_t)before.st_size > q->request.max_file_bytes
           ? FS_LIMIT
           : execute(q, fd, b);
+  stamp = fsx_content_tick(b->profiled);
   if (status == FS_OK && (fstat(fd, &after) || !same_version(&before, &after)))
     status = FS_STALE;
   close(fd);
@@ -268,8 +300,34 @@ FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
   if (status == FS_OK && q->root)
     status = fsx_content_check_root(q);
   b->info.read_end_ns = cmeta_hrtime();
+  fsx_content_tock(b->profiled, stamp, &b->timing.postcheck_ns);
   return status;
 }
+static FsStatus thread_cpu(uint64_t *out) {
+  struct timespec value;
+  if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &value))
+    return FS_IO;
+  *out =
+      (uint64_t)value.tv_sec * UINT64_C(1000000000) + (uint64_t)value.tv_nsec;
+  return FS_OK;
+}
+FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
+                          FsContentBatch *b) {
+  uint64_t start = fsx_content_tick(b->profiled);
+  uint64_t cpu = 0, end_cpu = 0;
+  if (b->profiled && thread_cpu(&cpu) != FS_OK)
+    return FS_IO;
+  FsStatus status = content_file(q, entry, b);
+  if (b->profiled) {
+    b->timing.files++;
+    if (thread_cpu(&end_cpu) != FS_OK)
+      return FS_IO;
+    b->timing.worker_cpu_ns += end_cpu - cpu;
+  }
+  fsx_content_tock(b->profiled, start, &b->timing.file_ns);
+  return status;
+}
+
 #else
 FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
                           FsContentBatch *b) {

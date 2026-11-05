@@ -105,6 +105,7 @@ static FsContentBatch *new_batch(FsContentQuery *q, const FsEntry *entry) {
     return NULL;
   memset(b, 0, sizeof(*b));
   b->query = q;
+  b->profiled = q->metrics != NULL;
   b->wire = fsx_alloc(e, q->request.max_output_bytes + 1);
   b->records =
       fsx_alloc(e, (size_t)q->request.max_records * sizeof(*b->records));
@@ -188,9 +189,17 @@ FsStatus fsx_content_process(FsContentQuery *q, const FsEntry *entry,
     q->info.changed_files++;
   else if (status == FS_DENIED || status == FS_UNSUPPORTED)
     q->info.skipped_files++;
-  else if (status == FS_OK)
+  else if (status == FS_OK) {
+    uint64_t decode_start = fsx_content_tick(b->profiled);
     status = fsx_content_decode(b, q->request.max_records -
                                        (uint32_t)q->info.match_records);
+    fsx_content_tock(b->profiled, decode_start, &b->timing.decode_ns);
+  }
+  if (q->metrics) {
+#define ADD(name) q->metrics->name += b->timing.name;
+    FSX_CONTENT_METRICS(ADD)
+#undef ADD
+  }
   if (status == FS_OK) {
     q->info.files_scanned++;
     q->info.match_records += b->info.record_count;
@@ -380,6 +389,7 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
   FsStatus status = FS_BUSY;
   if (!atomic_load(&e->stopping) && !e->content &&
       e->handles < e->config.max_handles) {
+    q->metrics = e->content_metrics;
     if (q->root)
       q->coverage_complete = true;
     else {

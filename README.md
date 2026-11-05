@@ -434,3 +434,11 @@ use immutable fixture paths, temporary regular output files and blocking reaping
 they do not have FSX's file-version, streaming or cancellation semantics.
 See [the direct control data](docs/performance/content-direct-control-2026-11-05.md)
 for results and the limits of this comparison.
+
+Content profiles now include `fsx_content_text_test`, for eight formal CTest
+entries. The shared streaming validator skips complete non-NUL ASCII words
+while retaining UTF-8 scalar transitions across input blocks. Private opt-in
+POSIX stage profiling adds a six-position comparison (270 measured operations);
+Windows retains 56 scope operations and runs the shared text tests.
+See [the pipeline profile and ASCII optimization](docs/performance/content-ascii-profile-2026-11-05.md)
+for correctness coverage, raw sequential before/after data and its limitations.
