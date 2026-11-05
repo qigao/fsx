@@ -77,6 +77,18 @@
         "FSX_VCPKG_HOST_TRIPLET": "arm64-osx",
         "DYLD_LIBRARY_PATH": "$env{SALTSCORE_ROOT}/lib:$env{CMETA_ROOT}/lib:$penv{DYLD_LIBRARY_PATH}"
       }
+    },
+    {
+      "name": "macos-x64-base",
+      "hidden": true,
+      "inherits": "macos-base",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "x86_64"
+      },
+      "environment": {
+        "FSX_VCPKG_TARGET_TRIPLET": "x64-osx",
+        "FSX_VCPKG_HOST_TRIPLET": "x64-osx"
+      }
     }
   ]
 }

@@ -32,7 +32,7 @@ milestones remain on the roadmap.
   scanner fallback. Results report the selected strategy and entries evaluated.
 - Immutable 4096-entry pages shared across snapshots. Changed pages are copied
   before commit; retained results keep their original metadata and strings.
-- Cooperative Windows RDC and Linux inotify directory watches, armed before
+- Cooperative Windows RDC, Linux inotify and macOS FSEvents directory watches, armed before
   enumeration, with bounded notification buffers, root identity checks,
   overflow reconciliation and retryable shutdown. Linux registers each opened
   directory before listing it; the CLI runs the wait/rescan loop.
@@ -55,7 +55,8 @@ The [cross-platform and content-search proposal](docs/cross-platform-content-sea
 defines Linux inotify/macOS FSEvents and explicit bfs/ugrep content jobs. These
 milestones include Linux inotify, Linux/macOS/Windows indexed content jobs, and
 Linux/macOS bfs live discovery with an explicit separate request/CLI command.
-macOS FSEvents remains planned; macOS watch calls explicitly return UNSUPPORTED.
+macOS FSEvents uses a native dispatch-queue backend;
+wait/scan consume a bounded event-flag bridge and reconcile the root.
 
 ## Build policy
 
@@ -114,10 +115,20 @@ ctest --preset windows-debug
 
 `macos-debug` builds native ARM64 source-owned tests with the runner's Clang and
 the published macOS Core/CMeta SDKs; `macos-release` builds the library/CLI.
-The macOS 15 ARM64 CI profile runs scans, queries, indexing and real ugrep/bfs
-content jobs. Native watching is not implemented on macOS. Intel macOS is not
-qualified by this profile. The selected SDK dylibs require macOS 15, matching
+The macOS 15 ARM64 CI profile targets scans, queries, indexing, real ugrep/bfs
+content jobs and native FSEvents watching. `macos-x64-debug` and
+`macos-x64-release` select the published Intel SDKs and x64-osx triplet; a separate
+macos-15-intel CI job runs the same native suite. The selected SDK dylibs require macOS 15, matching
 the explicit deployment baseline in the presets.
+CI records native ARM64 and Intel results independently. Each profile runs scans,
+queries, persistence, content processes and FSEvents against its selected SDKs;
+results from one architecture do not substitute for the other.
+`macos-x64-asan-ubsan` instruments the library, CLI and source-owned native tests
+with Apple Clang AddressSanitizer/UndefinedBehaviorSanitizer. It runs the same
+FSEvents lifecycle and actual bfs/ugrep cases as the ordinary Intel profile.
+No sanitizer runtime options or child diagnostics are suppressed.
+UBSan profiles compile with `-fno-sanitize-recover=undefined`, so a reported
+violation terminates the process and fails its formal test.
 
 `windows-release` builds the library and CLI without tests. Linux exposes
 `linux-debug`, `linux-release`, `linux-asan-ubsan` and `linux-tsan`; Debug/sanitizer
@@ -179,7 +190,7 @@ boundaries. Admitted NTFS metadata-only batches patch affected pages directly.
 Reuse counts describe that engine's last snapshot build; a newly opened `info`
 process loads its initial snapshot and reports zero reused pages.
 
-`watch` supports Windows RDC and Linux inotify. It arms the root before its first
+`watch` has Windows RDC, Linux inotify and macOS FSEvents backends. It arms the root before its first
 scan and registers Linux descendants before enumeration, then rescans whenever
 notifications invalidate the root. It prints and flushes
 one revision summary per successful pass. Ctrl+C stops between waits/scans;
@@ -201,6 +212,10 @@ Linux requires `/proc/self/fd` for registration against verified directory fds.
 watching has no durable cursor or automatic polling backend. The
 [runtime contract](docs/runtime-contract.md#linux-inotify) documents notification
 coverage and resource limits.
+macOS delivers native FSEvents on a serial dispatch queue into a bounded flag
+bridge; wait/scan consume it, and close waits for final stream-context release.
+It has no history replay cursor. Every successful reconciliation advances the
+snapshot epoch; delayed events can require additional passes after an observed IDLE.
 
 The NTFS commands use a separate native backend:
 

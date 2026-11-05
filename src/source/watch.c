@@ -391,7 +391,7 @@ FsStatus fsx_watch_close(FsWatch **owner) {
   cmeta_mutex_unlock(&e->mutex);
   return FS_OK;
 }
-#elif !defined(__linux__)
+#elif !defined(__linux__) && !defined(__APPLE__)
 FsStatus fsx_watch_open(FsEngine *e, const char *root,
                         const FsWatchConfig *config, FsWatch **out) {
   (void)e;
