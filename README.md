@@ -1,8 +1,8 @@
 # FileSearch (fsx)
 
 A file-search library with a C11/CMeta API and CLI using SaltsCore, SQLite FTS5,
-PCRE2, embedded RE/flex matching and POSIX bfs traversal. The private matcher
-uses C++11; the public API and engine remain C. The
+PCRE2 for embedded literal/regex content matching and POSIX bfs traversal. The
+engine and matcher are C11; the private bfs traversal target uses C17. The
 [design](docs/FileSearch-C11-设计.md) remains the roadmap; the current
 implementation includes directory/RDC scanning, NTFS MFT/USN and FTS5 candidate planning; later
 milestones remain on the roadmap.
@@ -19,12 +19,13 @@ milestones remain on the roadmap.
 - Asynchronous queries on SaltsCore's bounded thread pool, retained results,
   cancellation, deadlines, STOPPING/close and allocation/admission limits.
 - Linux/macOS/Windows asynchronous UTF-8 content jobs over a retained result window
-  or a full metadata scope streamed from a pinned snapshot. Embedded RE/flex
-  literal matching and the existing PCRE2 library require no tool executable;
+  or a full metadata scope streamed from a pinned snapshot. Embedded PCRE2
+  literal and regex matching require no tool executable;
   per-file batches retain identity checks and consumer backpressure.
 - Linux/macOS live discovery for unindexed directories through an embedded bfs
   traversal subset, with verified root-relative file opens and no index writes.
-  Explicit external bfs/ugrep backends remain available for comparison.
+  Explicit external bfs discovery and ugrep literal matching remain available
+  for comparison. Regex matching requires the embedded PCRE2 backend.
 - Unicode 17 full-fold substring search, scalar-aware glob matching, scoped
   `case:`/`path:`, AND/OR/NOT/groups, `file:`/`folder:`, extension sets, checked
   size filters and fixed-timezone modification-day filters.
@@ -108,12 +109,11 @@ The embedded modules are private source dependencies with pinned provenance:
 
 | Module | Imported version / commit | License | Build boundary |
 |---|---|---|---|
-| RE/flex runtime from ugrep | 7.8.5 / `f2cc252c011460f6c75b1fb591813b4b6b59c225` | BSD-3-Clause | Private C++11 matcher; existing manifest PCRE2 |
 | bfs traversal subset | 4.1.7 / `6122b7fdab2a5adca17a6f94fb97c1206d8d4c68` | 0BSD | Private C17 target on Linux/macOS |
 
 [The source manifest](third_party/manifest.json) links the retained licenses,
-upstream file hashes and local changes. The public API and engine remain C11;
-C++ exceptions are caught at the private matcher C boundary. bfs compiler
+upstream file hashes and local changes. PCRE2 remains a pinned manifest dependency;
+RE/flex and the C++ matcher dependency have been removed. bfs compiler
 extensions and allocation redirection are confined to its target. No upstream
 CLI parser, expression evaluator or output pipeline is embedded.
 
@@ -322,7 +322,12 @@ factories:
 `FS_DISCOVERY_BFS_PROCESS` through `discovery_backend`. Native factories require
 no tool paths. External factories require absolute executable paths; supplying a
 tool path for an embedded backend is invalid. There is no automatic discovery or
-fallback. The corresponding external CLI forms remain available:
+fallback. External matching supports literal mode only: the API returns
+`FS_UNSUPPORTED` for external PCRE2 requests, and the CLI rejects external
+`--regex` before opening a database. ugrep can report a regex execution failure
+as an ordinary no-match exit with no diagnostic, so that path cannot uphold
+FSX's failure/completeness contract. Omit tool paths to use native PCRE2.
+The corresponding external literal CLI forms remain available:
 
 ```sh
 fsx content index.db /absolute/path/to/ugrep --literal 'sqlite3_open' -- 'file: ext:c'
@@ -334,8 +339,15 @@ the complete line or lines covering a match, its starting line number and byte
 offset; repeated matches on one line remain separate records. UTF-8 input is
 validated, NUL/invalid UTF-8 input is skipped, and offsets start after a leading
 UTF-8 BOM. Patterns are at most 4096 UTF-8 bytes and cannot contain a literal LF;
-regex escapes can express cross-line matches. An empty pattern selects each
-actual input line, with no fictitious line after a final LF.
+regex escapes can express cross-line matches. An empty literal selects each
+actual input line. Regex expressions compile directly as PCRE2 with Unicode
+properties and multiline anchors; there is no ugrep expression conversion.
+Empty regex matches use ordinary PCRE2 global iteration, including a nonempty
+alternative at the same position before advancing one Unicode scalar (or a CRLF
+pair when selected by the expression's newline convention). No mode
+creates a fictitious line after a final LF or in an empty file; `$` can match
+the end of an unterminated final line. See the
+[precise matching semantics](docs/runtime-contract.md#embedded-matcher-execution-and-limits).
 
 The qualified Windows LLVM-MinGW ugrep 7.8.5 external tool has a known input
 limitation: its CRT stdin remains in text mode, so CRLF becomes LF and later byte
@@ -360,12 +372,13 @@ The final summary reports `parallel_files`.
 
 Embedded matching compiles one immutable pattern per job, with separate state
 per active file. Each file is read and validated in full before matching, up to
-32 MiB (`max_file_bytes`, configurable downward). Literal matching uses RE/flex;
-regex uses the existing PCRE2 library with cancellation callouts, a 1,000,000
+32 MiB (`max_file_bytes`, configurable downward). Literal matching uses
+`PCRE2_LITERAL` in bounded 64 KiB windows plus pattern lookahead, so regex
+metacharacters stay literal and Unicode byte offsets are preserved. Regex uses
+PCRE2 with cancellation callouts, a 1,000,000
 match limit, depth 256, a 32 MiB PCRE2 heap limit and no JIT. The input buffers,
-result storage and PCRE2 allocations count against the engine memory budget.
-RE/flex's internal C++ allocations remain outside that counter; this budget is
-not a process RSS limit.
+result storage and all matcher allocations count against the engine memory
+budget. This budget is not a process RSS limit.
 
 The default `max_output_bytes` is 8 MiB per file, configurable from 1 KiB to
 8 MiB. Embedded matching charges each copied record's UTF-8 text plus its NUL,
@@ -399,15 +412,16 @@ POSIX `fsx_native_discovery_test` exercise embedded matching and traversal
 without external tool packages. They cover ownership/backpressure, full-line
 records and offsets, UTF-8/BOM handling, cross-window literal matching,
 cross-line regex, resource limits, cancellation, native identities and discovery
-budgets. The embedded-backend revision passed all 11 formal Linux Debug CTest
-entries with Clang 19, including the enabled external-tool suite. This is Linux
-validation; macOS and Windows runs remain separate platform qualifications.
+budgets. They also cover direct PCRE2 empty-match/newline semantics and resource
+failures with incomplete coverage. Linux, macOS and Windows use separate CI
+profiles; sanitizer builds retain the same formal tests.
 
 Enable the external API/CLI and differential tests with
 `FSX_BUILD_CONTENT_TESTS=ON`, an absolute `FSX_CONTENT_TEST_UGREP`, and on
 Linux/macOS an absolute `FSX_CONTENT_TEST_BFS`. Differential cases compare native
-records against real ugrep, including repeated/empty matches, CRLF bytes and
-cross-line regex. Windows uses the tool's binary file input as the native oracle
+literal records against real ugrep, including repeated/empty literal matches and
+CRLF bytes. Regex tests assert the documented PCRE2 semantics independently.
+Windows uses the tool's binary file input as the native literal oracle
 and separately verifies the external stdin translation described above.
 Linux/macOS CI build the pinned optional search-tools manifest feature.
 Windows CI qualifies the exact static LLVM-MinGW candidate from cache PR #282,

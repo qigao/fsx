@@ -25,7 +25,8 @@ def read_measurements(path):
     rows = list(csv.DictReader(line for line in lines if not line.startswith("#")))
     if len(accepted) != 1 or int(accepted[0].split("operations=")[1]) != len(rows):
         raise ValueError("incomplete native acceptance or incorrect operation count")
-    if metadata["format"] not in ("fsx-content-benchmark-v3", "fsx-content-benchmark-v4"):
+    if metadata["format"] not in ("fsx-content-benchmark-v3", "fsx-content-benchmark-v4",
+                                  "fsx-content-benchmark-v5"):
         raise ValueError("unsupported measurement format")
     text = {"corpus", "source", "pattern", "phase", "input_hash"}
     return metadata, [{k: v if k in text else int(v) for k, v in row.items()} for row in rows]
@@ -72,7 +73,7 @@ def distribution(values, scale=1):
 def summarize(measurement_path, query_path):
     metadata, rows = read_measurements(measurement_path)
     sources = ("scope",) if metadata["platform"].startswith("Windows/") else ("scope", "live")
-    native_backends = metadata["format"] == "fsx-content-benchmark-v4"
+    native_backends = metadata["format"] in ("fsx-content-benchmark-v4", "fsx-content-benchmark-v5")
     fields = ("corpus", "source", "pattern", "phase", "round", "position", "parallel_files")
     if Counter(tuple(row[k] for k in fields) for row in rows) != schedule(sources, native_backends):
         raise ValueError("missing/duplicate/unbalanced benchmark operations")
@@ -244,7 +245,9 @@ def summarize(measurement_path, query_path):
             "limitations": [sampling,
                             "Native validation and observer overhead are included in content wall time.",
                             "Query quantiles use only wholly contained observations; P50/P95/P99 are nearest-rank.",
-                            "Allocation/process/queue peaks are sampled lower bounds, not RSS or child memory limits. Owned bytes exclude SQLite, external-tool and upstream RE/flex C++ allocations.",
+                            ("Allocation/process/queue peaks are sampled lower bounds, not RSS or child memory limits. Owned bytes exclude SQLite and external-tool allocations."
+                             if metadata["format"] == "fsx-content-benchmark-v5" else
+                             "Allocation/process/queue peaks are sampled lower bounds, not RSS or child memory limits. Owned bytes exclude SQLite, external-tool and upstream RE/flex C++ allocations."),
                             "Native comparisons validate identical fixture records and retain FSX file identity, text and post-read checks. They compare whole backends, including native pattern preparation and input buffering, without private profiling instrumentation.",
                             "No cold-cache, 100k-file, batch-ugrep, CPU/RSS or production-tail-latency acceptance.",
                             "Cancellation starts at the first acquired confirmed file; these are not hung-child timings.",
@@ -278,13 +281,15 @@ def main():
         "src/content/text.c", "src/content/content.h", "src/internal.h", "tests/content_text_test.c",
         "src/content/api.c", "src/content/parallel.c", "src/content/process.c",
         "src/content/process_windows.c", "src/content/discovery_posix.c")
-    if result["metadata"]["format"] == "fsx-content-benchmark-v4":
+    if result["metadata"]["format"] in ("fsx-content-benchmark-v4", "fsx-content-benchmark-v5"):
+        pcre2_only = result["metadata"]["format"] == "fsx-content-benchmark-v5"
         source_paths += ("include/fsx/api.h", "src/content/CMakeLists.txt",
-                         "src/content/native.c", "src/content/matcher.h", "src/content/matcher.cpp",
+                         "src/content/native.c", "src/content/matcher.h",
+                         "src/content/matcher.c" if pcre2_only else "src/content/matcher.cpp",
                          "src/content/discovery_native_posix.c")
         result["vendor_sha256"] = {
             path.relative_to(repo).as_posix(): sha256(path)
-            for vendor in ("bfs", "reflex")
+            for vendor in (("bfs",) if pcre2_only else ("bfs", "reflex"))
             for path in sorted((repo / "third_party" / vendor).rglob("*")) if path.is_file()
         }
     result["source_sha256"] = {path: sha256(repo / path) for path in source_paths}

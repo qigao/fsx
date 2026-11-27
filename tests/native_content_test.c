@@ -228,6 +228,20 @@ suite("Embedded content matching") {
     check_equal(record.text, "prefixone\ntwo");
     check_true(finish().complete);
   }
+  it("treats quote delimiters and Unicode regex metacharacters as literal bytes") {
+    const char *pattern = "a.b [猫]+ \\Q\\E $^(*.)";
+    put("text.txt", "!a.b [猫]+ \\Q\\E $^(*.)!\n");
+    FsContentRequest r = request(pattern);
+    submit(&r);
+    acquire();
+    FsContentRecordView record;
+    check_equal(fsx_content_batch_record(batch, 0, &record), FS_OK);
+    check_equal(record.byte_offset, UINT64_C(1));
+    check_equal(record.text, "!a.b [猫]+ \\Q\\E $^(*.)!");
+    FsContentInfo info = finish();
+    check_equal(info.match_records, UINT64_C(1));
+    check_true(info.complete);
+  }
   it("preserves CRLF bytes and later offsets in literal and regex matching") {
     put("text.txt", "needle\r\nnext needle\n");
     FsContentRequest r = request("needle");
@@ -286,6 +300,25 @@ suite("Embedded content matching") {
     acquire();
     check_equal(finish().match_records, UINT64_C(1));
   }
+  it("does not repeat a literal match spanning adjacent search windows") {
+    char *text = malloc(65550);
+    check_not_null(text);
+    memset(text, 'x', 65550);
+    text[65520] = '\n';
+    memcpy(text + 65534, "aaaaa", 5);
+    text[65549] = '\n';
+    put_bytes("boundary.txt", text, 65550);
+    free(text);
+    FsContentRequest r = request("aaa");
+    submit(&r);
+    acquire();
+    FsContentRecordView record;
+    check_equal(fsx_content_batch_record(batch, 0, &record), FS_OK);
+    check_equal(record.byte_offset, UINT64_C(65534));
+    FsContentInfo info = finish();
+    check_equal(info.match_records, UINT64_C(1));
+    check_true(info.complete);
+  }
   it("matches empty literals once per real line including empty lines") {
     put("text.txt", "text\n\nx\n");
     FsContentRequest r = request("");
@@ -311,6 +344,159 @@ suite("Embedded content matching") {
       check_equal(record.byte_offset, offsets[i]);
     }
     check_equal(finish().match_records, UINT64_C(5));
+  }
+  it("uses PCRE2 anchor offsets and global empty-match progression") {
+    static const struct {
+      const char *text;
+      const char *pattern;
+      uint32_t count;
+      uint64_t offsets[5];
+    } cases[] = {
+        {"abc\n", "$", 1, {3}},
+        {"abc", "$", 1, {3}},
+        {"abc", "^|$", 2, {0, 3}},
+        {"abc\n", ".*", 2, {0, 3}},
+        {"abc", ".*", 2, {0, 3}},
+        {"a", "(?:|a)", 3, {0, 0, 1}},
+        {"猫", "", 2, {0, 3}},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(*cases); ++i) {
+      put("text.txt", cases[i].text);
+      FsContentRequest r = request(cases[i].pattern);
+      r.mode = FS_CONTENT_PCRE2;
+      submit(&r);
+      acquire();
+      FsContentFileView file;
+      check_equal(fsx_content_batch_info(batch, &file), FS_OK);
+      check_equal(file.record_count, cases[i].count);
+      for (uint32_t j = 0; j < cases[i].count; ++j) {
+        FsContentRecordView record;
+        check_equal(fsx_content_batch_record(batch, j, &record), FS_OK);
+        check_equal(record.line, UINT64_C(1));
+        check_equal(record.byte_offset, cases[i].offsets[j]);
+      }
+      check_true(finish().complete);
+      fsx_content_batch_release(batch);
+      batch = NULL;
+      fsx_content_release(query);
+      query = NULL;
+    }
+    put("text.txt", "");
+    FsContentRequest r = request("$");
+    r.mode = FS_CONTENT_PCRE2;
+    submit(&r);
+    FsContentInfo info = finish();
+    check_equal(info.match_records, UINT64_C(0));
+    check_true(info.complete);
+  }
+  it("preserves PCRE2 whitespace and negated classes across line boundaries") {
+    static const struct {
+      const char *text;
+      const char *pattern;
+      const char *match_text;
+      uint64_t offset;
+    } cases[] = {
+        {"a \n\tb\n", "\\s+", "a \n\tb", 1},
+        {"one\ntwoX\n", "[^X]+", "one\ntwoX", 0},
+        {"猫_\n", "\\w+", "猫_", 0},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(*cases); ++i) {
+      put("text.txt", cases[i].text);
+      FsContentRequest r = request(cases[i].pattern);
+      r.mode = FS_CONTENT_PCRE2;
+      submit(&r);
+      acquire();
+      FsContentRecordView record;
+      check_equal(fsx_content_batch_record(batch, 0, &record), FS_OK);
+      check_equal(record.byte_offset, cases[i].offset);
+      check_equal(record.text, cases[i].match_text);
+      check_true(finish().complete);
+      fsx_content_batch_release(batch);
+      batch = NULL;
+      fsx_content_release(query);
+      query = NULL;
+    }
+  }
+  it("respects PCRE2 newline overrides during empty-match progression") {
+    static const struct {
+      const char *text;
+      const char *pattern;
+      uint32_t count;
+      uint64_t offsets[4];
+      uint64_t lines[4];
+    } cases[] = {
+        {"\r\nx", "", 4, {0, 1, 2, 3}, {1, 1, 2, 2}},
+        {"\r\nx", "(*LF)", 4, {0, 1, 2, 3}, {1, 1, 2, 2}},
+        {"\r\nx", "(*CR)", 4, {0, 1, 2, 3}, {1, 1, 2, 2}},
+        {"\r\nx", "(*CRLF)", 3, {0, 2, 3}, {1, 2, 2}},
+        {"\r\nx", "(*ANYCRLF)", 3, {0, 2, 3}, {1, 2, 2}},
+        {"\r\nx", "(*ANY)", 3, {0, 2, 3}, {1, 2, 2}},
+        {"\rx", "(*ANY)", 3, {0, 1, 2}, {1, 1, 1}},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(*cases); ++i) {
+      put("text.txt", cases[i].text);
+      FsContentRequest r = request(cases[i].pattern);
+      r.mode = FS_CONTENT_PCRE2;
+      submit(&r);
+      acquire();
+      FsContentFileView file;
+      check_equal(fsx_content_batch_info(batch, &file), FS_OK);
+      check_equal(file.record_count, cases[i].count);
+      for (uint32_t j = 0; j < cases[i].count; ++j) {
+        FsContentRecordView record;
+        check_equal(fsx_content_batch_record(batch, j, &record), FS_OK);
+        check_equal(record.byte_offset, cases[i].offsets[j]);
+        check_equal(record.line, cases[i].lines[j]);
+      }
+      check_true(finish().complete);
+      fsx_content_batch_release(batch);
+      batch = NULL;
+      fsx_content_release(query);
+      query = NULL;
+    }
+  }
+  it("advances lookbehind reset matches and preserves backward reported spans") {
+    static const struct {
+      const char *text;
+      const char *pattern;
+      uint32_t count;
+      uint64_t offsets[2];
+      uint64_t lines[2];
+      const char *records[2];
+    } cases[] = {
+        {"a", "(?(DEFINE)(?<reset>\\Ka))(?<=(?&reset))", 1,
+         {0}, {1}, {"a"}},
+        {"aa", "(?(DEFINE)(?<reset>\\Ka))(?<=(?&reset))", 2,
+         {0, 1}, {1, 1}, {"aa", "aa"}},
+        {"a猫a", "(?(DEFINE)(?<reset>\\Ka))(?<=(?&reset))", 2,
+         {0, 4}, {1, 1}, {"a猫a", "a猫a"}},
+        {"abc", "b|(?(DEFINE)(?<reset>\\Kab))(?<=(?&reset))", 2,
+         {1, 0}, {1, 1}, {"abc", "abc"}},
+        {"a\nbc", "b|(?(DEFINE)(?<reset>\\Ka\\nb))(?<=(?&reset))", 2,
+         {2, 0}, {2, 1}, {"bc", "a\nbc"}},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(*cases); ++i) {
+      put("text.txt", cases[i].text);
+      FsContentRequest r = request(cases[i].pattern);
+      r.mode = FS_CONTENT_PCRE2;
+      submit(&r);
+      acquire();
+      FsContentFileView file;
+      check_equal(fsx_content_batch_info(batch, &file), FS_OK);
+      check_equal(file.record_count, cases[i].count);
+      for (uint32_t j = 0; j < cases[i].count; ++j) {
+        FsContentRecordView record;
+        check_equal(fsx_content_batch_record(batch, j, &record), FS_OK);
+        check_equal(record.byte_offset, cases[i].offsets[j]);
+        check_equal(record.line, cases[i].lines[j]);
+        check_equal(record.text, cases[i].records[j]);
+      }
+      check_true(finish().complete);
+      fsx_content_batch_release(batch);
+      batch = NULL;
+      fsx_content_release(query);
+      query = NULL;
+    }
   }
   it("strips BOM and rejects binary or incomplete UTF8 before any publication") {
     put("bom.txt", "\xef\xbb\xbfneedle\n");
@@ -372,17 +558,19 @@ suite("Embedded content matching") {
     check_equal(finish().status, FS_TIMEOUT);
   }
   it("limits pathological PCRE2 work instead of returning a false zero-match") {
-    char text[2001];
+    char text[2009];
     memset(text, 'a', sizeof(text));
-    text[2000] = '!';
+    memcpy(text + 2000, "!\nneedle\n", 9);
     put_bytes("text.txt", text, sizeof(text));
-    FsContentRequest r = request("^(a+)+$");
+    FsContentRequest r = request("^(a+)+$|needle");
     r.mode = FS_CONTENT_PCRE2;
     submit(&r);
     FsContentInfo info = finish();
     check_equal(info.status, FS_LIMIT);
     check_false(info.complete);
     check_equal(info.match_records, UINT64_C(0));
+    check_true(info.diagnostic[0] != 0);
+    check_equal(fsx_content_batch_acquire(query, &batch), FS_END);
   }
   it("shares a compiled pattern across two file workers with exact totals") {
     for (unsigned i = 0; i < 24; i++) {

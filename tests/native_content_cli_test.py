@@ -75,6 +75,56 @@ class NativeContentCli(unittest.TestCase):
         self.assertFalse(rows[-1]['candidates_known'])
         self.assertEqual(rows[-1]['records'], 0)
 
+    def test_pcre2_runtime_limit_is_a_failure_with_incomplete_coverage(self):
+        (self.root / 'text.txt').write_bytes(b'a' * 2000 + b'!\nneedle\n')
+        self.index()
+        result = self.run_fsx('content', self.db, '--regex', '^(a+)+$|needle',
+                              '--', 'file:')
+        rows = self.rows(result, code=1)
+        self.assertEqual(len(rows), 1)
+        self.assertFalse(rows[-1]['complete'])
+        self.assertEqual(rows[-1]['records'], 0)
+        self.assertIn('limit', result.stderr)
+        rows = self.rows(self.run_fsx('content', self.db, '--literal', 'needle',
+                                      '--', 'file:'))
+        self.assertEqual(rows[0]['offset'], 2002)
+        self.assertTrue(rows[-1]['complete'])
+
+    def test_direct_pcre2_unicode_newline_and_empty_match_semantics(self):
+        (self.root / 'text.txt').write_bytes('ab\n\n猫x\nend'.encode('utf-8'))
+        self.index()
+        # Expected byte offsets come from PCRE2's expression semantics, not
+        # ugrep's expression conversion or its special line selectors.
+        cases = [
+            ('^', [0, 3, 4, 9]),
+            ('$', [2, 3, 8, 12]),
+            ('^|$', [0, 2, 3, 4, 8, 9, 12]),
+            ('^$', [3]),
+            ('.*', [0, 2, 3, 4, 8, 9, 12]),
+            ('.+', [0, 4, 9]),
+            (r'\w+', [0, 4, 9]),
+            (r'\s+', [2, 8]),
+            ('[^x]+', [0, 8]),
+            ('', [0, 1, 2, 3, 4, 7, 8, 9, 10, 11, 12]),
+        ]
+        for pattern, offsets in cases:
+            with self.subTest(pattern=pattern):
+                rows = self.rows(self.run_fsx('content', self.db, '--regex',
+                                              pattern, '--', 'file:'))
+                self.assertEqual([row['offset'] for row in rows[:-1]], offsets)
+                self.assertTrue(rows[-1]['complete'])
+
+    def test_literal_metacharacters_are_not_regular_expressions(self):
+        (self.root / 'text.txt').write_bytes(b'a.b [x] \\Q $ ^.* aXb\n')
+        self.index()
+        for pattern, offset in [('a.b', 0), ('[x]', 4), (r'\Q', 8),
+                                ('$', 11), ('^.*', 13)]:
+            with self.subTest(pattern=pattern):
+                rows = self.rows(self.run_fsx('content', self.db, '--literal',
+                                              pattern, '--', 'file:'))
+                self.assertEqual([row['offset'] for row in rows[:-1]], [offset])
+                self.assertTrue(rows[-1]['complete'])
+
     def test_native_binary_coverage_is_explicit(self):
         (self.root / 'binary').write_bytes(b'needle\0')
         self.index()

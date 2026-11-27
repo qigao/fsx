@@ -218,17 +218,15 @@ suite("Asynchronous native ugrep content") {
     check_equal(info.match_records, (uint64_t)3);
     check_equal(info.running_processes, 0u);
   }
-  it("uses explicit PCRE2 including lookbehind and multiline JSON") {
+  it("rejects external regex before launching a tool") {
     put("text.txt", "prefixone\ntwo\n");
     FsContentRequest r = request("(?<=prefix)one\\ntwo");
     r.mode = FS_CONTENT_PCRE2;
-    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
-    acquire();
-    FsContentRecordView record;
-    check_equal(fsx_content_batch_record(batch, 0, &record), FS_OK);
-    check_equal(record.text, "prefixone\ntwo");
-    check_equal(record.byte_offset, (uint64_t)6);
-    check_true(finish().complete);
+    check_equal(fsx_content_submit(engine, &r, &query), FS_UNSUPPORTED);
+    check_true(query == NULL);
+    r.pattern = "^(a+)+$|needle";
+    check_equal(fsx_content_submit(engine, &r, &query), FS_UNSUPPORTED);
+    check_true(query == NULL);
   }
   it("reports complete no-match and leaves metadata indexing available") {
     put("text.txt", "aXb\n");
@@ -378,17 +376,13 @@ suite("Asynchronous native ugrep content") {
     check_equal(record.text, "needle\x01");
     check_true(finish().complete);
   }
-  it("reports missing tools and tool regex errors without a fallback") {
+  it("reports unsupported regex and missing tools without a fallback") {
     put("text.txt", "needle\n");
     FsContentRequest r = request("[");
     r.mode = FS_CONTENT_PCRE2;
-    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
-    FsContentInfo info = finish();
-    check_equal(info.status, FS_IO);
-    check_true(info.tool_exit_code > 1);
-    check_true(info.diagnostic[0] != 0);
-    fsx_content_release(query);
-    query = NULL;
+    check_equal(fsx_content_submit(engine, &r, &query), FS_UNSUPPORTED);
+    check_true(query == NULL);
+    r.mode = FS_CONTENT_LITERAL;
     r.pattern = "needle";
     r.ugrep_executable = "/fsx-missing-native-ugrep";
     check_equal(fsx_content_submit(engine, &r, &query), FS_OK);

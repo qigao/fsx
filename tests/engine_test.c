@@ -739,6 +739,35 @@ suite("FileSearch engine") {
                 FS_INVALID);
     check_equal(execute("dm:2026-02-30", fsx_query_options()), FS_INVALID);
   }
+  it("keeps inline size comparisons within nested modifier operands") {
+    put("zero.txt", "");
+    put("two.txt", "12");
+    put("four.txt", "1234");
+    subdir("folder");
+    open_engine();
+    scan();
+    const char *prefixes[] = {"", "file:", "case:", "path:",
+                              "case:path:file:", "file:case:path:",
+                              "file:file:"};
+    const struct {
+      const char *comparison;
+      uint64_t matches;
+    } cases[] = {{"<", 1}, {"<=", 2}, {">", 1}, {">=", 2},
+                 {"=", 1}, {"", 1}};
+    for (size_t p = 0; p < sizeof(prefixes) / sizeof(prefixes[0]); p++)
+      for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        char query[128];
+        snprintf(query, sizeof(query), "%ssize:%s2B", prefixes[p],
+                 cases[c].comparison);
+        check_equal(count(query), cases[c].matches);
+      }
+    check_equal(count("folder:case:path:size:>=0"), (uint64_t)0);
+    check_equal(count("file:folder:size:<=2B"), (uint64_t)0);
+    /* A comparison consumes only its operand, leaving adjacent group tokens. */
+    check_equal(count("<file:size:>=2B> !two"), (uint64_t)1);
+    check_equal(count("case:<file:size:<2B | file:size:>2B>"), (uint64_t)2);
+    check_equal(count("path:<file:size:<=2B> | four"), (uint64_t)3);
+  }
   it("matches PCRE2 Unicode and explicit byte regex without changing backend") {
     put("report42.TXT", "data");
     put("other.txt", "none");
@@ -1300,6 +1329,51 @@ suite("FileSearch engine") {
     check_equal(count("offline"), (uint64_t)1);
     check_equal(old.name, "seed.txt");
   }
+#ifdef __linux__
+  it("waits for changes after a successful watch scan with partial coverage") {
+    /* Linux permits names that the public UTF-8 API cannot represent. Create
+     * this stable omission before arming the watch so it generates no event. */
+    put("invalid-\xff.txt", "x");
+    put("seed.txt", "x");
+    open_engine();
+    open_watch(&watch, root, 65536);
+    FsWatchInfo info = settle_watch(watch);
+    check_equal(info.state, FS_WATCH_IDLE);
+    check_false(info.coverage_complete);
+    check_false(info.needs_rescan);
+    check_equal(info.rescans, (uint64_t)1);
+    uint64_t epoch = info.snapshot_epoch, rescans = info.rescans;
+    FsProgress progress;
+    check_equal(fsx_engine_progress(engine, &progress), FS_OK);
+    check_equal(progress.dirty_watches, 0u);
+    check_false(progress.needs_rescan);
+    check_equal(count("seed"), (uint64_t)1);
+    FsResultInfo result;
+    check_equal(fsx_result_info(held_result, &result), FS_OK);
+    check_false(result.coverage_complete);
+    check_equal(
+        fsx_watch_wait(watch, fsx_engine_now_ns(engine) + 50000000, &info),
+        FS_TIMEOUT);
+    check_equal(info.snapshot_epoch, epoch);
+    check_equal(info.rescans, rescans);
+    put("created.txt", "new");
+    wait_change(watch);
+    info = settle_watch(watch);
+    check_true(info.snapshot_epoch > epoch);
+    check_true(info.rescans > rescans);
+    check_false(info.coverage_complete);
+    check_false(info.needs_rescan);
+    check_equal(count("created"), (uint64_t)1);
+    char invalid[2048];
+    snprintf(invalid, sizeof(invalid), "%s/invalid-\xff.txt", root);
+    remove_utf8(invalid);
+    wait_change(watch);
+    info = settle_watch(watch);
+    check_true(info.coverage_complete);
+    check_false(info.needs_rescan);
+    check_equal(count("file:"), (uint64_t)2);
+  }
+#endif
 #ifdef _WIN32
   it("turns notification overflow into a full reconciliation obligation") {
     open_engine();

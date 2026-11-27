@@ -358,6 +358,12 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
       r->max_file_bytes > 32 * 1024 * 1024 || !r->parallel_files ||
       r->parallel_files > 2)
     return FS_INVALID;
+  /* ugrep can turn a PCRE2 execution failure into exit 1 with no diagnostic.
+   * That is indistinguishable from a successful no-match result. Only the
+   * in-process matcher can uphold FSX's regex failure/completeness contract. */
+  if (r->matcher_backend == FS_CONTENT_UGREP_PROCESS &&
+      r->mode == FS_CONTENT_PCRE2)
+    return FS_UNSUPPORTED;
   FsContentQuery *q = fsx_alloc(e, sizeof(*q));
   if (!q)
     return FS_NOMEM;

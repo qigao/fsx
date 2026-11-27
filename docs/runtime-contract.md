@@ -132,9 +132,9 @@ or incremental database reader; loading still visits all committed rows.
 - `owned_memory_budget` defaults to 256 MiB and bounds fsx-managed heap allocations,
   including retained snapshots, PCRE2 allocator requests and explicit allocations
   in the embedded bfs target. It is **not** a global process RSS limit.
-  Engine/provider control objects, thread stacks, SQLite's internal allocations,
-  RE/flex's upstream C++ allocations and libc directory-stream storage are outside
-  it. The content section details those embedded-runtime exceptions. SQLite uses
+  Engine/provider control objects, thread stacks, SQLite's internal allocations
+  and libc directory-stream storage are outside it. All embedded matcher
+  allocations are charged through the fsx allocator. SQLite uses
   a 4 MiB writer page-cache target,
   row/SQL length limits and file-backed temporary storage, not a certified global
   hard heap bound. The design's total-memory admission remains future work.
@@ -152,11 +152,12 @@ Indexed windows and scopes support embedded and external matching on these
 platforms. BFS_LIVE is Linux/macOS only; Windows live submission returns
 `FS_UNSUPPORTED`. Other platforms return `FS_UNSUPPORTED` at submission.
 
-The public API and engine remain C11. The embedded matcher has a private C ABI
-implemented in C++11; the private POSIX bfs target uses C17 with its required
+The public API, engine and embedded PCRE2 matcher use C11. The private POSIX
+bfs target uses C17 with its required
 compiler extensions. The pinned source versions, licenses, original hashes and
 local changes are recorded in [the vendor manifest](../third_party/manifest.json).
-No third-party headers or C++ types appear in the public API.
+No third-party headers appear in the public API. RE/flex and its C++ build
+dependency have been removed.
 
 Use a request factory and recompile callers for the expanded request/info
 structures. Exactly one of `candidates`, `scope` or `root` is required:
@@ -168,6 +169,11 @@ structures. Exactly one of `candidates`, `scope` or `root` is required:
 | Live root | `fsx_content_native_live_request(root, pattern)` | `fsx_content_live_request(root, bfs, ugrep, pattern)` |
 
 `matcher_backend` selects `FS_CONTENT_NATIVE` or `FS_CONTENT_UGREP_PROCESS`.
+Native matching supports literal and regex modes through PCRE2. External
+matching supports literal mode only; external `FS_CONTENT_PCRE2` submissions
+return `FS_UNSUPPORTED` before allocating a job or launching a process. The
+qualified ugrep can collapse a PCRE2 execution error into exit 1 without a
+diagnostic, which FSX cannot distinguish from a complete no-match result.
 For live roots, `discovery_backend` selects `FS_DISCOVERY_BFTW` or
 `FS_DISCOVERY_BFS_PROCESS`. These choices are independent: an API caller can
 explicitly combine embedded discovery with an external matcher, or the reverse.
@@ -319,14 +325,24 @@ are counted explicitly. Other native I/O errors fail the task.
 A record's one-based line number and zero-based byte offset identify the match;
 its text contains the complete line or lines covering that match, excluding an
 unmatched terminating LF. Repeated matches on the same line are separate records
-with distinct offsets and repeated full-line text. An empty pattern selects each
-actual input line; empty files produce no records, and a final LF creates no
-fictitious trailing line. The embedded adapter preserves ugrep's special
-line-selection behavior for `^`, `$`, `^$`, `.*` and `.+`. Other PCRE2 empty
-matches follow ugrep's suppression unless the original pattern starts with `^`
-or ends with `$`. Content lines are delimited by LF; a CR in file text remains
-part of the native matcher's text. These byte-preserving semantics also hold for
-the POSIX external backend. The qualified Windows LLVM-MinGW external tool's
+with their match offsets and repeated full-line text. An empty literal selects
+each actual input line; empty files produce no records, and a final LF creates
+no fictitious trailing line. Regex uses PCRE2 global iteration: an empty match
+is emitted, then an anchored nonempty alternative at the same position is tried;
+if none matches, iteration advances one complete UTF-8 scalar, or a CRLF pair
+when the expression selects a newline convention that treats CRLF as one
+newline. This can emit
+an empty and nonempty match at the same offset. The only suppressed empty match
+is at EOF when the file is empty or ends with LF; `$` at EOF of an unterminated
+line remains a real match. An empty regex therefore matches scalar boundaries,
+while an empty literal selects lines. There are no special `^`, `$`, `^$`, `.*`
+or `.+` line selectors. Explicit `\K` can reset a reported match start, including
+backward starts from a subroutine used in lookbehind. Iteration guards against
+nonadvancing matches, and line positions are recounted when needed; record
+order follows PCRE2 enumeration rather than a sort by reported offset.
+Content lines are delimited by LF; a CR in file text remains
+part of the native matcher's text. Literal byte-preserving semantics also hold
+for the POSIX external backend. The qualified Windows LLVM-MinGW external tool's
 stdin translation is documented below.
 
 A file's records are held until matching completes and post-read checks confirm
@@ -347,15 +363,23 @@ the owned result batch. A growing file can require old and replacement buffers
 simultaneously; both allocations count against the engine budget. Up to
 `parallel_files` input buffers can be active.
 
-Literal mode uses the imported RE/flex runtime with 64 KiB windows plus at most
-`pattern_bytes - 1` bytes of lookahead. Cross-window matches and ordinary
+Literal mode compiles with `PCRE2_LITERAL`, so every pattern byte is literal.
+It uses byte-mode PCRE2 on validated UTF-8 in 64 KiB windows plus at most
+`pattern_bytes - 1` bytes of lookahead, without copying windows. Valid UTF-8
+patterns cannot begin inside a valid input scalar. Cross-window matches and ordinary
 non-overlapping match selection are preserved. Complete line text is located in
 the original input. Literal matching checks stop before each window and each
 match; line-span scans also use bounded cancellation checkpoints.
 
-Regex mode uses the existing manifest PCRE2 library and RE/flex expression
-conversion matching ugrep's UTF-8, multiline and newline handling. It applies the
+Regex mode compiles the original expression directly with the manifest PCRE2
+library, UTF/UCP, multiline anchors and an LF newline convention by default.
+Explicit PCRE2 pattern options such as `(*CRLF)` retain their normal effect.
+It applies the
 pattern to the complete subject, preserving lookbehind and cross-line matches.
+There is no ugrep/RE-flex conversion: `\s` and negated classes can match LF
+according to PCRE2, and anchor offsets identify the actual match positions.
+`PCRE2_MATCH_INVALID_UTF` permits safe continuation after an explicit byte-wise
+`\C`; it does not relax FSX's prior whole-file UTF-8 validation.
 The PCRE2 match limit is 1,000,000, depth limit 256 and heap limit 32 MiB per
 matching context. JIT and start optimizations are disabled. Automatic callouts
 check cancellation/deadlines at the first and every 256th callout, in addition to
@@ -363,14 +387,11 @@ checks before/after match operations. Resource exhaustion returns `FS_LIMIT`;
 allocation failure returns `FS_NOMEM`; invalid patterns return `FS_INVALID`.
 Compilation and kernel calls are not hard real-time cancellation points.
 
-The adapter, literal window, full input buffers, result copies and all PCRE2
-contexts/code/match allocations use the fsx allocator. RE/flex's internal C++
-containers, pattern compilation, expression conversion and initial matcher
-buffer use their upstream allocators and **are not charged to the engine's owned
-memory budget**. Pattern/input bounds do not turn this into a total process-memory
-guarantee. No global C++ allocator is replaced. C++ exceptions are caught at the
-private C boundary, including allocation failure. Two locally patched lookup
-tables initialize lazily within this boundary instead of at process startup.
+The adapter, full input buffers, result copies and all PCRE2 contexts/code/match
+allocations use the fsx allocator and count against the owned memory budget.
+No upstream C++ allocations or expression-conversion runtime remain. This is
+still not a total process-memory guarantee; SQLite, thread stacks and the other
+documented allocations remain outside that budget.
 
 Native output is a typed callback followed by an owned UTF-8 text copy. There is
 no JSON serialization/decoding between the matcher and FSX. `max_output_bytes`
@@ -383,7 +404,7 @@ the C API budget.
 ### External processes and protocol
 
 `FS_CONTENT_UGREP_PROCESS` uses one explicitly selected ugrep process per file
-with `-J1`, literal `-F` or PCRE2 `-P`, a fixed C locale and no inherited
+with `-J1`, literal `-F`, a fixed C locale and no inherited
 interactive configuration. Input, stdout and stderr advance together through
 bounded pipes. UTF-8 validation occurs while feeding the tool. Each file keeps
 its result unpublished until normal tool completion and the common post-read
@@ -483,7 +504,7 @@ caller-retained batches share exactly `parallel_files` result slots. Each slot
 allocates up to `max_output_bytes + 1` buffer bytes and `max_records` record
 views; mode 2 can consume twice these per-file capacities. These allocations
 count against the engine budget. Native full-file input and matcher state are
-additional active-file storage, with the RE/flex exception described above.
+additional active-file storage charged to the same budget.
 Holding both acquired batches stops further file reads. Publication wakes
 `content_wait`; acquiring transfers ownership and allows another completed slot
 to publish. Wait signals a batch or termination; consumers must acquire/release

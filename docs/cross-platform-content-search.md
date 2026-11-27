@@ -1,5 +1,9 @@
 # 跨平台采集、变更监听与文件内容搜索
 
+后续实现更新（2026-11-27）：内置 literal/regex 已统一为 PCRE2，RE/flex 已移除；
+外部 ugrep 仅保留 literal 对照路径，外部 regex 请求明确拒绝。下文保留早期方案
+的工具边界与验收过程，当前行为请以[运行时契约](runtime-contract.md#content-jobs)为准。
+
 状态：Linux/macOS/Windows 已有原生内容后端，Linux inotify/macOS FSEvents 及显式双文件并行已进入实现/验收；性能验收仍待进行。2026-11-05。基于 FSX 合并提交
 `0ac984784e69825011bafba97bed9bcf44e703d2`；已实现行为以
 [运行时契约](runtime-contract.md)为准。本文细化
