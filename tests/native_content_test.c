@@ -228,6 +228,33 @@ suite("Embedded content matching") {
     check_equal(record.text, "prefixone\ntwo");
     check_true(finish().complete);
   }
+  it("preserves CRLF bytes and later offsets in literal and regex matching") {
+    put("text.txt", "needle\r\nnext needle\n");
+    FsContentRequest r = request("needle");
+    for (uint32_t mode = FS_CONTENT_LITERAL; mode <= FS_CONTENT_PCRE2; mode++) {
+      r.mode = mode;
+      submit(&r);
+      acquire();
+      FsContentFileView file;
+      check_equal(fsx_content_batch_info(batch, &file), FS_OK);
+      check_equal(file.record_count, 2u);
+      FsContentRecordView record;
+      check_equal(fsx_content_batch_record(batch, 0, &record), FS_OK);
+      check_equal(record.line, UINT64_C(1));
+      check_equal(record.byte_offset, UINT64_C(0));
+      check_equal(record.text, "needle\r");
+      check_equal(record.text_bytes, (size_t)7);
+      check_equal(fsx_content_batch_record(batch, 1, &record), FS_OK);
+      check_equal(record.line, UINT64_C(2));
+      check_equal(record.byte_offset, UINT64_C(13));
+      check_equal(record.text, "next needle");
+      check_true(finish().complete);
+      fsx_content_batch_release(batch);
+      batch = NULL;
+      fsx_content_release(query);
+      query = NULL;
+    }
+  }
   it("matches a literal crossing a search window and a UTF8 read boundary") {
     size_t size = 131080;
     char *text = malloc(size);

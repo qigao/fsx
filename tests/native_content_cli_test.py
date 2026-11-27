@@ -32,7 +32,7 @@ class NativeContentCli(unittest.TestCase):
         return [json.loads(row) for row in result.stdout.splitlines()]
 
     def test_indexed_content_needs_no_tool_paths(self):
-        (self.root / '猫.txt').write_text('猫 needle needle\n', encoding='utf-8')
+        (self.root / '猫.txt').write_bytes('猫 needle needle\n'.encode('utf-8'))
         self.index()
         rows = self.rows(self.run_fsx('content', self.db, '--literal', 'needle',
                                       '--', 'file:'))
@@ -44,7 +44,7 @@ class NativeContentCli(unittest.TestCase):
         self.assertTrue(rows[-1]['candidates_known'])
 
     def test_pcre2_multiline_and_literal_semantics(self):
-        (self.root / 'text.txt').write_text('prefixone\ntwo\naXb\n', encoding='utf-8')
+        (self.root / 'text.txt').write_bytes(b'prefixone\ntwo\naXb\n')
         self.index()
         rows = self.rows(self.run_fsx('content', self.db, '--regex',
                                       r'(?<=prefix)one\ntwo', '--', 'file:'))

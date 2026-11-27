@@ -337,6 +337,14 @@ UTF-8 BOM. Patterns are at most 4096 UTF-8 bytes and cannot contain a literal LF
 regex escapes can express cross-line matches. An empty pattern selects each
 actual input line, with no fictitious line after a final LF.
 
+The qualified Windows LLVM-MinGW ugrep 7.8.5 external tool has a known input
+limitation: its CRT stdin remains in text mode, so CRLF becomes LF and later byte
+offsets count the translated stream. The embedded backend preserves CR bytes and
+original UTF-8 byte offsets after the BOM. This difference is covered explicitly;
+Windows native differential tests compare the full CRLF corpus against real
+ugrep reading the same file in binary mode. See the
+[upstream guard and external-tool boundary](docs/runtime-contract.md#external-processes-and-protocol).
+
 `content` searches the complete metadata scope on a snapshot pinned at submission,
 independent of the configured query window. Scope factories use the same query
 language without sorting or pagination; window factories select exactly the
@@ -398,8 +406,10 @@ validation; macOS and Windows runs remain separate platform qualifications.
 Enable the external API/CLI and differential tests with
 `FSX_BUILD_CONTENT_TESTS=ON`, an absolute `FSX_CONTENT_TEST_UGREP`, and on
 Linux/macOS an absolute `FSX_CONTENT_TEST_BFS`. Differential cases compare native
-records against real ugrep, including repeated/empty matches and cross-line
-regex. Linux/macOS CI build the pinned optional search-tools manifest feature.
+records against real ugrep, including repeated/empty matches, CRLF bytes and
+cross-line regex. Windows uses the tool's binary file input as the native oracle
+and separately verifies the external stdin translation described above.
+Linux/macOS CI build the pinned optional search-tools manifest feature.
 Windows CI qualifies the exact static LLVM-MinGW candidate from cache PR #282,
 commit `b247d9c4cf738fbf5640cd4ad82832e74929e756`, for the external backend.
 That package is unreleased and remains a test-only selection.

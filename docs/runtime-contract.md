@@ -325,7 +325,9 @@ fictitious trailing line. The embedded adapter preserves ugrep's special
 line-selection behavior for `^`, `$`, `^$`, `.*` and `.+`. Other PCRE2 empty
 matches follow ugrep's suppression unless the original pattern starts with `^`
 or ends with `$`. Content lines are delimited by LF; a CR in file text remains
-part of the text.
+part of the native matcher's text. These byte-preserving semantics also hold for
+the POSIX external backend. The qualified Windows LLVM-MinGW external tool's
+stdin translation is documented below.
 
 A file's records are held until matching completes and post-read checks confirm
 fd identity, size, mtime/change-time and path association. Observed changes discard
@@ -410,6 +412,25 @@ qualifies the static ugrep candidate from cache PR #282 at
 `b247d9c4cf738fbf5640cd4ad82832e74929e756`; this remains test-only qualification,
 not a production package release. Real-tool and source-owned process-peer tests
 cover handle exclusion and descendant cancellation.
+
+The qualified LLVM-MinGW ugrep 7.8.5 candidate has a known stdin limitation.
+Upstream [platform detection](https://github.com/Genivia/ugrep/blob/f2cc252c011460f6c75b1fb591813b4b6b59c225/src/ugrep.hpp)
+defines `OS_WIN_MINGW` instead of `OS_WIN` for this compiler, while the
+[stdin binary-mode switch](https://github.com/Genivia/ugrep/blob/f2cc252c011460f6c75b1fb591813b4b6b59c225/src/ugrep.cpp#L3468)
+is guarded only by `OS_WIN`. Consequently its CRT stdin converts CRLF to LF;
+record text omits that CR and later offsets count the translated stream. FSX
+still validates the original input bytes before feeding the tool, but the tool's
+reported offsets cannot be treated as original file offsets for CRLF input.
+This limitation is specific to the qualified external executable; the native
+matcher preserves the validated bytes after BOM removal on every platform.
+Other CRT text-mode behavior, including Ctrl-Z, has not been qualified.
+
+Windows differential tests retain the complete mixed LF/CRLF corpus and use
+real ugrep's named-file path, which opens `"rb"`, as the native oracle for all
+15 literal/regex cases. A separate Windows test explicitly checks the external
+stdin CRLF conversion and subsequent offset difference. Native-only API tests
+also assert CR retention and later byte offsets in literal and regex modes.
+The external process invocation and its accepted protocol remain unchanged.
 
 External BFS_LIVE owns one bfs child with a private process group and closed
 stdin. Discovery stdout/stderr are polled between file visits; while a visit or
