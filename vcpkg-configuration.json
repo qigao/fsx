@@ -3,7 +3,7 @@
     {
       "kind": "git",
       "repository": "https://github.com/qigao/vcpkg-cache",
-      "reference": "v0.1.002",
+      "reference": "d9f34af3f7bcad5ae2c8abf4ec95c7e93ad5d761",
       "baseline": "d9f34af3f7bcad5ae2c8abf4ec95c7e93ad5d761",
       "packages": [
         "zstd"

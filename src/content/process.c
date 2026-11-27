@@ -265,6 +265,18 @@ static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
     status = FS_IO;
   return status;
 }
+static FsStatus native_read(void *context, unsigned char *buffer,
+                             size_t capacity, size_t *bytes) {
+  int fd = *(int *)context;
+  ssize_t count;
+  do {
+    count = read(fd, buffer, capacity);
+  } while (count < 0 && errno == EINTR);
+  if (count < 0)
+    return fsx_content_os_status(errno);
+  *bytes = (size_t)count;
+  return FS_OK;
+}
 static FsStatus content_file(FsContentQuery *q, const FsEntry *entry,
                              FsContentBatch *b) {
   if (entry->flags & (FS_ENTRY_DIRECTORY | FS_ENTRY_LINK))
@@ -284,7 +296,10 @@ static FsStatus content_file(FsContentQuery *q, const FsEntry *entry,
   status =
       before.st_size < 0 || (uint64_t)before.st_size > q->request.max_file_bytes
           ? FS_LIMIT
-          : execute(q, fd, b);
+          : q->request.matcher_backend == FS_CONTENT_NATIVE
+                ? fsx_content_native_file(q, b, (uint64_t)before.st_size,
+                                            native_read, &fd)
+                : execute(q, fd, b);
   stamp = fsx_content_tick(b->profiled);
   if (status == FS_OK && (fstat(fd, &after) || !same_version(&before, &after)))
     status = FS_STALE;

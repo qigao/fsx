@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "scope": "Embedded search runtimes linked privately into FSX; external executable packages remain in vcpkg.json.",
+  "path_base": "repository root",
+  "hash_algorithm": "SHA-256",
+  "components": [
+    {
+      "name": "bfs traversal subset",
+      "source_directory": "third_party/bfs",
+      "upstream": {
+        "project": "bfs",
+        "repository": "https://github.com/tavianator/bfs",
+        "version": "4.1.7",
+        "commit": "6122b7fdab2a5adca17a6f94fb97c1206d8d4c68"
+      },
+      "license": {
+        "spdx": "0BSD",
+        "path": "third_party/bfs/LICENSE",
+        "sha256": "2f2e9708044ea0d691b4b33f1b632a70d8d267f4f5d9d13beddcf8811f0e6b8f"
+      },
+      "upstream_file_hashes": {
+        "path": "third_party/bfs/upstream.json",
+        "sha256": "3c8f75faddd4a4a3203aec299307307417fd196a3c288fa13a29f8f236dfb460",
+        "file_count": 29,
+        "meaning": "SHA-256 of original imported files at the pinned upstream commit."
+      },
+      "build": {
+        "target": "fsx_bfs",
+        "language": "C17 with target-private compiler extensions",
+        "platforms": [
+          "Linux",
+          "macOS"
+        ],
+        "visibility": "private"
+      },
+      "local_changes": [
+        {
+          "path": "third_party/bfs/src/bfstd.c",
+          "upstream_sha256": "92ad4fd1b2fe9d42cca217332690e0dc8958260e66729f79ddd8653cfdbdc4f3",
+          "local_sha256": "7fac8c287a2f2cae5c0379827cbbf7f62d9d91d498bbce2d05b9137dade43c8d",
+          "change": "Trimmed to filesystem/error wrappers needed by the traversal dependency closure."
+        },
+        {
+          "path": "third_party/bfs/src/diag.c",
+          "upstream_sha256": "490be15c7d5fc411e92ff40bff644d0c3e50ef9f280b31659264e5b90e4949cd",
+          "local_sha256": "da97d979ebbf3a5dbe29b353ef6de79a73fae40553d02d19fe17023f44e233de",
+          "change": "Trimmed to low-level diagnostics and invariant failure handling."
+        },
+        {
+          "path": "third_party/bfs/src/dstring.c",
+          "upstream_sha256": "8d3001d607e772e77626a57bdf84df554785682c6a0c0acedbe37f4f6691ebd4",
+          "local_sha256": "18e490ab0df66bcf31b867ea66819a0befc90f88be62cefdf756b0b43cc664d0",
+          "change": "Removed printf and shell-escaping helpers outside the traversal dependency closure."
+        }
+      ],
+      "fsx_integration_files": [
+        {
+          "path": "third_party/bfs/CMakeLists.txt",
+          "sha256": "6ac4086c2ca1fe9516ebfcbc94f9acebf9f972b773b4c6230d92fc02e970e51f"
+        },
+        {
+          "path": "third_party/bfs/allocation_redirect.h",
+          "sha256": "cf2b9090a4a1e762d4d66db780018f904733ebdc93758693f3c18699af671080"
+        },
+        {
+          "path": "third_party/bfs/bridge.c",
+          "sha256": "63752dec61feb45799fb1bb739ab7cef1b832a8ac96fc71a7533d4fbbe7f715a"
+        },
+        {
+          "path": "third_party/bfs/bridge.h",
+          "sha256": "7f47230d4785074d267d1e089b22773d1c69689f60f8cd144a1129ae4fbc815b"
+        },
+        {
+          "path": "third_party/bfs/config.h",
+          "sha256": "7ee16d0e6f68b572be0effc5850f6dd745f2843e2fbdc886cbc7c03360ee6c84"
+        },
+        {
+          "path": "third_party/bfs/namespace.h",
+          "sha256": "3e2ee405c6957d2040d968ce2624acfda3792d81444d86d4cdfb546f7fd1f19f"
+        },
+        {
+          "path": "third_party/bfs/private.h",
+          "sha256": "c11665c4c8b287b19a3062d008506bbac9fdd4883ef35481be061d7a3dccb066"
+        }
+      ],
+      "notes": [
+        "The bftw traversal algorithm is retained; three unrelated helper translation units are trimmed as recorded above.",
+        "FSX supplies a typed C bridge, symbol namespace, explicit platform configuration and target-local allocation redirection.",
+        "The CLI parser, expression evaluator, optimizer, actions and process launcher are excluded."
+      ]
+    },
+    {
+      "name": "RE/flex runtime from ugrep",
+      "source_directory": "third_party/reflex",
+      "upstream": {
+        "project": "ugrep",
+        "repository": "https://github.com/Genivia/ugrep",
+        "version": "7.8.5",
+        "commit": "f2cc252c011460f6c75b1fb591813b4b6b59c225"
+      },
+      "license": {
+        "spdx": "BSD-3-Clause",
+        "path": "third_party/reflex/LICENSE.txt",
+        "sha256": "486e9ad9225c5feca0477696ce84d42368680a06e36fbbb0f0cb14d1a2aa641f"
+      },
+      "upstream_file_hashes": {
+        "path": "third_party/reflex/SOURCE.json",
+        "sha256": "04aab9bd837d4d93496d8c1245cb61f4326f5d036c98b64de8f9c8c9c54882cc",
+        "file_count": 39,
+        "meaning": "SHA-256 of original imported files at the pinned upstream commit."
+      },
+      "build": {
+        "target": "fsx_reflex",
+        "language": "C++11 behind a private C ABI",
+        "platforms": [
+          "Linux",
+          "macOS",
+          "Windows"
+        ],
+        "visibility": "private"
+      },
+      "local_changes": [
+        {
+          "path": "third_party/reflex/lib/posix.cpp",
+          "upstream_sha256": "9cd9983a6d110cce46514850407f25c0742b87e2600fdb146a936f6ee189677a",
+          "local_sha256": "5689d190cfdbe4658d844da968f8b4b90c85a6fe95baf2166b43e5c0405f0bdf",
+          "change": "Deferred allocating lookup tables to C++11 function-local initialization within the matcher exception boundary."
+        },
+        {
+          "path": "third_party/reflex/lib/unicode.cpp",
+          "upstream_sha256": "e1dd0f61b0a609a3ff4bbb2c4bc68f6f161e6628c8ac5c1e644b463e3b0da191",
+          "local_sha256": "40857c28c7f66c73e5d713495dc028616a96ed623371dbaa48a947fc67980fe9",
+          "change": "Deferred allocating lookup tables to C++11 function-local initialization within the matcher exception boundary."
+        }
+      ],
+      "fsx_integration_files": [
+        {
+          "path": "third_party/reflex/CMakeLists.txt",
+          "sha256": "a580fb47fd51f101987e62a38cba05fd9d9296304d22078c59509c89633b2454"
+        }
+      ],
+      "notes": [
+        "The version identifies the ugrep source release containing the imported RE/flex runtime; it is not a standalone RE/flex release number.",
+        "FSX uses RE/flex for literal matching and expression conversion, and links the existing manifest PCRE2 dependency for regex execution.",
+        "Code generation, indentation and optional AVX2/AVX512 objects are excluded; baseline SSE2 or AArch64 NEON follows the selected target.",
+        "RE/flex upstream C++ allocations remain outside the FSX owned-memory counter; the private adapter catches exceptions at its C boundary."
+      ]
+    }
+  ]
+}

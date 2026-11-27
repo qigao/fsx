@@ -1,7 +1,7 @@
 # Current fsx runtime contract
 
-This describes the initial implementation. The design document contains the
-later journal, source-session and large-index architecture.
+This describes the implemented runtime and ownership boundaries. The design
+document also records later architecture and roadmap work.
 
 ## Owners and state transitions
 
@@ -125,14 +125,17 @@ or incremental database reader; loading still visits all committed rows.
 - Recursive `file:`/`folder:` modifiers have a separate 32-call admission guard,
   checked before descending or continuing after an earlier parse failure. The AST
   height limit also applies; 31 `file:` wrappers around a literal fit that limit.
-- PCRE2 uses the fsx allocator, match/depth/heap limits and explicit cancellation
-  callouts. Interpreter execution is the default. Optional JIT code and stack
+- Metadata-query PCRE2 uses the fsx allocator, match/depth/heap limits and explicit
+  cancellation callouts. Interpreter execution is the default. Optional JIT code and stack
   reservations are charged, with actual execution reported; JIT allocation peak
   is not a strict process-memory guarantee. No alternate regex library is used.
 - `owned_memory_budget` defaults to 256 MiB and bounds fsx-managed heap allocations,
-  including retained snapshots and PCRE2 allocator requests. It is **not** a global
-  process RSS limit. Engine/provider control objects, thread stacks and SQLite's
-  internal allocations are outside it. SQLite uses a 4 MiB writer page-cache target,
+  including retained snapshots, PCRE2 allocator requests and explicit allocations
+  in the embedded bfs target. It is **not** a global process RSS limit.
+  Engine/provider control objects, thread stacks, SQLite's internal allocations,
+  RE/flex's upstream C++ allocations and libc directory-stream storage are outside
+  it. The content section details those embedded-runtime exceptions. SQLite uses
+  a 4 MiB writer page-cache target,
   row/SQL length limits and file-backed temporary storage, not a certified global
   hard heap bound. The design's total-memory admission remains future work.
 - Parse, UTF, regex resource, cancellation and timeout errors are distinct from
@@ -141,239 +144,360 @@ or incremental database reader; loading still visits all committed rows.
 
 ## Content jobs
 
+### Backend selection and platform boundary
+
 The content runtime supports Linux/glibc 2.34+ (the selected Ubuntu 24.04 CI
-profile), native macOS 15 ARM64/x64 and Windows 10+ (native x64 LLVM-MinGW qualification). Other platforms
-return UNSUPPORTED at submission, even when a native ugrep package is available. FSX remains C11;
-ugrep executes as an explicitly supplied absolute executable, with no shell,
-PATH search, filter commands, archives or matcher fallback. The caller owns tool
-provenance/version selection. The existing pinned Linux 7.8.5 tool uses the
-protocol qualified in vcpkg-cache PR #282; this does not select an unreleased
-Windows package or update the infrastructure pin. Windows runtime CI builds and
-qualifies the exact static tool candidate from cache PR #282 at
-`b247d9c4cf738fbf5640cd4ad82832e74929e756`; that is test-only qualification,
-not a production dependency release. The caller supplies the absolute executable.
+profile), native macOS 15 ARM64/x64 and Windows 10+ with x64 LLVM-MinGW.
+Indexed windows and scopes support embedded and external matching on these
+platforms. BFS_LIVE is Linux/macOS only; Windows live submission returns
+`FS_UNSUPPORTED`. Other platforms return `FS_UNSUPPORTED` at submission.
 
-Windows uses CreateProcessW with explicit UTF-16 application/argv conversion and
-CRT quote/backslash escaping. It inherits only the three selected stdio handles,
-via STARTUPINFOEX's handle list, and receives a fixed C locale plus SystemRoot.
-It creates the suspended process directly in a private kill-on-close Job Object
-with the job-list attribute, then resumes it. Three byte-mode named pipes have
-overlapped parent I/O and synchronous child ends. Input, stdout and stderr advance
-through per-pipe events with 25 ms cancellation/deadline checks; pending I/O is
-cancelled and joined before buffers/events are released. Native failures and tool
-errors remain explicit; no synchronous-pipe or alternate-process fallback exists.
-Cleanup terminates the Job Object, waits for the root process and confirms zero
-active descendants before publishing terminal state. The Windows tests use the
-actual static ugrep and a source-owned process peer for handle exclusion and
-descendant cancellation. BFS_LIVE is unsupported on Windows.
+The public API and engine remain C11. The embedded matcher has a private C ABI
+implemented in C++11; the private POSIX bfs target uses C17 with its required
+compiler extensions. The pinned source versions, licenses, original hashes and
+local changes are recorded in [the vendor manifest](../third_party/manifest.json).
+No third-party headers or C++ types appear in the public API.
 
-Windows opens canonical drive/UNC roots and then each component through
-NtCreateFile relative to a verified directory handle. Reparse points, offline or
-recall-marked files and alternate data stream components are not read. Read checks
-bind the selected source's full 64-bit volume serial and existing 64-bit file key;
-before/after checks also compare the native 128-bit opened-file identity, size,
-LastWriteTime and ChangeTime, and then reopen the pathname association. This is
-still LIVE_READ, not a byte snapshot. Source identities are retained inside each
-immutable metadata snapshot, including page-patched NTFS revisions, without a
-content-time database reader. New Windows scans and NTFS sources use full 64-bit
-volume serials. Existing databases recording the former 32-bit serial require a
-fresh index database; mismatch reports stale and does not select a compatibility
-identity. Local NTFS is the qualified Windows profile; other volumes need their
-own acceptance.
+Use a request factory and recompile callers for the expanded request/info
+structures. Exactly one of `candidates`, `scope` or `root` is required:
 
-macOS uses the shared POSIX file/discovery pipeline, with explicit Darwin
-`st_mtimespec` / `st_ctimespec` fields for metadata and read-version checks.
-Darwin pipes use pipe + FD_CLOEXEC, while POSIX_SPAWN_CLOEXEC_DEFAULT admits only
-stdio dup actions in each child; Linux retains pipe2/close-from actions. Darwin
-sets F_SETNOSIGPIPE on the parent stdin write fd and does not change the host's
-SIGPIPE disposition or worker mask; Linux retains its worker-local mask/drain.
-There is no alternate spawn, signal or scan backend. The native macOS 15 ARM64
-profile uses runner Apple Clang and the fixed released Core/CMeta SDKs, whose
-Mach-O minimum deployment versions are 15.0. The versioned presets match that
-baseline. Intel macOS now has separate macos-x64 presets and a macos-15-intel CI
-job, using the same published packages and their x64 SDKs. Intel qualification is
-recorded independently from ARM64. Older OS releases remain
-unqualified.
-The APFS fixture explicitly verifies rejection of an ill-formed UTF-8 filename
-at creation; Linux exercises discovered invalid-name skips. File content remains
-UTF-8/NUL validated on both. macOS FSEvents uses the bounded native bridge
-described below; each native architecture runs the source-owned scan, content
-and watcher cases.
+| Selection | Embedded factory | External-tool factory |
+|---|---|---|
+| Retained result window | `fsx_content_native_request(result, pattern)` | `fsx_content_request(result, ugrep, pattern)` |
+| Complete metadata scope | `fsx_content_native_scope_request(scope, pattern)` | `fsx_content_scope_request(scope, ugrep, pattern)` |
+| Live root | `fsx_content_native_live_request(root, pattern)` | `fsx_content_live_request(root, bfs, ugrep, pattern)` |
 
-The expanded request/info structures require callers to recompile and use the
-request factories. `FsContentRequest` selects exactly the supplied retained `FsResult` window,
-including its original source coverage and metadata epoch. Submission copies
-the tool and pattern and retains the result; the caller can release its query
-and result immediately afterward. An offset/limit intentionally selects that
+`matcher_backend` selects `FS_CONTENT_NATIVE` or `FS_CONTENT_UGREP_PROCESS`.
+For live roots, `discovery_backend` selects `FS_DISCOVERY_BFTW` or
+`FS_DISCOVERY_BFS_PROCESS`. These choices are independent: an API caller can
+explicitly combine embedded discovery with an external matcher, or the reverse.
+Embedded backends require their corresponding tool pointer to be NULL; external
+backends require an absolute executable path. Indexed requests have no discovery
+operation and retain the factory's default discovery field with no bfs path.
+Ambiguous requests are invalid. There is no automatic PATH search, tool discovery
+or backend fallback. `FsContentInfo` reports the selected backend fields.
+
+Submission copies the pattern, scope/root and any selected tool paths. Patterns
+must be valid UTF-8, at most 4096 bytes and contain no literal LF. Empty patterns
+are accepted; regex escapes can express cross-line matches. External commands
+use no shell, filter commands or archive extraction. The caller owns external
+tool provenance/version selection. Embedded versions are fixed by the source
+manifest. CLI forms without tool paths use the native factories; explicit tool
+paths select the external factories.
+
+### Indexed candidate selection
+
+A window request retains exactly the supplied `FsResult`, including its original
+source coverage and metadata epoch. The caller can release its query and result
+immediately after submission. A result's offset/limit intentionally selects that
 window.
 
-`fsx_content_scope_request(scope, tool, pattern)` explicitly selects the entire
-metadata query scope. Exactly one of `candidates` or `scope` must be provided;
-an empty scope matches all entries. Submission copies the scope and captures
-the current immutable snapshot and source health under the engine mutex.
-The content worker compiles the existing query language once and scans that
-snapshot in entry order, invoking the per-file pipeline for each match. It
-allocates no all-candidate ID/path array, applies no sorting/window limit and
-opens no SQLite reader or FTS cursor across consumer backpressure. This is a
-fixed snapshot scan, not an automatic backend fallback. The query plan and
-PCRE2 limits use the engine heap budget. Scope regex callouts and each entry
-visit observe the content cancellation flag and execution deadline.
+A scope request selects the entire metadata query scope; an empty scope matches
+all entries. Submission copies the scope and captures the current immutable
+snapshot and source health under the engine mutex. The content worker compiles
+the existing query language once and scans that snapshot in entry order,
+invoking the per-file pipeline for each match. It allocates no all-candidate
+ID/path array, applies no sorting/window limit and opens no SQLite reader or FTS
+cursor across consumer backpressure. Scope query plans and PCRE2 allocations
+use the engine heap budget. Scope regex callouts and each entry visit observe
+the content cancellation flag and execution deadline.
 
 `scope_flags` accepts CASE_SENSITIVE and ALLOW_PARTIAL_TEXT; the explicit timezone
 offset has the same -840..840 minute bounds as ordinary queries. Other scope
 flags and scope options on a result-window request are rejected. Syntax/regex
-compilation errors are asynchronous task failures, before any content process
-starts, with diagnostics retained in `FsContentInfo`. Scope counts increase as
-matching candidates enter the file pipeline; `candidate_count_known` becomes
-true only after successful exhaustion. Failure/cancellation leaves a partial
-count with known=false; result-window counts are known at submission. The CLI
-uses this full scope entry and emits the flag as `candidates_known`.
+compilation errors are asynchronous task failures with diagnostics retained in
+`FsContentInfo`. Native content patterns are compiled once before candidate
+production. Scope counts increase as matching candidates enter the file pipeline;
+`candidate_count_known` becomes true only after successful exhaustion.
+Failure/cancellation leaves a partial count with known=false; result-window
+counts are known at submission. The CLI uses the full scope entry and emits the
+flag as `candidates_known`.
 
 New files absent from the pinned metadata snapshot are not included, even if a
 new indexing revision commits during the content task. Readers do not follow
 the engine's current snapshot after submission.
 
-`fsx_content_live_request(root, bfs, ugrep, pattern)` selects BFS_LIVE instead of
-an indexed window/scope. Exactly one of candidates, scope or root is required;
-bfs is required only with root. The root is an absolute UTF-8 path with no empty,
-dot, dot-dot or trailing components (except `/` itself). Tools are absolute paths
-copied at submission. The worker opens each root component with O_DIRECTORY and
-O_NOFOLLOW and pins its directory fd/device/inode before launching discovery:
+### Live discovery
+
+A live request selects BFS_LIVE instead of an indexed window/scope. The root is
+an absolute UTF-8 path with no empty, dot, dot-dot or trailing components
+(except `/` itself). The worker opens each root component with O_DIRECTORY and
+O_NOFOLLOW and pins its directory fd/device/inode before discovery.
+
+`FS_DISCOVERY_BFTW` calls the embedded bfs traversal bridge synchronously. It
+uses breadth-first, no-follow, single-device traversal, a cache of at most 32
+walker descriptors and zero additional bfs I/O threads. FSX owns the pinned root
+and active content-file descriptors separately. The bridge returns regular files
+through typed callbacks, borrows each path only for that callback and stops on
+its first traversal error. FSX copies a live path before an asynchronous queue
+handoff. No bfs CLI parser, expression evaluator, action or process launcher is
+embedded.
+
+All explicit bfs heap allocations are redirected inside its private target to
+`fsx_alloc`/`fsx_free`: paths, queues, arenas, allocation headers and alignment
+padding count against `owned_memory_budget`. A growing allocation charges both
+old and replacement storage until the old storage is released. The thread-local
+allocation scope is saved/restored around the walk; each allocation remembers
+its deallocator. libc's internal directory-stream allocations on macOS remain
+outside the managed counter and are bounded by the walker's descriptor limit.
+Callbacks check cancellation/deadlines; a blocked filesystem syscall has no hard
+interruption guarantee.
+
+`FS_DISCOVERY_BFS_PROCESS` instead runs the explicitly selected executable:
 
 ```text
 bfs -j1 -P -f ROOT -xdev -type f -print0
 ```
 
-Discovery includes hidden ordinary files, preserves hardlink aliases, ignores no
-names through `.gitignore`, follows no symlinks and stays on the root device.
-FSX reads NUL-delimited path bytes incrementally with an 8 KiB read block and a
-64 KiB owned frame buffer (at most 65,535 bytes per path). Empty, out-of-root,
-dot-component or unterminated frames fail with CORRUPT; overlong frames fail
-with LIMIT. Invalid UTF-8 names are counted as skipped candidates and are not
-opened or rewritten. The default discovery stdout budget is 64 MiB (1 byte to
-256 MiB configurable); the candidate bound is 1,000,000 (1..1,000,000 configurable).
-Exceeding either terminates with LIMIT and leaves candidate_count_known=false.
-Any stderr diagnostic, nonzero exit, signal or native pipe error fails discovery;
-up to 191 diagnostic bytes and the distinct discovery exit code remain available.
+Both discovery backends include hidden ordinary files, preserve hardlink aliases,
+apply no `.gitignore` rules, follow no symlinks and stay on the root device.
+Paths are limited to 65,535 bytes. Empty, out-of-root or dot-component paths fail
+with `FS_CORRUPT`; overlong paths fail with `FS_LIMIT`. Invalid UTF-8 names are
+counted as skipped candidates and are not opened or rewritten. The candidate
+bound defaults to 1,000,000 and accepts 1..1,000,000. `max_discovery_bytes`
+defaults to 64 MiB and accepts 1 byte..256 MiB. Exceeding either bound terminates
+with `FS_LIMIT` and leaves `candidate_count_known=false`.
 
-Every live file is opened relative to the pinned root, checking each descended
+For embedded discovery, `discovery_bytes` counts each admitted path's byte length
+plus one NUL, even though no byte stream is serialized. The external backend
+counts actual discovery stdout bytes. It reads an 8 KiB block into a bounded
+64 KiB path frame; an unterminated final frame is corrupt. Any stderr diagnostic,
+nonzero exit, signal or pipe error fails external discovery; up to 191 diagnostic
+bytes and the distinct discovery exit code remain available.
+
+Every live file opens relative to the pinned root, checking each descended
 directory and final regular file against the root device without following
-links. Object identity comes from the opened file, not bfs output. Metadata and
-path association are checked after matching; the root's pathname/device/inode
-association is also rechecked before file publication and after discovery. A
-root replacement makes the task stale; a missing/replaced candidate is counted
-as changed. In-place changes or namespace races may still escape observations,
-and bfs traversal has no global filesystem snapshot. Completeness describes a
-successful traversal and its confirmed file observations, not an immutable tree.
+links. Object identity comes from the opened file. Traversal metadata does not
+replace these checks. Metadata and path association are checked after matching;
+the root's pathname/device/inode association is also rechecked before file
+publication and after discovery. Root replacement makes the task stale; a
+missing/replaced candidate is counted as changed. In-place changes or namespace
+races may still escape observations, and bfs traversal has no global filesystem
+snapshot. Completeness describes successful traversal and confirmed file
+observations.
 
 Live batches own their original path and observed file key. `metadata_epoch`,
 `entry_key` and `key.source_id` are 0 because there is no indexed entry/snapshot;
 device/inode fields are observed native identity. BFS_LIVE neither reads index
 candidates nor writes metadata/content facts, even when the engine has an index.
 It is independent of index source health. `candidate_source` identifies WINDOW,
-SCOPE or BFS_LIVE. The `content-live` CLI uses an in-memory engine and needs no
-database argument; its summary labels the source `bfs_live` (indexed CLI:
-`index_scope`). Factory callers must recompile for the expanded request/info.
+SCOPE or BFS_LIVE regardless of backend. The `content-live` CLI uses an in-memory
+engine and needs no database argument; its summary labels the source `bfs_live`
+(indexed CLI: `index_scope`).
 
-A lazily created one-worker content pool is independent of the query and writer
-pools. At most one content task executes per engine. Each file uses one ugrep
-process with `-J1`, literal `-F` or explicit PCRE2 `-P`. The child receives a fixed
-C locale and no inherited interactive configuration. POSIX directory components
-are opened relative to fds with O_NOFOLLOW; only regular files with the selected
-device/inode identity are read. Fds use CLOEXEC, and child stdio pipes are wired
-explicitly in a private process group. Spawn closes all inherited fds above
-stderr using glibc's close-from file action. Only this worker blocks SIGPIPE; it drains
-new pending pipe signals before restoring its previous mask. BFS_LIVE additionally
-owns one bfs child with its own process group and closed stdin. The shared native
-child adapter restricts fd inheritance and reaps every admitted child. Discovery
-stdout/stderr are polled between file visits; while a file visit or consumer
-backpressure is outstanding, bfs pipes provide bounded kernel backpressure.
-No further bfs output is required for the current file's ugrep to complete.
-Cancellation exits the current visit, kills/reaps its matcher and then kills/reaps
-discovery. A stalled discovery poll observes cancellation/deadlines every 25 ms.
-`processes_started` counts both kinds; `discovery_processes_started` is the bfs
-subset and `running_processes` counts owned children until reaping: at most
-`parallel_files` matchers, plus one bfs for live traversal.
+### File observations and record semantics
 
-Input, stdout and stderr advance together through nonblocking pipes/poll. Input
-is checked incrementally for UTF-8 (including scalars crossing read boundaries)
-and NUL. A leading UTF-8 BOM is stripped; offsets refer to the resulting stream.
-UTF-16/32, NUL and invalid UTF-8 are skipped with incomplete coverage.
+Both matcher backends retain the same file-admission and post-read checks.
+POSIX directory components open relative to verified fds with O_NOFOLLOW; only
+regular files with the selected device/inode identity are read. macOS uses
+`st_mtimespec` / `st_ctimespec` for metadata and read-version checks. The APFS
+fixture verifies rejection of ill-formed UTF-8 filenames at creation; Linux
+exercises discovered invalid-name skips.
+
+Windows opens canonical drive/UNC roots and then each component through
+NtCreateFile relative to a verified directory handle. Reparse points, offline or
+recall-marked files and alternate data stream components are not read. Read checks
+bind the selected source's full 64-bit volume serial and existing 64-bit file key;
+before/after checks also compare the native 128-bit opened-file identity, size,
+LastWriteTime and ChangeTime, then reopen the pathname association. Source
+identities are retained inside each immutable metadata snapshot, including
+page-patched NTFS revisions, without a content-time database reader. Databases
+recording the former 32-bit volume serial require a fresh index database;
+mismatch reports stale. Local NTFS is the qualified Windows profile; other
+volumes need their own acceptance.
+
+File input is capped at 32 MiB by `max_file_bytes`, configurable downward to
+1 byte. Input is validated for UTF-8, including scalars crossing read boundaries,
+and NUL. A leading UTF-8 BOM is stripped; byte offsets refer to the resulting
+stream. NUL and invalid UTF-8 are skipped with incomplete coverage; there is no
+UTF-16/32 decoding.
 The incremental validator skips complete non-NUL ASCII words with bounded,
-unaligned-safe loads; UTF-8 scalar state still spans input blocks. This changes
-validation cost while retaining the same text acceptance and rejection rules. Symlinks,
+unaligned-safe loads; scalar state still spans validation blocks. Symlinks,
 directories and non-regular files are skipped. Denied/missing/replaced objects
 are counted explicitly. Other native I/O errors fail the task.
 
-The file's tool output is held until normal tool completion and post-read checks
-of fd identity, size, mtime/change-time and path association. Observed changes
-discard that file's records. Stat checks cannot prove that bytes belong to one
-atomic content version: results explicitly mean LIVE_READ observations in the
-reported read time window, not content at `metadata_epoch`. No content facts or
-FTS rows are written to SQLite.
+A record's one-based line number and zero-based byte offset identify the match;
+its text contains the complete line or lines covering that match, excluding an
+unmatched terminating LF. Repeated matches on the same line are separate records
+with distinct offsets and repeated full-line text. An empty pattern selects each
+actual input line; empty files produce no records, and a final LF creates no
+fictitious trailing line. The embedded adapter preserves ugrep's special
+line-selection behavior for `^`, `$`, `^$`, `.*` and `.+`. Other PCRE2 empty
+matches follow ugrep's suppression unless the original pattern starts with `^`
+or ends with `$`. Content lines are delimited by LF; a CR in file text remains
+part of the text.
 
-The fixed JSON record schema uses the tool's native `%~` terminator: LF on Linux/macOS,
-CRLF on Windows; each backend requires its exact framing. It is decoded into typed record views. Repeated
-matches on the same line produce separate records with their own byte offsets;
-record counts are not unique matching-line counts. Malformed/truncated JSON
-fails the file; exact escape decoding includes Unicode scalar/surrogate checks.
-The default raw-output bound is 8 MiB per file (configurable 1 KiB–8 MiB), with
-up to 10,000 record slots and a 64 KiB encoded frame limit. Record views point
-into the decoded output buffer. Input buffers are 64 KiB; file input is capped
-at 32 MiB (configurable downward). Stderr is drained with a 64 KiB cap and a
-192-byte diagnostic. These managed allocations use the engine heap budget;
-child RSS is separate and has no portable hard cap in this milestone.
+A file's records are held until matching completes and post-read checks confirm
+fd identity, size, mtime/change-time and path association. Observed changes discard
+that file's records. Stat checks cannot prove that bytes belong to one atomic
+content version: results explicitly mean LIVE_READ observations in the reported
+read time window, not content at `metadata_epoch`. No content facts or FTS rows
+are written to SQLite.
 
-`FsContentRequest.parallel_files` accepts exactly 1 or 2 and defaults to 1 in
-all request factories. Mode 1 preserves serial file processing and backpressure:
-an acquired batch must be released before another file opens. Explicit mode 2
-runs two CMeta worker threads, each with at most one matcher. The producer stays
-on the independent content pool. No failed thread/process admission retries in
-serial mode. The producer queues at most 128 candidates. Live paths are copied
-and limited to 1 MiB of queued bytes (including NULs); indexed paths borrow the
-pinned immutable snapshot. Up to two active candidate paths are additional to
-that queue budget. `queued_candidates`/`queued_path_bytes` expose waiting storage
-and return to zero at termination. A full queue blocks production; it never drops
-candidates or allocates an unbounded spool. The live root fd remains pinned until
-both workers have joined, including after bfs finishes producing.
+### Embedded matcher execution and limits
+
+`FS_CONTENT_NATIVE` compiles an immutable pattern once per job, retains it through
+the query lifetime and creates separate mutable state for each active file. FSX
+reads the complete file into a managed buffer, validates it in blocks of at most
+64 KiB, removes a leading BOM from the subject and then matches the complete
+validated subject. The buffer is released after match text has been copied into
+the owned result batch. A growing file can require old and replacement buffers
+simultaneously; both allocations count against the engine budget. Up to
+`parallel_files` input buffers can be active.
+
+Literal mode uses the imported RE/flex runtime with 64 KiB windows plus at most
+`pattern_bytes - 1` bytes of lookahead. Cross-window matches and ordinary
+non-overlapping match selection are preserved. Complete line text is located in
+the original input. Literal matching checks stop before each window and each
+match; line-span scans also use bounded cancellation checkpoints.
+
+Regex mode uses the existing manifest PCRE2 library and RE/flex expression
+conversion matching ugrep's UTF-8, multiline and newline handling. It applies the
+pattern to the complete subject, preserving lookbehind and cross-line matches.
+The PCRE2 match limit is 1,000,000, depth limit 256 and heap limit 32 MiB per
+matching context. JIT and start optimizations are disabled. Automatic callouts
+check cancellation/deadlines at the first and every 256th callout, in addition to
+checks before/after match operations. Resource exhaustion returns `FS_LIMIT`;
+allocation failure returns `FS_NOMEM`; invalid patterns return `FS_INVALID`.
+Compilation and kernel calls are not hard real-time cancellation points.
+
+The adapter, literal window, full input buffers, result copies and all PCRE2
+contexts/code/match allocations use the fsx allocator. RE/flex's internal C++
+containers, pattern compilation, expression conversion and initial matcher
+buffer use their upstream allocators and **are not charged to the engine's owned
+memory budget**. Pattern/input bounds do not turn this into a total process-memory
+guarantee. No global C++ allocator is replaced. C++ exceptions are caught at the
+private C boundary, including allocation failure. Two locally patched lookup
+tables initialize lazily within this boundary instead of at process startup.
+
+Native output is a typed callback followed by an owned UTF-8 text copy. There is
+no JSON serialization/decoding between the matcher and FSX. `max_output_bytes`
+charges the sum of each record's text bytes plus its terminating NUL, including
+repeated copies of one matching line. The default/maximum is 8 MiB per file and
+the minimum is 1 KiB. A single record's text is limited to 65,536 bytes. The CLI's
+later JSON encoding is outside this per-file representation; it does not change
+the C API budget.
+
+### External processes and protocol
+
+`FS_CONTENT_UGREP_PROCESS` uses one explicitly selected ugrep process per file
+with `-J1`, literal `-F` or PCRE2 `-P`, a fixed C locale and no inherited
+interactive configuration. Input, stdout and stderr advance together through
+bounded pipes. UTF-8 validation occurs while feeding the tool. Each file keeps
+its result unpublished until normal tool completion and the common post-read
+checks succeed. This external process section does not apply to embedded
+matching.
+
+On Linux, fds use CLOEXEC; child stdio is wired explicitly in a private process
+group, and glibc's close-from spawn action closes inherited fds above stderr.
+Only the worker blocks SIGPIPE, draining newly pending pipe signals before
+restoring its previous mask. macOS uses pipe + FD_CLOEXEC and
+POSIX_SPAWN_CLOEXEC_DEFAULT with stdio dup actions. F_SETNOSIGPIPE on the parent
+stdin write fd preserves the host's SIGPIPE disposition and worker mask. There
+is no alternate spawn or signal fallback.
+
+Windows external matching uses CreateProcessW with explicit UTF-16 application/
+argv conversion and CRT quote/backslash escaping. STARTUPINFOEX admits only the
+three selected stdio handles. The child receives the fixed locale plus SystemRoot
+and starts suspended directly in a private kill-on-close Job Object through the
+job-list attribute, then resumes. Three byte-mode named pipes have overlapped
+parent I/O and synchronous child ends. Per-pipe events advance input/stdout/stderr
+with 25 ms cancellation/deadline checks. Pending I/O is cancelled and joined
+before buffers/events are released. Cleanup terminates the Job Object, waits for
+the root process and confirms zero active descendants before terminal publication.
+There is no synchronous-pipe or alternate-process fallback. External Windows CI
+qualifies the static ugrep candidate from cache PR #282 at
+`b247d9c4cf738fbf5640cd4ad82832e74929e756`; this remains test-only qualification,
+not a production package release. Real-tool and source-owned process-peer tests
+cover handle exclusion and descendant cancellation.
+
+External BFS_LIVE owns one bfs child with a private process group and closed
+stdin. Discovery stdout/stderr are polled between file visits; while a visit or
+consumer backpressure is outstanding, bfs pipes provide bounded kernel
+backpressure. No further bfs output is required for the current file's matcher
+to complete. A stalled discovery poll observes cancellation/deadlines every
+25 ms. Cancellation stops the visit and kills/reaps any external matcher, then
+kills/reaps external discovery. All admitted children are reaped.
+
+The fixed JSON record schema uses ugrep's native `%~` terminator: LF on Linux/
+macOS and CRLF on Windows. Each platform requires its exact framing. Decoding
+checks JSON escapes, Unicode scalars and surrogate pairs; malformed/truncated
+JSON fails the file. External `max_output_bytes` counts raw protocol output,
+including framing and escaping, with the same 1 KiB..8 MiB range and 8 MiB
+default. The encoded frame limit is 64 KiB. Record views point into the decoded
+output buffer. This differs from the native text-plus-NUL budget; identical byte
+limits can admit different numbers of records. External input buffers are
+64 KiB. Stderr is drained with a 64 KiB cap and a 192-byte diagnostic. FSX's
+buffers count against the engine budget; child RSS is separate and has no
+portable hard cap.
+
+`processes_started` counts actual external matcher and discovery children;
+`discovery_processes_started` is the bfs subset and `running_processes` counts
+owned children until reaping. A fully embedded request keeps all three counters
+at zero. Mixed requests count only the external stages. The bound is at most
+`parallel_files` external matchers plus one external bfs for live traversal.
+Native traversal/matching do not invent exit statuses; external exit fields
+retain their existing process meaning.
+
+### Concurrency, publication and shutdown
+
+A lazily created one-worker content pool is independent of the query and writer
+pools. At most one content task executes per engine. `parallel_files` accepts
+exactly 1 or 2 and defaults to 1 in every factory. Mode 1 preserves serial file
+processing and backpressure: an acquired batch must be released before another
+file opens. Mode 2 runs two CMeta workers, each with at most one active matcher;
+the producer stays on the content pool. A failed thread/process admission does
+not retry in serial mode.
+
+The producer queues at most 128 candidates. Live paths are copied and limited to
+1 MiB of queued bytes including NULs; indexed paths borrow the pinned immutable
+snapshot. Up to two active candidate paths are additional to that queue budget.
+`queued_candidates`/`queued_path_bytes` expose waiting storage and return to zero
+at termination. A full queue blocks production; it never drops candidates or
+allocates an unbounded spool. The live root fd remains pinned until both workers
+join, including after either discovery backend finishes producing.
 
 Active files, completed unpublished files, the single pending publication and
 caller-retained batches share exactly `parallel_files` result slots. Each slot
-allocates up to `max_output_bytes + 1` raw bytes and `max_records` record views;
-mode 2 can therefore consume twice these per-file budgets, all charged to the
-engine's owned allocation budget. Holding both acquired batches stops further
-file reads. Publication wakes `content_wait`; acquiring transfers ownership and
-allows another completed slot to publish. Wait signals a batch or termination;
-consumers must acquire/release batches while waiting.
+allocates up to `max_output_bytes + 1` buffer bytes and `max_records` record
+views; mode 2 can consume twice these per-file capacities. These allocations
+count against the engine budget. Native full-file input and matcher state are
+additional active-file storage, with the RE/flex exception described above.
+Holding both acquired batches stops further file reads. Publication wakes
+`content_wait`; acquiring transfers ownership and allows another completed slot
+to publish. Wait signals a batch or termination; consumers must acquire/release
+batches while waiting.
 
-Decode/publication serializes the task-wide record count: at most `max_records`
-records are published across all files. Exceeding a file/output/record limit
-discards that entire unconfirmed file and terminates with LIMIT; earlier acquired
-batches remain valid. Mode 1 follows candidate order; mode 2 has unspecified
-cross-file arrival order. Both preserve native record order within a file.
-There is no global content sorting/pagination. The first fatal worker/producer
-status stops its peers and wakes queue/result waits; all started workers and
-owned children are joined before terminal publication. Diagnostics capture the
-first available native/tool text without mixing concurrent stderr streams;
-`tool_exit_code` is the most recently reaped matcher, not a per-file error list.
-This concurrency option makes no throughput or latency improvement claim;
-performance acceptance still requires same-machine measurements.
+Publication serializes the task-wide record count: at most `max_records` records
+are published across all files (default/maximum 10,000, minimum 1). Exceeding a
+file/output/record limit discards that entire unconfirmed file and terminates with
+`FS_LIMIT`; earlier acquired batches remain valid. Mode 1 follows candidate
+order; mode 2 has unspecified cross-file arrival order. Both preserve record
+order within a file. There is no global content sorting/pagination. The first
+fatal worker/producer status stops its peers and wakes queue/result waits; all
+started workers and owned children join before terminal publication. Diagnostics
+retain the first available matcher/native/tool text without mixing concurrent
+stderr streams. For external matching, `tool_exit_code` is the most recently
+reaped matcher, not a per-file error list. Backend/concurrency choices carry no
+throughput or latency guarantee.
 
-Acquired batches retain the query and its selected snapshot or owned live path and count as engine
-handles. Query release cancels unfinished work and discards an unacquired batch;
-acquired batches remain valid until explicitly released. Cancellation/STOPPING
-wakes consumer backpressure and kills the child process groups, then reaps the
-owned children before terminal publication. Close remains retryable while tasks or
-external query/result/batch handles exist. Execution deadlines use monotonic
-time; a wait deadline does not itself cancel. Regular-file kernel reads and
-native cleanup are not promised hard real-time interruption.
+Acquired batches retain the query and its selected snapshot or owned live path
+and count as engine handles. Query release cancels unfinished work and discards
+an unacquired batch; acquired batches remain valid until explicitly released.
+Cancellation/STOPPING wakes backpressure and queue waits. Embedded work observes
+cooperative stop points; external work additionally terminates process groups or
+the Windows Job Object and reaps children before terminal publication. Close
+remains retryable while tasks or external query/result/batch handles exist.
+Execution deadlines use monotonic time; a wait deadline does not itself cancel.
+Regular-file kernel reads, traversal syscalls and native cleanup have no hard
+real-time interruption guarantee.
 
-`FsContentInfo.complete` describes the selected window/full scope or live traversal. Indexed selection is subject to its captured
-coverage: terminal OK, no skipped/changed candidates and no captured source
-invalidation. It does not assert that the whole current filesystem was searched.
-Published record/file counters, process start/running counts, native tool exit
-status and diagnostics remain available through poll. No PDF/Office extraction
-is claimed by this API.
+`FsContentInfo.complete` describes the selected window/full scope or live
+traversal. Indexed selection is subject to its captured coverage: terminal OK,
+no skipped/changed candidates and no captured source invalidation. It does not
+assert that the whole current filesystem was searched. Published record/file
+counters, backend fields, process counts, exit statuses and diagnostics remain
+available through poll. No PDF/Office extraction is claimed by this API.
 
 ## Cooperative directory watches
 
@@ -459,8 +583,8 @@ context release callback before freeing bridge storage and its engine handle.
 Callers must join wait/scan before close. Native CoreFoundation/dispatch allocations
 and OS buffers are outside the managed-byte counter, like kernel inotify/RDC
 state. Native CI records ARM64 and Intel results separately. A dedicated Intel
-ASan/UBSan profile instruments FSX, the CLI and its native fixtures, including
-pending-callback close/reopen and thread handoff; it does not instrument the
+ASan/UBSan profile instruments FSX, its embedded modules, the CLI and native
+fixtures, including pending-callback close/reopen and thread handoff; it does not instrument the
 prebuilt SDKs or external bfs/ugrep binaries. UBSan uses
 `-fno-sanitize-recover=undefined` in both Linux and macOS profiles. ASan runtime
 defaults and protocol diagnostics remain intact. FSEvents history

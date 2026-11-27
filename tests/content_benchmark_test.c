@@ -175,7 +175,7 @@ static void setup(void) {
   check_not_null(measurements);
   check_not_null(query_measurements);
   fprintf(measurements,
-          "# format=fsx-content-benchmark-v3\n# build_type=%s\n# platform=%s\n"
+          "# format=fsx-content-benchmark-v4\n# build_type=%s\n# platform=%s\n"
           "# compiler=%s\n# sanitizers=%s\n# benchmark_source_sha256=%s\n"
           "# cache=warm-uncontrolled-os-cache\n"
           "# ugrep=%s\n",
@@ -484,10 +484,17 @@ static void run(const char *source, const char *pattern, const char *phase,
   bool baseline = !strcmp(phase, "baseline"), cancel = !strcmp(phase, "cancel");
   FsContentRequest r =
       fsx_content_scope_request("file:", FSX_TEST_UGREP, pattern);
+  if (!strcmp(source, "native_scope"))
+    r = fsx_content_native_scope_request("file:", pattern);
 #ifndef _WIN32
   if (!strcmp(source, "live"))
     r = fsx_content_live_request(root, FSX_TEST_BFS, FSX_TEST_UGREP, pattern);
+  else if (!strcmp(source, "native_bfs"))
+    r = fsx_content_native_live_request(root, pattern);
 #endif
+  bool native = r.matcher_backend == FS_CONTENT_NATIVE;
+  unsigned process_bound =
+      native ? 0 : parallel + (!strcmp(source, "live") ? 1u : 0u);
   r.parallel_files = parallel;
   r.max_output_bytes = 65536;
   r.deadline_ns = cmeta_hrtime() + UINT64_C(60000000000);
@@ -571,8 +578,7 @@ static void run(const char *source, const char *pattern, const char *phase,
         running_peak = info.running_processes;
       if (info.queued_candidates > queued_peak)
         queued_peak = info.queued_candidates;
-      check_true(info.running_processes <=
-                 parallel + (!strcmp(source, "live") ? 1u : 0u));
+      check_true(info.running_processes <= process_bound);
       check_true(info.queued_candidates <= 128);
       check_true(info.queued_path_bytes <= 1024 * 1024);
       if (info.finished && acquired == FS_END)
@@ -586,12 +592,20 @@ static void run(const char *source, const char *pattern, const char *phase,
     check_equal(info.queued_candidates, 0u);
     check_equal(info.queued_path_bytes, 0u);
     check_equal(info.match_records, records);
+    check_equal(info.matcher_backend, r.matcher_backend);
+    check_equal(info.discovery_backend, r.discovery_backend);
+    if (native) {
+      check_equal(info.processes_started, (uint64_t)0);
+      check_equal(info.discovery_processes_started, (uint64_t)0);
+    }
     if (!cancel) {
       check_true(info.candidate_count_known);
       check_equal(info.candidate_count, (uint64_t)current->files);
       check_equal(info.files_scanned, (uint64_t)current->files);
       check_equal(info.processes_started,
-                  (uint64_t)current->files + (!strcmp(source, "live") ? 1 : 0));
+                  native ? (uint64_t)0
+                         : (uint64_t)current->files +
+                               (!strcmp(source, "live") ? 1 : 0));
       check_equal(records,
                   (uint64_t)current->files * matches_per_file(pattern));
     } else {
@@ -686,11 +700,16 @@ suite("Real content throughput and concurrent metadata latency") {
       build_corpus(&corpora[c]);
       run("none", "none", "baseline", 0, 0, 0);
       for (unsigned s = 0; s < sizeof(sources) / sizeof(*sources); s++) {
+        const char *native_source = !strcmp(sources[s], "scope")
+                                        ? "native_scope"
+                                        : "native_bfs";
         for (unsigned p = 0; p < 3; p++) {
           if (c && p == 1)
             continue;
           const char *variants[] = {sources[s],
-                                    sources[s]
+                                    sources[s],
+                                    native_source,
+                                    native_source
 #ifndef _WIN32
                                     ,
                                     "direct",
@@ -699,23 +718,25 @@ suite("Real content throughput and concurrent metadata latency") {
                                     "profile"
 #endif
           };
-          unsigned count = 2;
+          unsigned count = 4;
 #ifndef _WIN32
           if (!s)
-            count = 6;
+            count = 8;
 #endif
           for (unsigned variant = 0; variant < count; variant++)
             run(variants[variant], patterns[p], "warmup", 0, variant,
                 variant % 2 + 1);
-          for (unsigned round = 1; round <= (count == 6 ? 6u : 4u); round++)
+          for (unsigned round = 1; round <= count; round++)
             for (unsigned position = 0; position < count; position++) {
               unsigned variant = (round - 1 + position) % count;
               run(variants[variant], patterns[p], "measure", round, position,
                   variant % 2 + 1);
             }
         }
-        for (unsigned mode = 1; mode <= 2; mode++)
+        for (unsigned mode = 1; mode <= 2; mode++) {
           run(sources[s], "anchor", "cancel", 0, mode - 1, mode);
+          run(native_source, "anchor", "cancel", 0, mode - 1, mode);
+        }
       }
       clear_corpus();
     }

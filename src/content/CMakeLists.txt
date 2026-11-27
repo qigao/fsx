@@ -1,7 +1,14 @@
-target_sources(fsx PRIVATE api.c parallel.c json.c text.c)
+add_subdirectory("${PROJECT_SOURCE_DIR}/third_party/reflex"
+  "${PROJECT_BINARY_DIR}/third_party/reflex")
+target_sources(fsx PRIVATE api.c parallel.c json.c text.c native.c matcher.cpp)
+target_compile_features(fsx PRIVATE cxx_std_11)
+target_link_libraries(fsx PRIVATE fsx_reflex)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  add_subdirectory("${PROJECT_SOURCE_DIR}/third_party/bfs"
+    "${PROJECT_BINARY_DIR}/third_party/bfs")
   target_compile_definitions(fsx PRIVATE FSX_POSIX_CONTENT=1)
-  target_sources(fsx PRIVATE process.c child_posix.c discovery_posix.c)
+  target_sources(fsx PRIVATE process.c child_posix.c discovery_posix.c discovery_native_posix.c)
+  target_link_libraries(fsx PRIVATE fsx_bfs)
 elseif(WIN32)
   target_sources(fsx PRIVATE process_windows.c)
 else()

@@ -15,6 +15,8 @@ typedef struct FsContentQuery FsContentQuery;
 typedef struct FsContentBatch FsContentBatch;
 enum { FS_CONTENT_LITERAL, FS_CONTENT_PCRE2 };
 enum { FS_CONTENT_WINDOW, FS_CONTENT_SCOPE, FS_CONTENT_BFS_LIVE };
+enum { FS_CONTENT_UGREP_PROCESS, FS_CONTENT_NATIVE };
+enum { FS_DISCOVERY_BFS_PROCESS, FS_DISCOVERY_BFTW };
 typedef struct FsContentRequest {
   uint32_t struct_size, api_version;
   const FsResult *candidates; /* Exactly this retained result window. */
@@ -35,6 +37,9 @@ typedef struct FsContentRequest {
   /* Explicit 1 or 2 file workers; factory default is 1. Output/record storage
    * is bounded per worker, including batches retained by the caller. */
   uint32_t parallel_files;
+  /* Explicit execution choices; native factories do not use tool paths.
+   * There is no automatic fallback between in-process and external tools. */
+  uint32_t matcher_backend, discovery_backend;
 } FsContentRequest;
 typedef struct FsContentInfo {
   FsStatus status;
@@ -51,6 +56,7 @@ typedef struct FsContentInfo {
   char diagnostic[192];
   /* Waiting candidates only; excludes the at most two active file paths. */
   uint32_t queued_candidates, queued_path_bytes;
+  uint32_t matcher_backend, discovery_backend;
 } FsContentInfo;
 typedef struct FsContentFileView {
   FsFileKey key;
@@ -189,6 +195,13 @@ FsContentRequest fsx_content_scope_request(const char *scope, const char *ugrep,
                                            const char *pattern);
 FsContentRequest fsx_content_live_request(const char *root, const char *bfs,
                                           const char *ugrep, const char *pattern);
+/* In-process matching (RE/flex literals, PCRE2 expressions). The live factory
+ * also selects the embedded POSIX bftw walker. No executable paths required. */
+FsContentRequest fsx_content_native_request(const FsResult *, const char *pattern);
+FsContentRequest fsx_content_native_scope_request(const char *scope,
+                                                  const char *pattern);
+FsContentRequest fsx_content_native_live_request(const char *root,
+                                                 const char *pattern);
 /* Linux / macOS / Windows native backends. BFS_LIVE requires Linux or macOS.
  * Other platforms explicitly return UNSUPPORTED.
  * One active content task per engine, independent of query/index pools.

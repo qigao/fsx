@@ -505,6 +505,15 @@ cleanup:
   fsx_free(line);
   return status;
 }
+static FsStatus native_read(void *context, unsigned char *buffer,
+                             size_t capacity, size_t *bytes) {
+  HANDLE file = *(HANDLE *)context;
+  DWORD count = 0;
+  if (!ReadFile(file, buffer, (DWORD)capacity, &count, NULL))
+    return native_status(GetLastError());
+  *bytes = count;
+  return FS_OK;
+}
 FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
                           FsContentBatch *b) {
   if (entry->flags & (FS_ENTRY_DIRECTORY | FS_ENTRY_LINK))
@@ -519,7 +528,11 @@ FsStatus fsx_content_file(FsContentQuery *q, const FsEntry *entry,
     return status;
   b->info.read_start_ns = cmeta_hrtime();
   uint64_t size = ((uint64_t)before.nFileSizeHigh << 32) | before.nFileSizeLow;
-  status = size > q->request.max_file_bytes ? FS_LIMIT : execute(q, file, b);
+  status = size > q->request.max_file_bytes
+               ? FS_LIMIT
+               : q->request.matcher_backend == FS_CONTENT_NATIVE
+                     ? fsx_content_native_file(q, b, size, native_read, &file)
+                     : execute(q, file, b);
   if (status == FS_OK) {
     status = file_info(q, file, &after, &after_basic, &after_volume);
     if (status == FS_OK && !same_file(&before, &before_basic, &before_volume,

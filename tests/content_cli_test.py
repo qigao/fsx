@@ -124,6 +124,30 @@ class ContentCli(unittest.TestCase):
         self.assertFalse(summary['complete'])
         self.assertEqual(summary['skipped'], 1)
 
+    def test_embedded_matching_agrees_with_the_real_ugrep_protocol(self):
+        (self.root / 'text.txt').write_bytes(
+            '猫 needle needle\n\ntext\r\nprefixone\ntwo\naXb\na.b\n猫x\nend'.encode('utf-8'))
+        self.index()
+        patterns = [
+            ('--literal', 'needle'), ('--literal', ''),
+            ('--literal', 'a.b'), ('--literal', '猫'),
+            ('--regex', r'(?<=prefix)one\ntwo'),
+            ('--regex', r'one\n'), ('--regex', r'\n'),
+            ('--regex', '^|$'), ('--regex', '^$'),
+            ('--regex', r'\w+'), ('--regex', r'\s+'),
+            ('--regex', r'[^x]+'), ('--regex', r'\C'),
+            ('--regex', '.*'), ('--regex', '.+'),
+        ]
+        for mode, pattern in patterns:
+            with self.subTest(mode=mode, pattern=pattern):
+                external = self.search(mode, pattern)
+                native = self.run_fsx('content', self.db, mode, pattern, '--', 'file:')
+                self.assertEqual(external.returncode, 0, external.stderr)
+                self.assertEqual(native.returncode, 0, native.stderr)
+                expected = [json.loads(row) for row in external.stdout.splitlines()]
+                actual = [json.loads(row) for row in native.stdout.splitlines()]
+                self.assertEqual(actual, expected)
+
     def test_invalid_arguments_do_not_create_database(self):
         for args in [(), (UGREP,), (UGREP, '--unknown', 'x', '--', 'file:')]:
             result = self.run_fsx('content', self.db, *args)
