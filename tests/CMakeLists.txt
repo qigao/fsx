@@ -8,6 +8,22 @@ cmake_add_test(fsx_ntfs_benchmark_test SOURCES ntfs_benchmark_test.c ntfs_measur
 set_tests_properties(fsx_ntfs_benchmark_test PROPERTIES TIMEOUT 300 LABELS "engine;ntfs;performance"
   RUN_SERIAL TRUE)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+cmake_add_test(fsx_native_content_test SOURCES native_content_test.c
+  LIBS Fsx::Fsx Salts::TinyTest Salts::Platform FOLDER tests/content)
+set_tests_properties(fsx_native_content_test PROPERTIES TIMEOUT 60
+  LABELS "content;native;integration"
+  ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  cmake_add_test(fsx_native_discovery_test SOURCES native_discovery_test.c
+    LIBS Fsx::Fsx Salts::TinyTest Salts::Platform unofficial::sqlite3::sqlite3 FOLDER tests/content)
+  set_tests_properties(fsx_native_discovery_test PROPERTIES TIMEOUT 60
+    LABELS "content;native;discovery;integration"
+    ENVIRONMENT "TEMP=${CMAKE_CURRENT_BINARY_DIR};TMP=${CMAKE_CURRENT_BINARY_DIR}")
+endif()
+add_test(NAME fsx_native_content_cli_test COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/native_content_cli_test.py" "$<TARGET_FILE:fsx_cli>")
+set_tests_properties(fsx_native_content_cli_test PROPERTIES TIMEOUT 60
+  LABELS "content;native;cli;e2e")
 if(FSX_BUILD_CONTENT_TESTS)
   if(NOT IS_ABSOLUTE "${FSX_CONTENT_TEST_UGREP}" OR NOT EXISTS "${FSX_CONTENT_TEST_UGREP}")
     message(FATAL_ERROR "FSX_CONTENT_TEST_UGREP must name the real native ugrep executable")

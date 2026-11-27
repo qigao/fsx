@@ -31,6 +31,18 @@ class ContentCli(unittest.TestCase):
     def search(self, mode, pattern):
         return self.run_fsx('content', self.db, UGREP, mode, pattern, '--', 'file:')
 
+    def file_records(self, mode, pattern):
+        # ugrep opens named files as "rb". Its LLVM-MinGW stdin path remains in
+        # CRT text mode, so a direct file is the byte-preserving Windows oracle.
+        result = subprocess.run(
+            [UGREP, '-J1', '-F' if mode == '--literal' else '-P',
+             '--color=never', '--line-buffered',
+             '--format={"line":%n,"offset":%b,"text":%J}%~',
+             '-e', pattern, '--', str(self.root / 'text.txt')],
+            capture_output=True, encoding='utf-8', timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return [json.loads(row) for row in result.stdout.splitlines()]
+
     def test_real_matches_are_records_with_live_read_summary(self):
         (self.root / '猫.txt').write_text('needle needle\n', encoding='utf-8')
         self.index()
@@ -123,6 +135,54 @@ class ContentCli(unittest.TestCase):
         summary = json.loads(result.stdout)
         self.assertFalse(summary['complete'])
         self.assertEqual(summary['skipped'], 1)
+
+    def test_embedded_matching_agrees_with_the_real_ugrep_protocol(self):
+        (self.root / 'text.txt').write_bytes(
+            '猫 needle needle\n\ntext\r\nprefixone\ntwo\naXb\na.b\n猫x\nend'.encode('utf-8'))
+        self.index()
+        patterns = [
+            ('--literal', 'needle'), ('--literal', ''),
+            ('--literal', 'a.b'), ('--literal', '猫'),
+            ('--regex', r'(?<=prefix)one\ntwo'),
+            ('--regex', r'one\n'), ('--regex', r'\n'),
+            ('--regex', '^|$'), ('--regex', '^$'),
+            ('--regex', r'\w+'), ('--regex', r'\s+'),
+            ('--regex', r'[^x]+'), ('--regex', r'\C'),
+            ('--regex', '.*'), ('--regex', '.+'),
+        ]
+        for mode, pattern in patterns:
+            with self.subTest(mode=mode, pattern=pattern):
+                external = self.search(mode, pattern)
+                native = self.run_fsx('content', self.db, mode, pattern, '--', 'file:')
+                self.assertEqual(external.returncode, 0, external.stderr)
+                self.assertEqual(native.returncode, 0, native.stderr)
+                expected = [json.loads(row) for row in external.stdout.splitlines()]
+                actual = [json.loads(row) for row in native.stdout.splitlines()]
+                oracle = self.file_records(mode, pattern)
+                records = [{key: row[key] for key in ('line', 'offset', 'text')}
+                           for row in actual[:-1]]
+                self.assertEqual(records, oracle)
+                self.assertEqual(actual[-1], {**expected[-1], 'records': len(oracle)})
+                if sys.platform != 'win32':
+                    self.assertEqual(actual, expected)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'LLVM-MinGW external stdin contract')
+    def test_windows_external_stdin_translation_is_explicit(self):
+        (self.root / 'text.txt').write_bytes(b'needle\r\nnext needle\n')
+        self.index()
+        external = self.search('--literal', 'needle')
+        native = self.run_fsx('content', self.db, '--literal', 'needle', '--', 'file:')
+        self.assertEqual(external.returncode, 0, external.stderr)
+        self.assertEqual(native.returncode, 0, native.stderr)
+        external_rows = [json.loads(row) for row in external.stdout.splitlines()]
+        native_rows = [json.loads(row) for row in native.stdout.splitlines()]
+        def fields(rows):
+            return [(row['line'], row['offset'], row['text']) for row in rows[:-1]]
+
+        self.assertEqual(fields(external_rows), [(1, 0, 'needle'), (2, 12, 'next needle')])
+        self.assertEqual(fields(native_rows), [(1, 0, 'needle\r'), (2, 13, 'next needle')])
+        self.assertEqual(native_rows[-1], external_rows[-1])
+        self.assertTrue(native_rows[-1]['complete'])
 
     def test_invalid_arguments_do_not_create_database(self):
         for args in [(), (UGREP,), (UGREP, '--unknown', 'x', '--', 'file:')]:

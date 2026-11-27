@@ -213,11 +213,14 @@ static FsStatus ntfs_command(FsEngine *engine, const char *command,
 }
 static FsStatus content_search(FsEngine *engine, const char *tool,
                                 const char *pattern, const char *scope,
-                                const char *bfs, bool regex, uint32_t parallel_files,
+                                const char *bfs, bool live, bool regex, uint32_t parallel_files,
                                 int *exit_code) {
   FsContentQuery *query = NULL;
-  FsContentRequest request = bfs ? fsx_content_live_request(scope, bfs, tool, pattern)
-                                 : fsx_content_scope_request(scope, tool, pattern);
+  FsContentRequest request = live
+      ? (tool ? fsx_content_live_request(scope, bfs, tool, pattern)
+              : fsx_content_native_live_request(scope, pattern))
+      : (tool ? fsx_content_scope_request(scope, tool, pattern)
+              : fsx_content_native_scope_request(scope, pattern));
   request.mode = regex ? FS_CONTENT_PCRE2 : FS_CONTENT_LITERAL;
   request.parallel_files = parallel_files;
   request.deadline_ns = fsx_engine_now_ns(engine) + UINT64_C(30000000000);
@@ -251,7 +254,7 @@ static FsStatus content_search(FsEngine *engine, const char *tool,
   if (status == FS_OK) status = info.status;
   printf("{\"type\":\"summary\",\"semantics\":\"live_read\",\"source\":\"%s\",\"complete\":%s,"
          "\"parallel_files\":%u,\"records\":%" PRIu64 ",\"candidates\":%" PRIu64 ",\"candidates_known\":%s,\"changed\":%" PRIu64
-         ",\"skipped\":%" PRIu64 "}\n", bfs ? "bfs_live" : "index_scope", info.complete ? "true" : "false",
+         ",\"skipped\":%" PRIu64 "}\n", live ? "bfs_live" : "index_scope", info.complete ? "true" : "false",
          parallel_files, info.match_records, info.candidate_count, info.candidate_count_known ? "true" : "false",
          info.changed_files, info.skipped_files);
   if (info.diagnostic[0]) fprintf(stderr, "%s\n", info.diagnostic);
@@ -273,8 +276,8 @@ static int run(int argc, char **argv) {
           "       fsx ntfs-watch DATABASE ROOT [--raw-mft|--raw-mft-sync] "
           "[--duration-ms N] "
           "[--updates N]\n"
-          "       fsx content DATABASE UGREP [--parallel-files 1|2] --literal|--regex PATTERN -- SCOPE\n"
-          "       fsx content-live BFS UGREP [--parallel-files 1|2] --literal|--regex PATTERN -- ROOT\n",
+          "       fsx content DATABASE [UGREP] [--parallel-files 1|2] --literal|--regex PATTERN -- SCOPE\n"
+          "       fsx content-live [BFS UGREP] [--parallel-files 1|2] --literal|--regex PATTERN -- ROOT\n",
           stderr);
     return 2;
   }
@@ -283,13 +286,22 @@ static int run(int argc, char **argv) {
   FsQueryOptions options = fsx_query_options();
   FsOpenError open_error = {0};
   config.open_error = &open_error;
-  int content_at = 4;
+  int content_at = live_content ? 2 : 3;
+  const char *content_tool = NULL, *discovery_tool = NULL;
   uint32_t parallel_files = 1;
   if (!strcmp(argv[1], "content") || live_content) {
-    if (argc > 4 && !strcmp(argv[4], "--parallel-files")) {
-      if (argc != 10 || !positive_u32(argv[5], &parallel_files) || parallel_files > 2)
+    if (content_at < argc && argv[content_at][0] != '-') {
+      if (live_content)
+        discovery_tool = argv[content_at++];
+      if (content_at == argc)
         return 2;
-      content_at = 6;
+      content_tool = argv[content_at++];
+    }
+    if (content_at < argc && !strcmp(argv[content_at], "--parallel-files")) {
+      if (content_at + 1 >= argc ||
+          !positive_u32(argv[content_at + 1], &parallel_files) || parallel_files > 2)
+        return 2;
+      content_at += 2;
     }
     if (argc != content_at + 4 ||
         (strcmp(argv[content_at], "--literal") && strcmp(argv[content_at], "--regex")) ||
@@ -401,8 +413,8 @@ static int run(int argc, char **argv) {
   }
   int exit_code = 0;
   if (!strcmp(argv[1], "content") || live_content) {
-    status = content_search(engine, argv[3], argv[content_at + 1], argv[content_at + 3],
-                             live_content ? argv[2] : NULL,
+    status = content_search(engine, content_tool, argv[content_at + 1], argv[content_at + 3],
+                             discovery_tool, live_content,
                              !strcmp(argv[content_at], "--regex"), parallel_files, &exit_code);
   } else if (!strcmp(argv[1], "ntfs-index") || !strcmp(argv[1], "ntfs-sync") ||
       !strcmp(argv[1], "ntfs-watch")) {

@@ -1,6 +1,7 @@
 #ifndef FSX_CONTENT_H
 #define FSX_CONTENT_H
 #include "../internal.h"
+#include "matcher.h"
 #include <errno.h>
 enum { FSX_CONTENT_QUEUE = 128, FSX_CONTENT_PATH_BYTES = 1024 * 1024 };
 typedef struct FsContentCandidate {
@@ -45,6 +46,7 @@ struct FsContentQuery {
   FsQuery scope_query;
   bool coverage_complete, needs_rescan;
   FsContentRequest request;
+  FsMatcher *matcher;
   char *tool, *pattern;
   char *root, *bfs;
   int root_fd;
@@ -79,6 +81,11 @@ FsStatus fsx_content_count_candidate(FsContentQuery *, const FsEntry *);
 FsStatus fsx_content_enqueue(FsContentQuery *, const FsEntry *);
 FsStatus fsx_content_parallel(FsContentQuery *, FsStatus (*)(FsContentQuery *));
 FsStatus fsx_content_discover(FsContentQuery *);
+FsStatus fsx_content_discover_native(FsContentQuery *);
+FsStatus fsx_content_native_compile(FsContentQuery *);
+typedef FsStatus (*FsContentRead)(void *, unsigned char *, size_t, size_t *);
+FsStatus fsx_content_native_file(FsContentQuery *, FsContentBatch *, uint64_t,
+                                 FsContentRead, void *);
 typedef struct FsTextState {
   uint32_t scalar, minimum;
   unsigned remaining;

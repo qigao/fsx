@@ -43,7 +43,9 @@ FsContentRequest fsx_content_request(const FsResult *candidates,
                         NULL,
                         1000000,
                         64 * 1024 * 1024,
-                        1};
+                        1,
+                        FS_CONTENT_UGREP_PROCESS,
+                        FS_DISCOVERY_BFS_PROCESS};
   return r;
 }
 FsContentRequest fsx_content_scope_request(const char *scope, const char *tool,
@@ -58,6 +60,25 @@ FsContentRequest fsx_content_live_request(const char *root, const char *bfs,
   FsContentRequest r = fsx_content_request(NULL, tool, pattern);
   r.root = root;
   r.bfs_executable = bfs;
+  return r;
+}
+FsContentRequest fsx_content_native_request(const FsResult *candidates,
+                                            const char *pattern) {
+  FsContentRequest r = fsx_content_request(candidates, NULL, pattern);
+  r.matcher_backend = FS_CONTENT_NATIVE;
+  return r;
+}
+FsContentRequest fsx_content_native_scope_request(const char *scope,
+                                                  const char *pattern) {
+  FsContentRequest r = fsx_content_native_request(NULL, pattern);
+  r.scope = scope;
+  return r;
+}
+FsContentRequest fsx_content_native_live_request(const char *root,
+                                                 const char *pattern) {
+  FsContentRequest r = fsx_content_native_request(NULL, pattern);
+  r.root = root;
+  r.discovery_backend = FS_DISCOVERY_BFTW;
   return r;
 }
 FsStatus fsx_content_stop(FsContentQuery *q) {
@@ -82,6 +103,7 @@ static void unref(FsContentQuery *q) {
   fsx_free(q->root);
   fsx_free(q->bfs);
   fsx_free(q->queue);
+  fsx_matcher_destroy(q->matcher);
   cmeta_cond_destroy(&q->changed);
   cmeta_mutex_destroy(&q->mutex);
   fsx_free(q);
@@ -191,8 +213,12 @@ FsStatus fsx_content_process(FsContentQuery *q, const FsEntry *entry,
     q->info.skipped_files++;
   else if (status == FS_OK) {
     uint64_t decode_start = fsx_content_tick(b->profiled);
-    status = fsx_content_decode(b, q->request.max_records -
-                                       (uint32_t)q->info.match_records);
+    uint32_t remaining = q->request.max_records - (uint32_t)q->info.match_records;
+    if (q->request.matcher_backend == FS_CONTENT_NATIVE) {
+      if (b->info.record_count > remaining)
+        status = FS_LIMIT;
+    } else
+      status = fsx_content_decode(b, remaining);
     fsx_content_tock(b->profiled, decode_start, &b->timing.decode_ns);
   }
   if (q->metrics) {
@@ -227,7 +253,9 @@ static FsStatus produce(FsContentQuery *q) {
     return status;
   if (q->root) {
 #ifdef FSX_POSIX_CONTENT
-    status = fsx_content_discover(q);
+    status = q->request.discovery_backend == FS_DISCOVERY_BFTW
+                 ? fsx_content_discover_native(q)
+                 : fsx_content_discover(q);
 #endif
   } else if (q->request.scope)
     status = fsx_query_visit(&q->scope_query, fsx_content_visit, q);
@@ -240,9 +268,13 @@ static FsStatus produce(FsContentQuery *q) {
 }
 static void run(void *context) {
   FsContentQuery *q = context;
-  FsStatus status = q->request.parallel_files == 2
-                        ? fsx_content_parallel(q, produce)
-                        : produce(q);
+  FsStatus status = fsx_content_stop(q);
+  if (status == FS_OK && q->request.matcher_backend == FS_CONTENT_NATIVE)
+    status = fsx_content_native_compile(q);
+  if (status == FS_OK)
+    status = q->request.parallel_files == 2
+                 ? fsx_content_parallel(q, produce)
+                 : produce(q);
 #ifdef FSX_POSIX_CONTENT
   if (q->root_fd >= 0) {
     if (status == FS_OK)
@@ -296,9 +328,13 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
   if (!e || !r || r->struct_size != sizeof(*r) ||
       r->api_version != FSX_API_VERSION ||
       (!!r->candidates + !!r->scope + !!r->root != 1) ||
-      (!r->root && r->bfs_executable) ||
-      (r->root && (!r->bfs_executable || r->bfs_executable[0] != '/' ||
-                   strlen(r->bfs_executable) > 65535 ||
+      r->matcher_backend > FS_CONTENT_NATIVE ||
+      r->discovery_backend > FS_DISCOVERY_BFTW ||
+      (!r->root && (r->bfs_executable || r->discovery_backend != FS_DISCOVERY_BFS_PROCESS)) ||
+      (r->root && ((r->discovery_backend == FS_DISCOVERY_BFS_PROCESS
+                       ? (!r->bfs_executable || r->bfs_executable[0] != '/' ||
+                          strlen(r->bfs_executable) > 65535)
+                       : r->bfs_executable != NULL) ||
                    strlen(r->root) > 65535 || !fsx_content_root_path(r->root) ||
                    !fsx_utf8(r->root, strlen(r->root)) || r->scope_flags ||
                    r->timezone_offset_minutes || !r->max_candidates ||
@@ -311,8 +347,10 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
       r->scope_flags &
           ~(FS_QUERY_CASE_SENSITIVE | FS_QUERY_ALLOW_PARTIAL_TEXT) ||
       r->timezone_offset_minutes < -840 || r->timezone_offset_minutes > 840 ||
-      !r->ugrep_executable || !fsx_content_tool_path(r->ugrep_executable) ||
-      strlen(r->ugrep_executable) > 65535 || !r->pattern ||
+      (r->matcher_backend == FS_CONTENT_UGREP_PROCESS
+           ? (!fsx_content_tool_path(r->ugrep_executable) ||
+              strlen(r->ugrep_executable) > 65535)
+           : r->ugrep_executable != NULL) || !r->pattern ||
       strlen(r->pattern) > 4096 || strchr(r->pattern, '\n') ||
       !fsx_utf8(r->pattern, strlen(r->pattern)) || r->mode > FS_CONTENT_PCRE2 ||
       !r->max_records || r->max_records > 10000 || r->max_output_bytes < 1024 ||
@@ -335,14 +373,16 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
     atomic_fetch_add(&q->candidates->refs, 1);
   if (r->scope)
     q->scope_query.text = fsx_copy(e, r->scope, strlen(r->scope));
-  q->tool = fsx_copy(e, r->ugrep_executable, strlen(r->ugrep_executable));
+  if (r->ugrep_executable)
+    q->tool = fsx_copy(e, r->ugrep_executable, strlen(r->ugrep_executable));
   q->pattern = fsx_copy(e, r->pattern, strlen(r->pattern));
   q->request.ugrep_executable = q->tool;
   q->request.pattern = q->pattern;
   q->request.scope = q->scope_query.text;
   if (r->root) {
     q->root = fsx_copy(e, r->root, strlen(r->root));
-    q->bfs = fsx_copy(e, r->bfs_executable, strlen(r->bfs_executable));
+    if (r->bfs_executable)
+      q->bfs = fsx_copy(e, r->bfs_executable, strlen(r->bfs_executable));
   }
   q->request.root = q->root;
   q->request.bfs_executable = q->bfs;
@@ -350,10 +390,10 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
   cmeta_cond_init(&q->changed);
   if (r->parallel_files == 2)
     q->queue = fsx_alloc(e, FSX_CONTENT_QUEUE * sizeof(*q->queue));
-  if (!q->tool || !q->pattern || !q->mutex || !q->changed ||
+  if ((r->ugrep_executable && !q->tool) || !q->pattern || !q->mutex || !q->changed ||
       (r->parallel_files == 2 && !q->queue) ||
       (r->scope && !q->scope_query.text) ||
-      (r->root && (!q->root || !q->bfs))) {
+      (r->root && (!q->root || (r->bfs_executable && !q->bfs)))) {
     fsx_result_unref(q->candidates);
     fsx_free(q->scope_query.text);
     fsx_free(q->tool);
@@ -382,6 +422,8 @@ FsStatus fsx_content_submit(FsEngine *e, const FsContentRequest *r,
     q->info.candidate_count_known = true;
   }
   q->info.status = FS_WAIT;
+  q->info.matcher_backend = r->matcher_backend;
+  q->info.discovery_backend = r->discovery_backend;
   q->info.candidate_source = r->root    ? FS_CONTENT_BFS_LIVE
                              : r->scope ? FS_CONTENT_SCOPE
                                         : FS_CONTENT_WINDOW;

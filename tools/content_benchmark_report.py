@@ -25,20 +25,24 @@ def read_measurements(path):
     rows = list(csv.DictReader(line for line in lines if not line.startswith("#")))
     if len(accepted) != 1 or int(accepted[0].split("operations=")[1]) != len(rows):
         raise ValueError("incomplete native acceptance or incorrect operation count")
-    if metadata["format"] != "fsx-content-benchmark-v3":
+    if metadata["format"] not in ("fsx-content-benchmark-v3", "fsx-content-benchmark-v4"):
         raise ValueError("unsupported measurement format")
     text = {"corpus", "source", "pattern", "phase", "input_hash"}
     return metadata, [{k: v if k in text else int(v) for k, v in row.items()} for row in rows]
 
 
-def schedule(sources):
+def schedule(sources, native_backends=False):
     expected = []
     for corpus in ("small", "large"):
         expected.append((corpus, "none", "none", "baseline", 0, 0, 0))
         for source in sources:
             variants = [(source, 1), (source, 2)]
+            native_source = "native_scope" if source == "scope" else "native_bfs"
+            if native_backends:
+                variants += [(native_source, 1), (native_source, 2)]
             if source == "scope" and "live" in sources:
                 variants += [("direct", 1), ("direct", 2), ("profile", 1), ("profile", 2)]
+            rounds = len(variants) if native_backends else (6 if len(variants) == 6 else 4)
             for pattern in (("anchor", "needle", "absent") if corpus == "small"
                             else ("anchor", "absent")):
                 expected.extend((corpus, origin, pattern, "warmup", 0, pos, mode)
@@ -46,9 +50,12 @@ def schedule(sources):
                 expected.extend((corpus, variants[(rnd - 1 + pos) % len(variants)][0],
                                  pattern, "measure", rnd, pos,
                                  variants[(rnd - 1 + pos) % len(variants)][1])
-                                for rnd in range(1, 7 if len(variants) == 6 else 5) for pos in range(len(variants)))
+                                for rnd in range(1, rounds + 1) for pos in range(len(variants)))
             expected.extend((corpus, source, "anchor", "cancel", 0, mode - 1, mode)
                             for mode in (1, 2))
+            if native_backends:
+                expected.extend((corpus, native_source, "anchor", "cancel", 0, mode - 1, mode)
+                                for mode in (1, 2))
     return Counter(expected)
 
 
@@ -65,8 +72,9 @@ def distribution(values, scale=1):
 def summarize(measurement_path, query_path):
     metadata, rows = read_measurements(measurement_path)
     sources = ("scope",) if metadata["platform"].startswith("Windows/") else ("scope", "live")
+    native_backends = metadata["format"] == "fsx-content-benchmark-v4"
     fields = ("corpus", "source", "pattern", "phase", "round", "position", "parallel_files")
-    if Counter(tuple(row[k] for k in fields) for row in rows) != schedule(sources):
+    if Counter(tuple(row[k] for k in fields) for row in rows) != schedule(sources, native_backends):
         raise ValueError("missing/duplicate/unbalanced benchmark operations")
     operations = {row["operation"]: row for row in rows}
     if sorted(operations) != list(range(1, len(rows) + 1)) or len(operations) != len(rows):
@@ -79,13 +87,15 @@ def summarize(measurement_path, query_path):
         if row["files"] != expected_files or row["bytes"] != expected_bytes:
             raise ValueError("unexpected corpus size")
         baseline, cancel = row["phase"] == "baseline", row["phase"] == "cancel"
+        native = row["source"] in ("native_scope", "native_bfs")
         if row["status"] != (-6 if cancel else 0) or row["end_ns"] <= row["start_ns"]:
             raise ValueError("failed operation or nonpositive observation window")
         if row["owned_sampled_peak"] < row["owned_base"]:
             raise ValueError("invalid sampled allocation peak")
         if row["queued_sampled_peak"] > 128:
             raise ValueError("candidate queue exceeded its bound")
-        if row["running_sampled_peak"] > row["parallel_files"] + (row["source"] == "live"):
+        process_bound = 0 if native else row["parallel_files"] + (row["source"] == "live")
+        if row["running_sampled_peak"] > process_bound or (native and row["processes"]):
             raise ValueError("native process count exceeded its bound")
         if row["source"] == "direct":
             if (row["queued_sampled_peak"] or row["spawn_call_ns"] <= 0
@@ -123,7 +133,7 @@ def summarize(measurement_path, query_path):
                         64 if row["corpus"] == "small" else 256)
             if (row["records"] != expected or row["files_scanned"] != row["files"]
                     or row["candidates"] != row["files"]
-                    or row["processes"] != row["files"] + (row["source"] == "live")):
+                    or row["processes"] != (0 if native else row["files"] + (row["source"] == "live"))):
                 raise ValueError("inconsistent native result/process totals")
             if bool(row["first_batch_ns"]) != bool(expected) or row["cancel_ns"]:
                 raise ValueError("invalid first-result/cancellation timing")
@@ -208,19 +218,40 @@ def summarize(measurement_path, query_path):
             profiling_comparisons.append({"corpus": corpus, "pattern": pattern,
                                           "parallel_files": parallel,
                                           "profiled_wall_div_unprofiled": profiled["wall_ms"]["median"] / scoped["wall_ms"]["median"]})
+    native_comparisons = []
+    for (corpus, source, pattern, parallel), native in indexed.items():
+        if source in ("native_scope", "native_bfs"):
+            external_source = "scope" if source == "native_scope" else "live"
+            external = indexed[corpus, external_source, pattern, parallel]
+            native_comparisons.append({
+                "corpus": corpus, "source": source, "external_source": external_source,
+                "pattern": pattern, "parallel_files": parallel,
+                "external_median_wall_div_native":
+                    external["wall_ms"]["median"] / native["wall_ms"]["median"],
+                "native_sampled_owned_increase_bytes": native["sampled_owned_increase_bytes"],
+                "external_sampled_owned_increase_bytes": external["sampled_owned_increase_bytes"],
+            })
+    sampling = (
+        "Warm uncontrolled OS cache; fixed small corpus; eight measured scope/native_scope/direct/profile "
+        "samples per mode/case on POSIX; four scope/native_scope samples on Windows; four live/native_bfs samples on POSIX."
+        if native_backends else
+        "Warm uncontrolled OS cache; fixed small corpus; six measured scope/direct/profile samples and four live samples per mode/case."
+    )
     return {"metadata": metadata, "operations": len(rows), "matched_inputs": True,
             "balanced_positions": True, "groups": groups, "observed_ratios": ratios,
             "direct_comparisons": direct_comparisons, "profiling_comparisons": profiling_comparisons,
-            "limitations": ["Warm uncontrolled OS cache; fixed small corpus; six measured scope/direct/profile samples and four live samples per mode/case.",
+            "native_comparisons": native_comparisons,
+            "limitations": [sampling,
                             "Native validation and observer overhead are included in content wall time.",
                             "Query quantiles use only wholly contained observations; P50/P95/P99 are nearest-rank.",
-                            "Allocation/process/queue peaks are sampled lower bounds, not RSS or child memory limits.",
+                            "Allocation/process/queue peaks are sampled lower bounds, not RSS or child memory limits. Owned bytes exclude SQLite, external-tool and upstream RE/flex C++ allocations.",
+                            "Native comparisons validate identical fixture records and retain FSX file identity, text and post-read checks. They compare whole backends, including native pattern preparation and input buffering, without private profiling instrumentation.",
                             "No cold-cache, 100k-file, batch-ugrep, CPU/RSS or production-tail-latency acceptance.",
                             "Cancellation starts at the first acquired confirmed file; these are not hung-child timings.",
                             "Hosted profiles and sanitizer timings must be analyzed separately; no speed threshold.",
                             "Private POSIX profiling is opt-in; stage spans overlap across file workers. File CPU excludes decode, producer, metadata-query and child CPU. File wall includes profiling calls; decode is separate.",
                             "POSIX direct controls reopen immutable fixture paths, use regular temporary output files and blocking waitpid; omit FSX identity/text/post-read checks, streaming backpressure and cooperative cancellation.",
-                            "Direct spawn-call time is not a ready-to-match metric; child lifetime includes spawn, matching and reaping. Stage sums overlap across parallel workers and are not wall-time components. Per-process stage quantiles describe four per-run averages, not individual child samples."]}
+                            "Direct spawn-call time is not a ready-to-match metric; child lifetime includes spawn, matching and reaping. Stage sums overlap across parallel workers and are not wall-time components. Per-process stage quantiles describe per-run averages, not individual child samples."]}
 
 
 def sha256(path):
@@ -242,11 +273,21 @@ def main():
                       "machine": platform.machine(), "logical_cpus_visible": os.cpu_count()}
     result["raw_sha256"] = {path.name: sha256(path) for path in (args.measurements, args.queries)}
     repo = Path(__file__).resolve().parent.parent
-    result["source_sha256"] = {path: sha256(repo / path) for path in (
+    source_paths = (
         "tests/content_benchmark_test.c", "tests/CMakeLists.txt", "tools/content_benchmark_report.py",
         "src/content/text.c", "src/content/content.h", "src/internal.h", "tests/content_text_test.c",
         "src/content/api.c", "src/content/parallel.c", "src/content/process.c",
-        "src/content/process_windows.c", "src/content/discovery_posix.c")}
+        "src/content/process_windows.c", "src/content/discovery_posix.c")
+    if result["metadata"]["format"] == "fsx-content-benchmark-v4":
+        source_paths += ("include/fsx/api.h", "src/content/CMakeLists.txt",
+                         "src/content/native.c", "src/content/matcher.h", "src/content/matcher.cpp",
+                         "src/content/discovery_native_posix.c")
+        result["vendor_sha256"] = {
+            path.relative_to(repo).as_posix(): sha256(path)
+            for vendor in ("bfs", "reflex")
+            for path in sorted((repo / "third_party" / vendor).rglob("*")) if path.is_file()
+        }
+    result["source_sha256"] = {path: sha256(repo / path) for path in source_paths}
     if result["source_sha256"]["tests/content_benchmark_test.c"] != result["metadata"]["benchmark_source_sha256"]:
         raise ValueError("native benchmark was built from different source")
     result["tools_captured"] = args.capture_tools

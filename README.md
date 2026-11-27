@@ -1,7 +1,9 @@
 # FileSearch (fsx)
 
-A working C11/CMeta file-search library and CLI using SaltsCore, SQLite FTS5 and
-PCRE2. The [design](docs/FileSearch-C11-设计.md) remains the roadmap; the current
+A file-search library with a C11/CMeta API and CLI using SaltsCore, SQLite FTS5,
+PCRE2, embedded RE/flex matching and POSIX bfs traversal. The private matcher
+uses C++11; the public API and engine remain C. The
+[design](docs/FileSearch-C11-设计.md) remains the roadmap; the current
 implementation includes directory/RDC scanning, NTFS MFT/USN and FTS5 candidate planning; later
 milestones remain on the roadmap.
 
@@ -16,16 +18,19 @@ milestones remain on the roadmap.
   bounded owned NTFS batches, and page-limited SQLite memory work sets.
 - Asynchronous queries on SaltsCore's bounded thread pool, retained results,
   cancellation, deadlines, STOPPING/close and allocation/admission limits.
-- Linux/macOS/Windows asynchronous UTF-8 content jobs over a retained result window or a full
-  metadata scope streamed from a pinned snapshot, using
-  an explicit native ugrep executable, per-file batches and consumer backpressure.
-- Explicit Linux/macOS bfs live discovery for unindexed directories, with root-relative
-  file opens, bounded NUL path frames and no index writes.
+- Linux/macOS/Windows asynchronous UTF-8 content jobs over a retained result window
+  or a full metadata scope streamed from a pinned snapshot. Embedded RE/flex
+  literal matching and the existing PCRE2 library require no tool executable;
+  per-file batches retain identity checks and consumer backpressure.
+- Linux/macOS live discovery for unindexed directories through an embedded bfs
+  traversal subset, with verified root-relative file opens and no index writes.
+  Explicit external bfs/ugrep backends remain available for comparison.
 - Unicode 17 full-fold substring search, scalar-aware glob matching, scoped
   `case:`/`path:`, AND/OR/NOT/groups, `file:`/`folder:`, extension sets, checked
   size filters and fixed-timezone modification-day filters.
-- PCRE2 Unicode/byte regex, bounded execution and optional JIT. Query diagnostics
-  identify source byte offsets. Results report actual semantic versions.
+- Metadata-query PCRE2 Unicode/byte regex, bounded execution and optional JIT.
+  Query diagnostics identify source byte offsets. Results report actual semantic
+  versions. Embedded content regex uses bounded PCRE2 interpreter execution.
 - Stable sorting and pagination, exact totals within indexed coverage, persistent
   revisions and stable database entry keys.
 - FTS5 name-literal candidates with database identity/revision admission and
@@ -52,11 +57,11 @@ boundaries and limits. The C API is in [api.h](include/fsx/api.h); CMeta value a
 status declarations are in [types.h](include/fsx/types.h).
 
 The [cross-platform and content-search proposal](docs/cross-platform-content-search.md)
-defines Linux inotify/macOS FSEvents and explicit bfs/ugrep content jobs. These
-milestones include Linux inotify, Linux/macOS/Windows indexed content jobs, and
-Linux/macOS bfs live discovery with an explicit separate request/CLI command.
-macOS FSEvents uses a native dispatch-queue backend;
-wait/scan consume a bounded event-flag bridge and reconcile the root.
+records the earlier inotify/FSEvents and external bfs/ugrep milestones. The
+current [runtime contract](docs/runtime-contract.md#content-jobs) also covers
+embedded matching and traversal, explicit backend selection and their memory
+limits. macOS FSEvents uses a native dispatch-queue backend; wait/scan consume a
+bounded event-flag bridge and reconcile the root.
 
 ## Build policy
 
@@ -85,7 +90,8 @@ Use absolute, forward-slash paths. The hidden `vcpkg-cache` and `sdk-roots` user
 presets own these roots. `.env` is private and ignored; CMake does not load it
 automatically. Preserve the caller's credentials and shared read-only feed policy.
 Ordinary builds do not update shared checkouts or prewarm packages. CI pins the
-shared actions to `v0.1.002` and selects `restore-packages: "false"`: the normal
+shared actions to `d9f34af3f7bcad5ae2c8abf4ec95c7e93ad5d761` (`v0.1.002`)
+and selects `restore-packages: "false"`: the normal
 product manifest build uses the local files cache and pinned source downloads.
 Strict remote ABI restoration is a separate mode requiring every exact package.
 All external package/tool transport uses curl, without Mono or NuGet executables.
@@ -93,9 +99,23 @@ All external package/tool transport uses curl, without Mono or NuGet executables
 The product manifest retains builtin baseline
 `b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01`, PCRE2 10.46 and SQLite 3.50.4 with FTS5.
 The added registry's zstd route is aligned to the cache commit without adding an
-unused zstd dependency. `FSX_BUILD_SEARCH_TOOLS=ON` resolves optional ugrep/bfs
-through the shared overlays; neither tool is linked into fsx. Their platform
-restrictions remain in the manifest. TRE is not a dependency.
+unused zstd dependency. `FSX_BUILD_SEARCH_TOOLS=ON` resolves optional external
+ugrep/bfs executables through the shared overlays for the process backend and
+its tests. These executable packages are separate from the embedded sources;
+their platform restrictions remain in the manifest. TRE is not a dependency.
+
+The embedded modules are private source dependencies with pinned provenance:
+
+| Module | Imported version / commit | License | Build boundary |
+|---|---|---|---|
+| RE/flex runtime from ugrep | 7.8.5 / `f2cc252c011460f6c75b1fb591813b4b6b59c225` | BSD-3-Clause | Private C++11 matcher; existing manifest PCRE2 |
+| bfs traversal subset | 4.1.7 / `6122b7fdab2a5adca17a6f94fb97c1206d8d4c68` | 0BSD | Private C17 target on Linux/macOS |
+
+[The source manifest](third_party/manifest.json) links the retained licenses,
+upstream file hashes and local changes. The public API and engine remain C11;
+C++ exceptions are caught at the private matcher C boundary. bfs compiler
+extensions and allocation redirection are confined to its target. No upstream
+CLI parser, expression evaluator or output pipeline is embedded.
 
 On Windows, preserve the shared LLVM-MinGW setup's `LLVM_MINGW_TOOLCHAIN_FILE`,
 `LLVM_MINGW_DEPENDENCY_TOOLCHAIN_FILE` and
@@ -115,16 +135,18 @@ ctest --preset windows-debug
 
 `macos-debug` builds native ARM64 source-owned tests with the runner's Clang and
 the published macOS Core/CMeta SDKs; `macos-release` builds the library/CLI.
-The macOS 15 ARM64 CI profile targets scans, queries, indexing, real ugrep/bfs
-content jobs and native FSEvents watching. `macos-x64-debug` and
+The macOS 15 ARM64 CI profile targets scans, queries, indexing, embedded content
+jobs, external ugrep/bfs cases and native FSEvents watching. `macos-x64-debug` and
 `macos-x64-release` select the published Intel SDKs and x64-osx triplet; a separate
 macos-15-intel CI job runs the same native suite. The selected SDK dylibs require macOS 15, matching
 the explicit deployment baseline in the presets.
 CI records native ARM64 and Intel results independently. Each profile runs scans,
-queries, persistence, content processes and FSEvents against its selected SDKs;
+queries, persistence, embedded/external content and FSEvents against its selected
+SDKs;
 results from one architecture do not substitute for the other.
-`macos-x64-asan-ubsan` instruments the library, CLI and source-owned native tests
-with Apple Clang AddressSanitizer/UndefinedBehaviorSanitizer. It runs the same
+`macos-x64-asan-ubsan` instruments the library, embedded modules, CLI and
+source-owned tests with Apple Clang AddressSanitizer/UndefinedBehaviorSanitizer.
+It runs the same
 FSEvents lifecycle and actual bfs/ugrep cases as the ordinary Intel profile.
 No sanitizer runtime options or child diagnostics are suppressed.
 UBSan profiles compile with `-fno-sanitize-recover=undefined`, so a reported
@@ -273,54 +295,128 @@ limits are a 64 KiB I/O buffer, 16 million MFT records and 4096 USN records per
 sync. Raw mode applies the MFT bound to captured slots, including free slots,
 before allocating. Engine limits bound indexed aliases and depth.
 
-## Validation
+## Content search
 
-The native content API and CLI use the actual ugrep stdin/JSON protocol. Enable
-their formal tests with `FSX_BUILD_CONTENT_TESTS=ON` and an absolute
-`FSX_CONTENT_TEST_UGREP` and (Linux/macOS) `FSX_CONTENT_TEST_BFS` executable paths.
-Linux/macOS CI build the pinned optional search-tools manifest feature. Windows CI
-qualifies the exact static LLVM-MinGW candidate from cache PR #282, commit
-`b247d9c4cf738fbf5640cd4ad82832e74929e756`, and runs FSX against that tool.
-That package is unreleased; production dependency/Action pins are unchanged.
-Windows supports indexed windows/scopes; BFS_LIVE remains explicitly UNSUPPORTED.
-There is no automatic tool discovery or fallback.
+The default CLI content path uses embedded matchers. Linux/macOS live discovery
+also runs in process, so these commands require no bfs or ugrep executable:
+
+```sh
+fsx content index.db --literal 'sqlite3_open' -- 'file: ext:c'
+fsx content index.db --parallel-files 2 --regex 'TODO|FIXME' -- 'file: ext:c;h'
+fsx content-live --parallel-files 2 --literal 'TODO' -- /work/src
+```
+
+Indexed content is supported on Linux, macOS and Windows. Live directory content
+search is supported on Linux/macOS; Windows BFS_LIVE returns `FS_UNSUPPORTED`.
+The C API exposes three native factories and retains the explicit process
+factories:
+
+| Candidate selection | Embedded factory | External-tool factory |
+|---|---|---|
+| Exact retained result window | `fsx_content_native_request(result, pattern)` | `fsx_content_request(result, ugrep, pattern)` |
+| Complete pinned metadata scope | `fsx_content_native_scope_request(scope, pattern)` | `fsx_content_scope_request(scope, ugrep, pattern)` |
+| Unindexed live root | `fsx_content_native_live_request(root, pattern)` | `fsx_content_live_request(root, bfs, ugrep, pattern)` |
+
+`matcher_backend` explicitly selects `FS_CONTENT_NATIVE` or
+`FS_CONTENT_UGREP_PROCESS`. Live requests also select `FS_DISCOVERY_BFTW` or
+`FS_DISCOVERY_BFS_PROCESS` through `discovery_backend`. Native factories require
+no tool paths. External factories require absolute executable paths; supplying a
+tool path for an embedded backend is invalid. There is no automatic discovery or
+fallback. The corresponding external CLI forms remain available:
 
 ```sh
 fsx content index.db /absolute/path/to/ugrep --literal 'sqlite3_open' -- 'file: ext:c'
 fsx content-live /absolute/path/to/bfs /absolute/path/to/ugrep --parallel-files 2 --literal 'TODO' -- /work/src
 ```
 
-The CLI emits match records and a final `live_read` summary; repeated matches on
-one line remain separate records. It searches the complete metadata scope on a
-snapshot pinned at submission, independent of the configured query window.
-`fsx_content_scope_request(scope, ugrep, pattern)` uses the same query language
-without sorting or pagination; `fsx_content_request(result, ugrep, pattern)`
-continues to select exactly the supplied result window. Scope candidate totals
-are incremental until `candidates_known` becomes true after enumeration.
-Missing/skipped/changed files make coverage incomplete (CLI exit 3); tool errors,
-resource limits or timeout are failures (exit 1). The database is not modified.
-`--parallel-files 1|2` immediately after UGREP selects bounded file concurrency;
-the default is 1. With 2, batches can arrive in either file order, and at most two
-active or retained batches share the per-file output budgets. The final summary
-reports `parallel_files`. This option carries no measured speedup claim.
-See [content ownership and limits](docs/runtime-contract.md#content-jobs).
+The CLI emits match records and a final `live_read` summary. Each record contains
+the complete line or lines covering a match, its starting line number and byte
+offset; repeated matches on one line remain separate records. UTF-8 input is
+validated, NUL/invalid UTF-8 input is skipped, and offsets start after a leading
+UTF-8 BOM. Patterns are at most 4096 UTF-8 bytes and cannot contain a literal LF;
+regex escapes can express cross-line matches. An empty pattern selects each
+actual input line, with no fictitious line after a final LF.
 
-`content-live` needs no database or prior indexing. It uses an in-memory engine,
-discovers hidden and ordinary files with `bfs -j1 -P -f ROOT -xdev -type f -print0`,
-and opens candidates relative to a verified root fd without following links or
-crossing device IDs. `fsx_content_live_request(root, bfs, ugrep, pattern)` is the
-corresponding C factory; paths must be absolute with no dot/empty components.
-Results report `source: "bfs_live"`, observed device/inode and metadata epoch 0;
-no metadata entry key is invented. Live traversal is an observation, without a
-filesystem snapshot guarantee. Discovery errors and budgets fail explicitly;
-confirmed earlier file batches remain valid. Public request/info structures
-changed, so callers must recompile using the factories.
+The qualified Windows LLVM-MinGW ugrep 7.8.5 external tool has a known input
+limitation: its CRT stdin remains in text mode, so CRLF becomes LF and later byte
+offsets count the translated stream. The embedded backend preserves CR bytes and
+original UTF-8 byte offsets after the BOM. This difference is covered explicitly;
+Windows native differential tests compare the full CRLF corpus against real
+ugrep reading the same file in binary mode. See the
+[upstream guard and external-tool boundary](docs/runtime-contract.md#external-processes-and-protocol).
 
-Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer, native tools,
-CLI and formal tests. The current suite has 104 Windows / 102 Linux engine cases, 25 dedicated raw
-reader cases, two controlled-replay/measurement cases and 10 CLI cases, run
-through four ordinary CTest entries. Enabled POSIX content profiles add two
-CTest entries with 43 native API cases and 12 CLI cases using real ugrep/bfs.
+`content` searches the complete metadata scope on a snapshot pinned at submission,
+independent of the configured query window. Scope factories use the same query
+language without sorting or pagination; window factories select exactly the
+supplied result window. Scope candidate totals are incremental until
+`candidates_known` becomes true after enumeration. Missing/skipped/changed files
+make coverage incomplete (CLI exit 3); matcher/tool errors, resource limits or
+timeout are failures (exit 1). The database is not modified.
+
+Place `--parallel-files 1|2` before `--literal`/`--regex`, after any database and
+explicit tool paths. The default is 1. With 2, batches can arrive in either file
+order, and at most two active or retained batches share the bounded result slots.
+The final summary reports `parallel_files`.
+
+Embedded matching compiles one immutable pattern per job, with separate state
+per active file. Each file is read and validated in full before matching, up to
+32 MiB (`max_file_bytes`, configurable downward). Literal matching uses RE/flex;
+regex uses the existing PCRE2 library with cancellation callouts, a 1,000,000
+match limit, depth 256, a 32 MiB PCRE2 heap limit and no JIT. The input buffers,
+result storage and PCRE2 allocations count against the engine memory budget.
+RE/flex's internal C++ allocations remain outside that counter; this budget is
+not a process RSS limit.
+
+The default `max_output_bytes` is 8 MiB per file, configurable from 1 KiB to
+8 MiB. Embedded matching charges each copied record's UTF-8 text plus its NUL,
+including repeated copies of the same line, and limits one record's text to
+64 KiB. The external backend charges raw JSON protocol bytes and has a 64 KiB
+encoded frame limit. These limits deliberately measure different representations;
+the same configured byte value need not accept the same number of records.
+At most `max_records` records are published across the job (default/maximum
+10,000). See [content ownership and limits](docs/runtime-contract.md#content-jobs).
+
+`content-live` needs no database or prior indexing. It uses an in-memory engine
+and the private bfs `bftw()` bridge to discover hidden and ordinary files without
+following links, applying ignore files or crossing device IDs. The walker has a
+32-descriptor cache and zero additional I/O threads; FSX owns the verified root
+and active file descriptors separately. Its explicit heap allocations count
+against the engine budget, and callbacks observe cancellation/deadlines.
+Candidates open relative to the verified root, with identity and post-read
+checks. Root paths must be absolute with no dot/empty components. The external
+discovery equivalent remains `bfs -j1 -P -f ROOT -xdev -type f -print0`.
+
+Both discovery backends report `source: "bfs_live"`, observed device/inode and
+metadata epoch 0; no metadata entry key is invented. Live traversal is an
+observation, without a filesystem snapshot guarantee. Discovery errors and
+budgets fail explicitly; confirmed earlier batches remain valid. Public
+request/info structures changed, so callers must recompile using the factories.
+
+## Validation
+
+Source-owned `fsx_native_content_test`, `fsx_native_content_cli_test` and the
+POSIX `fsx_native_discovery_test` exercise embedded matching and traversal
+without external tool packages. They cover ownership/backpressure, full-line
+records and offsets, UTF-8/BOM handling, cross-window literal matching,
+cross-line regex, resource limits, cancellation, native identities and discovery
+budgets. The embedded-backend revision passed all 11 formal Linux Debug CTest
+entries with Clang 19, including the enabled external-tool suite. This is Linux
+validation; macOS and Windows runs remain separate platform qualifications.
+
+Enable the external API/CLI and differential tests with
+`FSX_BUILD_CONTENT_TESTS=ON`, an absolute `FSX_CONTENT_TEST_UGREP`, and on
+Linux/macOS an absolute `FSX_CONTENT_TEST_BFS`. Differential cases compare native
+records against real ugrep, including repeated/empty matches, CRLF bytes and
+cross-line regex. Windows uses the tool's binary file input as the native oracle
+and separately verifies the external stdin translation described above.
+Linux/macOS CI build the pinned optional search-tools manifest feature.
+Windows CI qualifies the exact static LLVM-MinGW candidate from cache PR #282,
+commit `b247d9c4cf738fbf5640cd4ad82832e74929e756`, for the external backend.
+That package is unreleased and remains a test-only selection.
+
+Windows x64 LLVM-MinGW Debug/Release builds the library, generated lexer and CLI;
+Debug also builds the formal tests. The suite includes engine integration,
+NTFS raw readers, controlled replay, CLI and content cases.
 A source-owned native process peer injects malformed path frames, traversal
 errors and stalled discovery for failure/cancellation cases; it does not link FSX.
 The POSIX suite also checks unrelated non-CLOEXEC fd exclusion and survival after
@@ -328,8 +424,7 @@ a matcher closes stdin early. macOS uses POSIX_SPAWN_CLOEXEC_DEFAULT and per-fd
 F_SETNOSIGPIPE; Linux keeps close-from spawn actions and worker-local signal handling.
 The APFS fixture expects illegal UTF-8 names to be rejected at creation; Linux
 tests their discovered-path skip behavior. No substitute names are generated.
-Windows content profiles run 20 native API cases and eight CLI cases (four POSIX
-bfs CLI cases are explicitly skipped), including UTF-16 argv quoting, overlapped
+Windows external content profiles exercise UTF-16 argv quoting, overlapped
 pipe traffic, restricted handle inheritance and actual descendant cancellation.
 Windows 10+ is required for the Job Object process-creation attribute. New indexes
 record full 64-bit volume serials; recreate databases with older 32-bit Windows
@@ -358,7 +453,8 @@ during observation. Stable junctions remain searchable without traversing target
 The asynchronous-index runtime passed all three CTest entries on Linux Debug,
 Linux ASan/UBSan and Windows LLVM-MinGW Debug using the published Core 0.1.2 and
 CMeta 0.1.3 SDKs. That earlier Linux revision compiled 91 engine cases;
-Windows-only cases were excluded. Current platform case counts are listed above.
+Windows-only cases were excluded. That historical run predates the embedded
+content backends and their dedicated tests.
 The independent sanitizer runner keeps default leak detection enabled. See
 [CI validation](https://github.com/qigao/fsx/actions/runs/41598912885).
 
@@ -418,9 +514,9 @@ Main facts/FTS/USN commit together before a new query snapshot is published.
 These are execution/storage choices, not a measured speedup. See the
 [ownership, limits and cancellation contract](docs/runtime-contract.md#asynchronous-indexing-and-bounded-ntfs-batches).
 
-The formal `fsx_content_benchmark_test` adds a seventh CTest entry to content
-profiles. It checks identical native results while measuring serial/parallel
-warm-cache throughput, first confirmed batches, cooperative cancellation and
+The formal `fsx_content_benchmark_test` is enabled in external-tool content
+profiles. It checks identical embedded/external fixture results while measuring
+serial/parallel warm-cache throughput, first confirmed batches, cooperative cancellation and
 same-engine metadata query latency. The `linux-content-release` preset provides
 an optimized build; ordinary Debug/sanitizer timings are kept separate. CI
 preserves raw CSV, strict summaries with tool/source hashes, and formal logs.
