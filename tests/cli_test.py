@@ -49,6 +49,62 @@ class FileSearchCli(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(self.database.stat().st_size, 0)
 
+    def test_index_validates_arguments_before_database_creation(self):
+        for args in [(), (self.root, "--unknown")]:
+            with self.subTest(args=args):
+                result = self.run_cli("index", self.database, *args)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertFalse(self.database.exists())
+
+    @unittest.skipUnless(Path("/dev/full").exists(),
+                         "requires a device that rejects output writes")
+    def test_output_errors_fail_commands_including_buffered_output(self):
+        (self.root / "needle.txt").write_text("needle\n", encoding="utf-8")
+        self.assertEqual(self.run_cli("index", self.database, self.root).returncode, 0)
+        commands = [
+            ("index", self.database, self.root),
+            ("info", self.database),
+            ("search", self.database, "--json", "--", "needle"),
+            ("search", self.database, "--", "needle"),
+            ("content", self.database, "--literal", "needle", "--", self.root),
+        ]
+        with open("/dev/full", "wb") as rejected:
+            for args in commands:
+                with self.subTest(command=args[0], args=args[2:]):
+                    result = subprocess.run(
+                        [EXECUTABLE, *map(str, args)], stdout=rejected,
+                        stderr=subprocess.PIPE, encoding="utf-8", timeout=20)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn("stdout: output failed", result.stderr)
+
+    @unittest.skipUnless(os.name == "nt" or sys.platform in ("linux", "darwin"),
+                         "native directory watcher requires Windows, Linux or macOS")
+    def test_streaming_commands_stop_and_release_resources_on_closed_output(self):
+        for i in range(4):
+            (self.root / f"needle-{i}.txt").write_text("needle\n" * 1000,
+                                                     encoding="utf-8")
+        self.assertEqual(self.run_cli("index", self.database, self.root).returncode, 0)
+        commands = [
+            ("content", self.database, "--parallel-files", "2", "--literal", "needle",
+             "--", self.root),
+            # A watcher with no time or update limit must stop on its first
+            # failed output write instead of continuing indefinitely.
+            ("watch", self.database, self.root),
+        ]
+        for args in commands:
+            with self.subTest(command=args[0]):
+                reader, writer = os.pipe()
+                os.close(reader)
+                try:
+                    result = subprocess.run(
+                        [EXECUTABLE, *map(str, args)], stdout=writer,
+                        stderr=subprocess.PIPE, encoding="utf-8", timeout=20)
+                finally:
+                    os.close(writer)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("stdout: output failed", result.stderr)
+        self.assertEqual(self.run_cli("info", self.database).returncode, 0)
+
     def test_fts_and_scan_profiles_return_identical_sorted_pages(self):
         for i in range(40):
             (self.root / f"record-{i:03}.txt").write_text("x" * (i + 1), encoding="utf-8")

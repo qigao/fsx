@@ -228,19 +228,17 @@ suite("Windows native content processes") {
     check_equal(record.text, text);
     check_true(finish().complete);
   }
-  it("executes actual PCRE2 lookbehind and multiline frames") {
+  it("rejects external regex before launching a tool") {
     put("text", "prefixone\ntwo\n");
     FsContentRequest r = request("(?<=prefix)one\\ntwo");
     r.mode = FS_CONTENT_PCRE2;
-    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
-    acquire();
-    FsContentRecordView record;
-    check_equal(fsx_content_batch_record(batch, 0, &record), FS_OK);
-    check_equal(record.text, "prefixone\ntwo");
-    check_equal(record.byte_offset, (uint64_t)6);
-    check_true(finish().complete);
+    check_equal(fsx_content_submit(engine, &r, &query), FS_UNSUPPORTED);
+    check_true(query == NULL);
+    r.pattern = "^(a+)+$|needle";
+    check_equal(fsx_content_submit(engine, &r, &query), FS_UNSUPPORTED);
+    check_true(query == NULL);
   }
-  it("distinguishes no-match from native tool regex failures") {
+  it("distinguishes no-match from unsupported external regex") {
     put("text", "aXb\n");
     FsContentRequest r = request("a.b");
     check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
@@ -251,11 +249,8 @@ suite("Windows native content processes") {
     query = NULL;
     r.pattern = "[";
     r.mode = FS_CONTENT_PCRE2;
-    check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
-    info = finish();
-    check_equal(info.status, FS_IO);
-    check_false(info.complete);
-    check_true(info.tool_exit_code > 1);
+    check_equal(fsx_content_submit(engine, &r, &query), FS_UNSUPPORTED);
+    check_true(query == NULL);
   }
   it("strips BOM and skips invalid or binary UTF8 input") {
     put("bom", "\xef\xbb\xbfneedle\n");

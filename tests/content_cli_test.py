@@ -117,15 +117,36 @@ class ContentCli(unittest.TestCase):
         self.assertFalse(summary['complete'])
         self.assertEqual(summary['records'], 0)
 
-    def test_no_match_and_pcre2_error_are_distinct(self):
+    def test_no_match_and_unsupported_external_regex_are_distinct(self):
         (self.root / 'text.txt').write_text('aXb\n')
         self.index()
         result = self.search('--literal', 'a.b')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)['records'], 0)
         result = self.search('--regex', '[')
-        self.assertEqual(result.returncode, 1)
-        self.assertIn('io', result.stderr)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('native', result.stderr.lower())
+        self.assertEqual(result.stdout, '')
+
+    def test_external_regex_cannot_claim_complete_after_execution_failure(self):
+        # This pattern/input makes the qualified ugrep return exit 1 with no
+        # diagnostic even though a later line contains a match. Rejecting the
+        # backend is necessary: treating exit 1 as no-match would hide errors.
+        (self.root / 'text.txt').write_bytes(b'a' * 2000 + b'!\nneedle\n')
+        self.index()
+        result = self.search('--regex', '^(a+)+$|needle')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('native', result.stderr.lower())
+        self.assertEqual(result.stdout, '')
+
+    def test_external_regex_is_rejected_before_opening_database(self):
+        result = self.search('--regex', 'needle')
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(self.db.exists())
+        result = self.run_fsx('content-live', BFS, UGREP, '--regex', 'needle',
+                              '--', self.root)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, '')
 
     def test_binary_coverage_is_explicit(self):
         (self.root / 'binary').write_bytes(b'needle\0')
@@ -136,19 +157,13 @@ class ContentCli(unittest.TestCase):
         self.assertFalse(summary['complete'])
         self.assertEqual(summary['skipped'], 1)
 
-    def test_embedded_matching_agrees_with_the_real_ugrep_protocol(self):
+    def test_embedded_literals_agree_with_the_real_ugrep_protocol(self):
         (self.root / 'text.txt').write_bytes(
             '猫 needle needle\n\ntext\r\nprefixone\ntwo\naXb\na.b\n猫x\nend'.encode('utf-8'))
         self.index()
         patterns = [
             ('--literal', 'needle'), ('--literal', ''),
             ('--literal', 'a.b'), ('--literal', '猫'),
-            ('--regex', r'(?<=prefix)one\ntwo'),
-            ('--regex', r'one\n'), ('--regex', r'\n'),
-            ('--regex', '^|$'), ('--regex', '^$'),
-            ('--regex', r'\w+'), ('--regex', r'\s+'),
-            ('--regex', r'[^x]+'), ('--regex', r'\C'),
-            ('--regex', '.*'), ('--regex', '.+'),
         ]
         for mode, pattern in patterns:
             with self.subTest(mode=mode, pattern=pattern):

@@ -14,6 +14,17 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
+static bool stdout_failed;
+static FsStatus check_stdout(bool flush) {
+  int flushed = flush ? fflush(stdout) : 0;
+  if (flushed == EOF || ferror(stdout)) {
+    if (!stdout_failed)
+      fputs("fsx: stdout: output failed\n", stderr);
+    stdout_failed = true;
+    return FS_IO;
+  }
+  return FS_OK;
+}
 static void json_string(const char *s) {
   putchar('"');
   for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
@@ -95,7 +106,7 @@ static FsStatus watch_directory(FsEngine *engine, const char *root,
            scanned.snapshot_epoch, scanned.entries,
            scanned.coverage_complete ? "true" : "false",
            scanned.skipped_entries);
-    fflush(stdout);
+    status = check_stdout(true);
     if (!scanned.coverage_complete)
       *exit_code = 3;
   }
@@ -129,7 +140,7 @@ static FsStatus index_ntfs(FsEngine *engine, FsNtfs *source, bool rebuild,
   *out = info.ntfs;
   return status;
 }
-static void print_ntfs(const FsNtfsInfo *info) {
+static FsStatus print_ntfs(const FsNtfsInfo *info) {
   printf("revision=%" PRIu64 " source=%u next_usn=%" PRId64
          " target_usn=%" PRId64 " caught_up=%s mft=%" PRIu64 " journal=%" PRIu64
          " directories=%" PRIu64 " mft_slots=%" PRIu64 " raw_bytes=%" PRIu64
@@ -139,7 +150,7 @@ static void print_ntfs(const FsNtfsInfo *info) {
          info->mft_records, info->journal_records, info->directories_reconciled,
          info->mft_slots, info->raw_read_bytes, info->raw_read_calls,
          info->mft_kernel_records);
-  fflush(stdout);
+  return check_stdout(true);
 }
 static FsStatus ntfs_command(FsEngine *engine, const char *command,
                              const char *root, uint32_t duration,
@@ -176,7 +187,9 @@ static FsStatus ntfs_command(FsEngine *engine, const char *command,
   else
     status = index_ntfs(engine, source, true, &info);
   while (status == FS_OK) {
-    print_ntfs(&info);
+    status = print_ntfs(&info);
+    if (status != FS_OK)
+      break;
     completed++;
     if (!continuous || interrupted || (updates && completed >= updates))
       break;
@@ -243,16 +256,27 @@ static FsStatus content_search(FsEngine *engine, const char *tool,
         printf(",\"line\":%" PRIu64 ",\"offset\":%" PRIu64 ",\"metadata_epoch\":%" PRIu64
                ",\"text\":", record.line, record.byte_offset, file.metadata_epoch);
         json_string(record.text); fputs("}\n", stdout);
+        status = check_stdout(false);
+        if (status != FS_OK)
+          break;
       }
       fsx_content_batch_release(batch);
+      if (status == FS_OK)
+        status = check_stdout(true);
+      if (status != FS_OK) {
+        fsx_content_cancel(query);
+        break;
+      }
     }
     fsx_content_poll(query, &info);
+    if (status != FS_OK) break;
     if (info.finished && acquired == FS_END) break;
     if (acquired == FS_BUSY) { fsx_content_cancel(query); status = FS_BUSY; break; }
   }
   signal(SIGINT, previous);
   if (status == FS_OK) status = info.status;
-  printf("{\"type\":\"summary\",\"semantics\":\"live_read\",\"source\":\"%s\",\"complete\":%s,"
+  if (!stdout_failed)
+    printf("{\"type\":\"summary\",\"semantics\":\"live_read\",\"source\":\"%s\",\"complete\":%s,"
          "\"parallel_files\":%u,\"records\":%" PRIu64 ",\"candidates\":%" PRIu64 ",\"candidates_known\":%s,\"changed\":%" PRIu64
          ",\"skipped\":%" PRIu64 "}\n", live ? "bfs_live" : "index_scope", info.complete ? "true" : "false",
          parallel_files, info.match_records, info.candidate_count, info.candidate_count_known ? "true" : "false",
@@ -263,6 +287,14 @@ static FsStatus content_search(FsEngine *engine, const char *tool,
   return status;
 }
 static int run(int argc, char **argv) {
+#ifndef _WIN32
+  /* Observe EPIPE through stdio so streaming queries can be cancelled and
+   * their engine resources released when a downstream reader closes. */
+  if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
+    fputs("fsx: cannot handle broken output pipes\n", stderr);
+    return 1;
+  }
+#endif
   if (argc < 3) {
     fputs("Usage: fsx index DATABASE ROOT\n       fsx search DATABASE [--limit "
           "N] [--offset N] [--sort name|path|size|mtime] [--desc] [--case] "
@@ -281,6 +313,8 @@ static int run(int argc, char **argv) {
           stderr);
     return 2;
   }
+  if (!strcmp(argv[1], "index") && argc != 4)
+    return 2;
   bool live_content = !strcmp(argv[1], "content-live");
   FsEngineConfig config = fsx_engine_config(live_content ? ":memory:" : argv[2]);
   FsQueryOptions options = fsx_query_options();
@@ -307,6 +341,11 @@ static int run(int argc, char **argv) {
         (strcmp(argv[content_at], "--literal") && strcmp(argv[content_at], "--regex")) ||
         strcmp(argv[content_at + 2], "--"))
       return 2;
+    if (content_tool && !strcmp(argv[content_at], "--regex")) {
+      fputs("External ugrep cannot reliably report regex runtime errors; "
+            "omit tool paths to use native PCRE2.\n", stderr);
+      return 2;
+    }
   }
   if (!live_content && strcmp(argv[1], "index") && strcmp(argv[1], "watch") &&
       strcmp(argv[1], "ntfs-index") && strcmp(argv[1], "ntfs-watch"))
@@ -423,7 +462,7 @@ static int run(int argc, char **argv) {
   } else if (!strcmp(argv[1], "watch")) {
     status = watch_directory(engine, argv[3], watch_duration, watch_updates,
                              &exit_code);
-  } else if (!strcmp(argv[1], "index") && argc == 4) {
+  } else if (!strcmp(argv[1], "index")) {
     FsIndexJob *job = NULL;
     FsScanInfo info = {0};
     status = fsx_engine_scan_async(engine, argv[3], &job);
@@ -495,10 +534,13 @@ static int run(int argc, char **argv) {
           fputs(view.path, stdout);
           putchar('\n');
         }
+        status = check_stdout(false);
+        if (status != FS_OK)
+          break;
       }
-      if (json)
+      if (json && status == FS_OK)
         fputs("]}\n", stdout);
-      else
+      else if (!json)
         fprintf(stderr, "total=%" PRIu64 " revision=%" PRIu64 " complete=%s\n",
                 info.total_count, info.snapshot_epoch,
                 info.coverage_complete ? "true" : "false");
@@ -515,6 +557,8 @@ static int run(int argc, char **argv) {
   } else {
     status = FS_INVALID;
   }
+  if (check_stdout(true) != FS_OK)
+    status = FS_IO;
   if (status != FS_OK) {
     fprintf(stderr, "fsx: %s\n", fsx_status_name(status));
     exit_code = 1;

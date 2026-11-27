@@ -93,7 +93,7 @@ static bool same_version(const struct stat *a, const struct stat *b) {
 static FsStatus execute(FsContentQuery *q, int file, FsContentBatch *b) {
   char *argv[] = {q->tool,
                   "-J1",
-                  q->request.mode == FS_CONTENT_LITERAL ? "-F" : "-P",
+                  "-F",
                   "--color=never",
                   "--line-buffered",
                   "--label=fsx-input",

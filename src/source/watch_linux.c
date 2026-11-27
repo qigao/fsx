@@ -343,7 +343,9 @@ FsStatus fsx_watch_scan(FsWatch *w, FsScanInfo *out) {
   status = pump(w, &quiet);
   if (status != FS_OK)
     return status;
-  dirty(w, w->scan_changed || !quiet || !out->coverage_complete);
+  /* Partial coverage describes the committed scan. It does not itself mean
+   * another scan can make progress; wait for a new filesystem event. */
+  dirty(w, w->scan_changed || !quiet);
   return FS_OK;
 }
 void fsx_watch_cancel_all(FsEngine *e) {

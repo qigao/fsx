@@ -38,6 +38,9 @@ typedef struct FsContentRequest {
    * is bounded per worker, including batches retained by the caller. */
   uint32_t parallel_files;
   /* Explicit execution choices; native factories do not use tool paths.
+   * Ugrep process matching supports literal mode only; PCRE2 requests return
+   * FS_UNSUPPORTED because tool execution errors cannot be distinguished from
+   * no matches. Native matching supports both modes through PCRE2.
    * There is no automatic fallback between in-process and external tools. */
   uint32_t matcher_backend, discovery_backend;
 } FsContentRequest;
@@ -195,7 +198,7 @@ FsContentRequest fsx_content_scope_request(const char *scope, const char *ugrep,
                                            const char *pattern);
 FsContentRequest fsx_content_live_request(const char *root, const char *bfs,
                                           const char *ugrep, const char *pattern);
-/* In-process matching (RE/flex literals, PCRE2 expressions). The live factory
+/* In-process PCRE2 matching (literal strings and expressions). The live factory
  * also selects the embedded POSIX bftw walker. No executable paths required. */
 FsContentRequest fsx_content_native_request(const FsResult *, const char *pattern);
 FsContentRequest fsx_content_native_scope_request(const char *scope,

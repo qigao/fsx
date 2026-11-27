@@ -196,7 +196,7 @@ static wchar_t *wide_text(FsEngine *e, const char *text) {
 static FsStatus command_line(FsContentQuery *q, wchar_t **out) {
   const char *args[] = {q->tool,
                         "-J1",
-                        q->request.mode == FS_CONTENT_LITERAL ? "-F" : "-P",
+                        "-F",
                         "--color=never",
                         "--line-buffered",
                         "--label=fsx-input",

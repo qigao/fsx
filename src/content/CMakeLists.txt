@@ -1,8 +1,4 @@
-add_subdirectory("${PROJECT_SOURCE_DIR}/third_party/reflex"
-  "${PROJECT_BINARY_DIR}/third_party/reflex")
-target_sources(fsx PRIVATE api.c parallel.c json.c text.c native.c matcher.cpp)
-target_compile_features(fsx PRIVATE cxx_std_11)
-target_link_libraries(fsx PRIVATE fsx_reflex)
+target_sources(fsx PRIVATE api.c parallel.c json.c text.c native.c matcher.c)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   add_subdirectory("${PROJECT_SOURCE_DIR}/third_party/bfs"
     "${PROJECT_BINARY_DIR}/third_party/bfs")

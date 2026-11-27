@@ -175,7 +175,7 @@ static void setup(void) {
   check_not_null(measurements);
   check_not_null(query_measurements);
   fprintf(measurements,
-          "# format=fsx-content-benchmark-v4\n# build_type=%s\n# platform=%s\n"
+          "# format=fsx-content-benchmark-v5\n# build_type=%s\n# platform=%s\n"
           "# compiler=%s\n# sanitizers=%s\n# benchmark_source_sha256=%s\n"
           "# cache=warm-uncontrolled-os-cache\n"
           "# ugrep=%s\n",
@@ -656,8 +656,9 @@ static void profile_failures(void) {
   static FsContentMetrics metrics;
   memset(&metrics, 0, sizeof(metrics));
   engine->content_metrics = &metrics;
-  FsContentRequest r = fsx_content_scope_request("file:", FSX_TEST_UGREP, "[");
-  r.mode = FS_CONTENT_PCRE2;
+  FsContentRequest r = fsx_content_scope_request("file:",
+                                                "/fsx-missing-native-ugrep",
+                                                "needle");
   r.parallel_files = 2;
   check_equal(fsx_content_submit(engine, &r, &query), FS_OK);
   check_equal(fsx_content_wait(query, cmeta_hrtime() + UINT64_C(10000000000)),

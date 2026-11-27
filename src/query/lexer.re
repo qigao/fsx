@@ -9,13 +9,14 @@ again:
         quoted = '"' ([^"\\\x00] | "\\" [^\x00])* '"';
         plain = [^\x00 \t\r\n!|<>"]+;
         word = (quoted | plain)+;
+        modifier = "case:" | "path:" | "file:" | "folder:";
         [ \t\r\n]+ { goto again; }
         "\x00" { out->kind=FS_T_END; --YYCURSOR; goto done; }
         "!" { out->kind=FS_T_NOT; goto done; }
         "|" { out->kind=FS_T_OR; goto done; }
         "<" { out->kind=FS_T_OPEN; goto done; }
         ">" { out->kind=FS_T_CLOSE; goto done; }
-        "size:" ([<>=] "="?)? word { out->kind=FS_T_WORD; goto done; }
+        modifier* "size:" ([<>=] "="?)? word { out->kind=FS_T_WORD; goto done; }
         word { out->kind=FS_T_WORD; goto done; }
         * { out->kind=FS_T_INVALID; goto done; }
     */
